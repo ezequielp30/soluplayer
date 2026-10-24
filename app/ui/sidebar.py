@@ -35,7 +35,8 @@ LIBRARY_VIEWS = [
     ("songs", "Canciones", "song"),
 ]
 
-ITEM_HEIGHT = 32
+ITEM_HEIGHT = 30
+VISIBLE_PLAYLISTS = 5  # playlists que se ven sin desplazarse
 _ID_ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -61,7 +62,7 @@ class Sidebar(QFrame):
         self.setMaximumWidth(340)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 14, 10, 10)
+        layout.setContentsMargins(10, 10, 10, 8)
         layout.setSpacing(4)
 
         layout.addWidget(self._section_label("Biblioteca"))
@@ -74,12 +75,12 @@ class Sidebar(QFrame):
             self.library_list.addItem(item)
         self.library_list.setFixedHeight(ITEM_HEIGHT * len(LIBRARY_VIEWS) + 4 * len(LIBRARY_VIEWS))
         layout.addWidget(self.library_list)
-        layout.addSpacing(12)
+        layout.addSpacing(6)
 
         # Playlists y Carpetas comparten el espacio restante; el divisor permite repartirlo.
         sections = QSplitter(Qt.Orientation.Vertical)
         sections.setChildrenCollapsible(False)
-        sections.setHandleWidth(10)
+        sections.setHandleWidth(6)
         layout.addWidget(sections, 1)
 
         playlists_panel = QWidget()
@@ -101,6 +102,10 @@ class Sidebar(QFrame):
         self.empty_playlists.setObjectName("SectionLabel")
         self.empty_playlists.setWordWrap(True)
         playlists_layout.addWidget(self.empty_playlists)
+        # Siempre caben al menos VISIBLE_PLAYLISTS playlists sin desplazarse (encabezado + filas con su margen).
+        playlists_panel.setMinimumHeight(
+            self.btn_new.sizeHint().height() + 6 + VISIBLE_PLAYLISTS * (ITEM_HEIGHT + 2)
+        )
         sections.addWidget(playlists_panel)
 
         folders_panel = QWidget()
@@ -130,8 +135,11 @@ class Sidebar(QFrame):
         self.empty_folders.setObjectName("SectionLabel")
         self.empty_folders.setWordWrap(True)
         folders_layout.addWidget(self.empty_folders)
+        folders_panel.setMinimumHeight(self.btn_add_folder.sizeHint().height() + 4 + ITEM_HEIGHT + 2)
         sections.addWidget(folders_panel)
-        sections.setSizes([180, 320])
+        sections.setStretchFactor(0, 0)  # al agrandar la ventana, el espacio extra va a Carpetas
+        sections.setStretchFactor(1, 1)
+        sections.setSizes([playlists_panel.minimumHeight(), 320])
         self.sections = sections
 
         # Atajos sobre la playlist seleccionada

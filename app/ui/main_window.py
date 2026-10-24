@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         self._progress: QProgressDialog | None = None
 
         self.setWindowTitle(APP_NAME)
-        self.setMinimumSize(900, 560)
+        self.setMinimumSize(900, 590)  # con la barra lateral completa: 5 playlists y al menos 1 carpeta
         self.resize(1280, 800)
 
         # Estructura: barra superior + (barra lateral | panel principal)
