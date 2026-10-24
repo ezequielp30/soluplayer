@@ -2,6 +2,19 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.0 — 2026-10-24
+
+- **Historial de renombres y movimientos:** renombrar un archivo o una carpeta y mover canciones (también a
+  otro disco) aparecen en Herramientas → Historial y se pueden deshacer; nunca se pisa nada.
+- **Temporales sobrantes:** al abrir se borran los que pudo dejar un corte de luz junto a la música. Mover a
+  otro disco ahora da el nombre definitivo a la copia antes de borrar el original, así un temporal que
+  quede es siempre una copia a medias.
+- **Más rápido con bibliotecas grandes o en red:** se lee cada carpeta una vez (no cada archivo) para saber
+  qué canciones existen, y si un disco o servidor no responde no se insiste con el resto; el árbol de
+  Carpetas se arma una vez por carpeta. «Convertir a MP3» se abre al instante y lee la calidad por tandas.
+- **Textos de Qt en español:** el menú del clic derecho en los campos («Copiar», «Pegar»…) y los botones
+  estándar de los cuadros de diálogo.
+
 ## 1.11.1 — 2026-10-24
 
 - **Licencia:** el programa es software libre bajo la GNU GPL versión 3 o posterior (`LICENSE`); «Acerca

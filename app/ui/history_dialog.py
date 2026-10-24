@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..file_operations import KIND_CONVERSION, KIND_REVIEW, KIND_VOLUME, FileOperations, HistoryEntry
+from ..file_operations import KIND_CONVERSION, KIND_FILES, KIND_REVIEW, KIND_VOLUME, FileOperations, HistoryEntry
 from ..models import Track
 from ..utils import plural
 from . import theme
@@ -150,6 +150,9 @@ class HistoryDialog(QDialog):
             text = f"¿Deshacer la conversión de {plural(entry.count, 'canción', 'canciones')}?"
             info = ("Los originales vuelven a su sitio y la biblioteca vuelve a usarlos. Los MP3 creados van a la "
                     "Papelera (solo si su original está de vuelta en su lugar).")
+        elif entry.kind == KIND_FILES:
+            text = f"¿Deshacer «{entry.title.lower()}» ({entry.detail})?"
+            info = "Vuelve a su nombre y lugar anterior; la biblioteca y las playlists se actualizan solas. No se pisa nada."
         else:
             return
         if ask(self, "Deshacer", text,

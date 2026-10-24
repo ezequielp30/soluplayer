@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -85,6 +86,30 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def available_paths(paths: Iterable[str]) -> set[str]:
+    """Cuáles de estas rutas existen, leyendo cada carpeta UNA vez (no un acceso al disco por canción: con
+    miles de canciones o música en red, arrancar tardaba mucho). Si un disco o servidor no responde, no se
+    vuelve a intentar con el resto de sus carpetas (cada intento esperaría su tiempo límite)."""
+    by_folder: dict[str, list[str]] = {}
+    for path in paths:
+        by_folder.setdefault(os.path.dirname(path), []).append(path)
+    dead_roots: set[str] = set()
+    found: set[str] = set()
+    for folder, members in by_folder.items():
+        root = os.path.splitdrive(folder)[0].casefold()
+        if root in dead_roots:
+            continue
+        try:
+            with os.scandir(folder) as entries:
+                names = {e.name.casefold() for e in entries if e.is_file()}
+        except OSError:
+            if root and not os.path.exists(os.path.splitdrive(folder)[0] + "\\"):
+                dead_roots.add(root)  # disco desconectado o servidor apagado: no insistir con el resto
+            continue
+        found.update(p for p in members if os.path.basename(p).casefold() in names)
+    return found
+
+
 def _row_to_track(row: sqlite3.Row, check: bool = True) -> Track:
     track = Track(
         id=row["id"],
@@ -155,7 +180,11 @@ class Database:
             f"SELECT {_TRACK_COLUMNS} FROM tracks t ORDER BY t.artist COLLATE NOCASE, "
             "t.album COLLATE NOCASE, t.title COLLATE NOCASE"
         ).fetchall()
-        return [_row_to_track(r) for r in rows]
+        tracks = [_row_to_track(r, check=False) for r in rows]
+        present = available_paths(t.path for t in tracks)
+        for track in tracks:
+            track.available = track.path in present
+        return tracks
 
     def recent_tracks(self, limit: int = RECENT_LIMIT) -> list[Track]:
         rows = self.conn.execute(

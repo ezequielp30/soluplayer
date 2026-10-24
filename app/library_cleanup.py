@@ -93,3 +93,28 @@ def relocate_folder(tracks: list[Track], old_folder: str, new_folder: str) -> li
         if os.path.isfile(candidate):
             changes.append((track.id, candidate))
     return changes
+
+
+# Temporales que el programa crea junto a la música y renombra al terminar. Si quedan (corte de luz o
+# cierre forzado a mitad de una conversión, un ajuste de volumen o un movimiento a otro disco) son
+# siempre copias a medias: el archivo original sigue entero en su sitio, así que se pueden borrar.
+LEFTOVER_SUFFIXES = (".convirtiendo.tmp", ".ajuste-volumen.tmp", ".moviendo.tmp")
+
+
+def remove_leftover_temps(tracks: list[Track]) -> list[str]:
+    """Borra esos temporales de las carpetas de la biblioteca. Devuelve los borrados. Solo toca archivos
+    con exactamente esas terminaciones; nunca otros archivos."""
+    removed: list[str] = []
+    for folder in {os.path.dirname(t.path) for t in tracks}:
+        try:
+            with os.scandir(folder) as entries:
+                leftovers = [e.path for e in entries if e.is_file() and e.name.lower().endswith(LEFTOVER_SUFFIXES)]
+        except OSError:
+            continue  # carpeta que ya no existe o disco desconectado
+        for path in leftovers:
+            try:
+                os.remove(path)
+                removed.append(path)
+            except OSError:
+                pass  # en uso (otra copia del programa trabajando con él): se intenta la próxima vez
+    return removed

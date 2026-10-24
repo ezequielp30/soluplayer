@@ -349,9 +349,14 @@ programa hizo con tus archivos de música, con su fecha y su estado:
   (solo si el original está de vuelta en su lugar).
 - **Ajustar volumen:** *Revertir volumen…* abre la ventana de volumen con las canciones ya ajustadas, para
   elegir cuáles devolver a su volumen original.
+- **Renombrar archivo, renombrar carpeta y mover a otra carpeta:** *Deshacer* devuelve el nombre y el lugar
+  anteriores (también entre discos); la biblioteca y las playlists se actualizan solas. Nunca pisa nada: si
+  en el lugar original ya hay otro archivo, no se toca y figura como *Ya no se puede deshacer*.
 
 Si el programa se cerró a mitad de una operación, al abrirlo ofrece deshacerla; si eliges «Más tarde», la
-encuentras aquí marcada como *Interrumpida*.
+encuentras aquí marcada como *Interrumpida*. Además, al abrir se borran los temporales a medias que pudo
+dejar un corte de luz junto a tu música (`.convirtiendo.tmp`, `.ajuste-volumen.tmp`, `.moviendo.tmp`; el
+archivo original siempre sigue entero).
 
 ### Completar títulos de canciones sin título (opcional)
 

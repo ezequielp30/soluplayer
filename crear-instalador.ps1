@@ -1,4 +1,4 @@
-# Crea el instalador de Windows de Reproductor de Música.
+﻿# Crea el instalador de Windows de Reproductor de Música.
 #
 # Uso (PowerShell, en la carpeta del proyecto):
 #     .\crear-instalador.ps1

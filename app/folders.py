@@ -35,20 +35,25 @@ def display_name(path: str) -> str:
 def build_folder_tree(tracks: list[Track]) -> list[FolderNode]:
     """Devuelve las carpetas raíz. Las cadenas de carpetas sin música se compactan:
     C:\\ › Users › Ana › Música (con subcarpetas) se muestra a partir de «Música»."""
-    top: dict[str, FolderNode] = {}
+    # Primero se cuentan las canciones por carpeta y después se arma el árbol una vez por carpeta (no por
+    # canción): con miles de canciones en pocas carpetas, recargar la biblioteca era varias veces más lento.
+    per_folder: dict[str, int] = {}
     for track in tracks:
         folder = os.path.dirname(os.path.normpath(track.path))
+        per_folder[folder] = per_folder.get(folder, 0) + 1
+    top: dict[str, FolderNode] = {}
+    for folder, count in per_folder.items():
         drive, rest = os.path.splitdrive(folder)
         parts = [p for p in rest.replace("/", os.sep).split(os.sep) if p]
         anchor = drive + os.sep if drive else os.sep
         node = top.setdefault(folder_key(anchor), FolderNode(anchor, display_name(anchor)))
-        node.total += 1
+        node.total += count
         current = anchor
         for part in parts:
             current = os.path.join(current, part)
             node = node.children.setdefault(folder_key(current), FolderNode(current, part))
-            node.total += 1
-        node.direct += 1
+            node.total += count
+        node.direct += count
 
     roots = []
     for node in top.values():

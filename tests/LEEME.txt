@@ -22,6 +22,7 @@ Principales:
   menus_test       menús leídos de assets\menus.ui (editor gráfico)
   fixes_test       cada fallo encontrado por la revisión de los agentes, reproducido y corregido
   robustez_test    correcciones de la revisión de producción (Papelera, mover entre discos, nombres, biblioteca vacía…)
+  historial_archivos_test  deshacer renombres y movimientos, temporales sobrantes, textos de Qt en español
   cleanup_test     quitar automáticamente canciones y carpetas que ya no existen
   step2_test       registro común, cierre inesperado, anotación de volumen en el MP3
   step3_test       Historial, tareas en segundo plano, menús reorganizados

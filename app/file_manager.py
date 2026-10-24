@@ -138,9 +138,11 @@ class MoveResult:
 
 
 def _move_across_drives(path: str, target: str) -> None:
-    """Mueve a otro disco sin dejar nunca dos copias ni ninguna: se copia a un temporal (sin pisar nada),
-    se fuerza al disco y se verifica; recién entonces se borra el original y el temporal toma su nombre.
-    Si el original no se puede borrar (solo lectura, abierto en otro programa), se quita la copia."""
+    """Mueve a otro disco sin perder nunca la canción: se copia a un temporal (sin pisar nada), se fuerza al
+    disco y se verifica; el temporal toma su nombre definitivo y recién entonces se borra el original. Si el
+    original no se puede borrar (solo lectura, abierto en otro programa), se quita la copia.
+    Así un «.moviendo.tmp» que quede tras un corte de luz es siempre una copia a medias (el original sigue
+    en su sitio) y se puede borrar sin riesgo al abrir el programa."""
     if not os.access(path, os.W_OK):
         raise PermissionError(errno.EACCES, "el archivo es de solo lectura", path)
     temp = target + _MOVING_SUFFIX
@@ -156,16 +158,15 @@ def _move_across_drives(path: str, target: str) -> None:
         _remove_quietly(temp)
         raise
     try:
-        os.remove(path)
+        os.rename(temp, target)  # mismo disco y misma carpeta: instantáneo; falla si apareció ese nombre
     except OSError:
-        _remove_quietly(temp)  # el original sigue en su sitio: no queda ninguna copia de más
+        _remove_quietly(temp)
         raise
     try:
-        os.rename(temp, target)  # mismo disco y misma carpeta: instantáneo
-    except OSError as exc:
-        # El original ya se borró, pero la canción está entera en el temporal: se avisa dónde.
-        log.error("Movido pero sin renombrar: %s quedó como %s (%s)", path, temp, exc)
-        raise OSError(errno.EIO, f"la canción quedó como «{os.path.basename(temp)}» en la carpeta de destino") from exc
+        os.remove(path)
+    except OSError:
+        _remove_quietly(target)  # el original sigue en su sitio: no queda ninguna copia de más
+        raise
 
 
 def _remove_quietly(path: str) -> None:

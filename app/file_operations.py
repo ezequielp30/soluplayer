@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_manager, mp3gain, review_folder
+from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 KIND_REVIEW = "reunion"
 KIND_CONVERSION = "conversion"
 KIND_VOLUME = "volumen"
+KIND_FILES = "archivos"  # renombrar y mover (app/file_history.py)
 
 # (id de la copia que se conserva, copias a quitar)
 DuplicatesPlan = list[tuple[int, list[Track]]]
@@ -296,6 +297,20 @@ class FileOperations:
                 f"{plural(len(pending) if not undone else len(s.items), 'canción', 'canciones')} · originales en {s.originals_root}",
                 state, can_undo=not undone and bool(restorable), count=len(restorable), session=s, location=s.originals_root,
             ))
+        for s in file_history.list_sessions():
+            pending = s.pending()
+            undone = s.status == journal.STATUS_UNDONE
+            first = s.changes[0] if s.changes else None
+            if s.kind == file_history.KIND_MOVE:
+                detail = f"{plural(len(s.changes), 'archivo')} → {os.path.dirname(first.target) if first else ''}"
+            else:
+                detail = f"{os.path.basename(first.source.rstrip(chr(92) + '/'))} → {os.path.basename(first.target.rstrip(chr(92) + '/'))}" if first else ""
+            state = "Deshecha" if undone else ("Hecha" if pending else "Ya no se puede deshacer")
+            entries.append(HistoryEntry(
+                KIND_FILES, _when(s.created_at), file_history.TITLES.get(s.kind, s.kind), detail, state,
+                can_undo=not undone and bool(pending), count=len(pending), session=s,
+                location=os.path.dirname(first.target) if first else "",
+            ))
         adjusted = [t for t in library if t.norm_gain_db > 0]
         if adjusted:
             entries.append(HistoryEntry(
@@ -324,6 +339,7 @@ class FileOperations:
         except sqlite3.Error as exc:
             os.rename(new_path, track.path)  # la biblioteca no lo aceptó: todo como estaba
             raise file_manager.FileManagerError(f"No se pudo actualizar la biblioteca ({exc}); no se cambió nada.") from exc
+        file_history.record(file_history.KIND_RENAME_FILE, [file_history.Change(track.path, new_path, [track.id])])
         self._on_changed()
         return new_path
 
@@ -339,6 +355,7 @@ class FileOperations:
         except sqlite3.Error as exc:
             os.rename(new_folder, folder)
             raise file_manager.FileManagerError(f"No se pudo actualizar la biblioteca ({exc}); no se cambió nada.") from exc
+        file_history.record(file_history.KIND_RENAME_FOLDER, [file_history.Change(folder, new_folder, [t.id for t in inside])])
         self._on_changed()
         return new_folder
 
@@ -360,6 +377,7 @@ class FileOperations:
                     pass
                 result.failed.append((source, f"No se pudo actualizar la biblioteca ({exc}); se dejó donde estaba."))
         result.moved = [(s, t) for s, t in result.moved if not any(f == s for f, _r in result.failed)]
+        file_history.record(file_history.KIND_MOVE, [file_history.Change(s, d, [by_path[s].id]) for s, d in result.moved])
         self._on_changed()
         return result
 
@@ -443,7 +461,34 @@ class FileOperations:
             return self._undo_review(entry.session)
         if entry.kind == KIND_CONVERSION:
             return self._undo_conversion(entry.session)
+        if entry.kind == KIND_FILES:
+            return self._undo_files(entry.session)
         raise ValueError(f"No se puede deshacer aquí: {entry.kind}")
+
+    def _undo_files(self, session: file_history.FileSession) -> UndoOutcome:
+        """Deshace un renombre o un movimiento: cada archivo vuelve a su lugar y la biblioteca con él."""
+        ids = {i for c in session.changes for i in c.track_ids}
+        self._release(ids)
+        if not self._prepare("antes-de-deshacer", set()):
+            return UndoOutcome(0, [], "Operación cancelada.")
+
+        def back(change: file_history.Change) -> None:
+            current = {t.id: t.path for t in self.db.all_tracks() if t.id in set(change.track_ids)}
+            target = change.target.rstrip("\\/")
+            changes = []
+            for track_id, path in current.items():
+                if os.path.normcase(path) == os.path.normcase(change.target):
+                    changes.append((track_id, change.source))  # un archivo
+                else:
+                    changes.append((track_id, os.path.join(change.source, os.path.relpath(path, target))))  # carpeta
+            self.db.update_track_paths(changes)
+
+        restored, problems = file_history.undo(session, on_restored=back)
+        self._on_changed()
+        message = f"Se {'deshizo' if len(restored) == 1 else 'deshicieron'} {plural(len(restored), 'cambio', 'cambios')}."
+        if problems:
+            message += f"\n\nNo se pudieron deshacer {len(problems)}:\n" + "\n".join(f"• {p}" for p in problems[:20])
+        return UndoOutcome(len(restored), problems, message)
 
     def _undo_review(self, session: review_folder.Session) -> UndoOutcome:
         self._release({m.track_id for m in session.moved()})

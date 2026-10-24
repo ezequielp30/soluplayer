@@ -1047,6 +1047,8 @@ class MainWindow(QMainWindow):
         """Al abrir, en este orden: ofrecer deshacer lo interrumpido y después limpiar lo que falta
         (si fuera al revés, se quitarían canciones que deshacer devolvería a su sitio)."""
         self.check_interrupted_review()
+        for path in library_cleanup.remove_leftover_temps(self.library):
+            log.info("Temporal sobrante borrado (corte o cierre a mitad de una operación): %s", path)
         self.remove_missing_tracks()
 
     def remove_missing_tracks(self) -> None:

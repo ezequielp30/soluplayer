@@ -10,7 +10,7 @@ import os
 import sqlite3
 from typing import Callable
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -142,11 +142,7 @@ class ConvertDialog(QDialog):
             if file_size is not None:
                 use.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
                 use.setCheckState(Qt.CheckState.Checked)
-                quality = audio_quality(track.path)  # se lee una sola vez por archivo
-                now = f"{ext} {quality.kbps} kbps" if quality and quality.kbps else ext
-                details += f"\n{ext} · {quality.text()}" if quality else ""
-                result = f"MP3 {converter.target_bitrate(track.path, quality)} kbps"
-                state = ""
+                now, result, state = ext, "…", ""  # la calidad se completa por tandas (ver _fill_quality)
                 size += file_size
             else:
                 use.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -160,8 +156,32 @@ class ConvertDialog(QDialog):
                 self.table.setItem(row, col, item)
         self.table.blockSignals(False)
         self.summary.setText(f"{plural(len(tracks), 'archivo', 'archivos')} · {size / 1_048_576:.0f} MB" if tracks else "")
+        self._quality_next = 0
+        self._fill_quality(first=True)
         self._show_list_or_empty()
         self._update_buttons()
+
+    def _fill_quality(self, first: bool = False) -> None:
+        """Lee la calidad de cada archivo (abrirlo lleva unos milisegundos) por tandas, para que la ventana
+        se abra enseguida y no se congele con miles de canciones. La primera tanda se lee en el acto."""
+        batch = 200 if first else 40
+        end = min(self.table.rowCount(), self._quality_next + batch)
+        self.table.blockSignals(True)
+        for row in range(self._quality_next, end):
+            use = self.table.item(row, COL_USE)
+            if use is None or not use.flags() & Qt.ItemFlag.ItemIsUserCheckable or self.table.item(row, COL_MP3).text() != "…":
+                continue  # el archivo no se encuentra, ya se leyó o la fila ya se convirtió
+            track = use.data(_TRACK)
+            ext = os.path.splitext(track.path)[1].lstrip(".").upper()
+            quality = audio_quality(track.path)
+            self.table.item(row, COL_NOW).setText(f"{ext} {quality.kbps} kbps" if quality and quality.kbps else ext)
+            self.table.item(row, COL_MP3).setText(f"MP3 {converter.target_bitrate(track.path, quality)} kbps")
+            if quality:
+                self.table.item(row, COL_SONG).setToolTip(f"{track.path}\n{ext} · {quality.text()}")
+        self.table.blockSignals(False)
+        self._quality_next = end
+        if end < self.table.rowCount() and not self.runner.busy:
+            QTimer.singleShot(0, self._fill_quality)
 
     def _show_list_or_empty(self) -> None:
         if self.table.rowCount():
@@ -251,6 +271,8 @@ class ConvertDialog(QDialog):
         self.status.setText("")
         self.summary.setText(plural(self.table.rowCount(), "archivo pendiente", "archivos pendientes") if self.table.rowCount() else "")
         self._show_list_or_empty()
+        self._quality_next = 0
+        self._fill_quality()  # completar las que quedaron sin leer si la conversión empezó antes
         self.banner.show_result(text, ok=not self._failed)
         self._update_buttons()
 

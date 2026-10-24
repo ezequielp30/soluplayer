@@ -7,7 +7,7 @@ import os
 import sqlite3
 import sys
 
-from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QLibraryInfo, QObject, QSettings, Qt, QTimer, QTranslator, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -20,6 +20,20 @@ from .ui import theme, worker_runner
 from .ui.main_window import MainWindow
 
 log = logging.getLogger(__name__)
+
+
+def _install_spanish(app: QApplication) -> None:
+    """Textos propios de Qt en español (menú del clic derecho en los campos de texto: «Copiar», «Pegar»,
+    «Deshacer»…; botones estándar de los cuadros de diálogo). Sin traducción quedaban en inglés."""
+    folder = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    app._translators = []
+    for name in ("qtbase_es", "qtmultimedia_es"):
+        translator = QTranslator(app)
+        if translator.load(name, folder):
+            app.installTranslator(translator)
+            app._translators.append(translator)
+        else:
+            log.info("Sin traducción de Qt: %s", name)
 
 
 class _ErrorNotifier(QObject):
@@ -72,6 +86,7 @@ def run() -> int:
     org = os.environ.get("MUSICPLAYER_ORG") or ORG_NAME
     app.setOrganizationName(org)
     app.setStyle("Fusion")
+    _install_spanish(app)
     icon_file = resource_path("assets", "icono.ico")
     if icon_file.exists():
         app.setWindowIcon(QIcon(str(icon_file)))
