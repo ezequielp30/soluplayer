@@ -243,11 +243,14 @@ buscar música nueva en ella, expandir/contraer. El botón de la sección import
 ### Temas
 
 **Archivo → Preferencias… → pestaña Tema**: 9 temas con una miniatura de la ventana en sus colores —
-oscuros *Grafito*, *Medianoche*, *Aurora*, *Burdeos* y *Alto contraste*; claros *Aluminio*, *Océano*, *Arena*
-y *Lavanda* — más *Automático* (Grafito o Aluminio según el modo claro/oscuro de Windows). Fondos casi
-neutros y un acento propio en cada tema. En la barra lateral, *Biblioteca*, *Playlists* y *Carpetas* tienen
-cada una su color e icono, adaptados a cada tema. (Quien tenía *Neón* o *Vúmetro verde*, de versiones
-anteriores, pasa a *Medianoche* o *Aurora*.) Al
+inspirados en reproductores clásicos de Windows: oscuros *Grafito* (biblioteca de Winamp, pantalla de
+fósforo verde), *Carmesí* (Winamp en rojo), *Acero* (UltraPlayer), *Medianoche* y *Alto contraste*; claros
+*Aluminio* (AIMP, dígitos naranjas), *Cromo* (jetAudio, LCD celeste), *Cobalto* (XMPlay, pantalla azul) y
+*Arena* — más *Automático* (Grafito o Aluminio según el modo claro/oscuro de Windows). Colores suaves a la
+vista; la canción actual se muestra en una «pantalla» como el visor de esos reproductores. En la barra
+lateral, *Biblioteca*, *Playlists* y *Carpetas* tienen cada una su color e icono. (Quien usaba un tema de
+versiones anteriores que ya no está pasa al más parecido: Aurora y Vúmetro → Acero, Vino → Carmesí,
+Océano → Cromo, Lavanda → Cobalto, Neón → Medianoche.) Al
 elegir uno se aplica al instante, sin reiniciar; *Guardar* lo deja para las próximas veces y *Cancelar*
 vuelve al anterior. La disposición de la ventana es la misma en todos: solo cambian los colores. Todos
 cumplen el contraste recomendado (WCAG) para texto; lo comprueba `tests\theme_contrast_test.py`.

@@ -28,10 +28,13 @@ def preview_pixmap(p: theme.Palette, ratio: float = 2.0) -> QPixmap:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(p.accent))
     painter.drawEllipse(QRectF(6, 3, 12, 12))  # botón reproducir
-    painter.setBrush(QColor(p.muted))
-    painter.drawRoundedRect(QRectF(24, 8, 46, 3), 1.5, 1.5)  # progreso
-    painter.setBrush(QColor(p.accent))
-    painter.drawRoundedRect(QRectF(24, 8, 20, 3), 1.5, 1.5)
+    painter.setBrush(QColor(p.lcd_bg))
+    painter.drawRoundedRect(QRectF(22, 2.5, 52, 13), 3, 3)  # pantalla de la canción actual
+    painter.setBrush(QColor(p.lcd_muted))
+    painter.drawRoundedRect(QRectF(26, 10, 44, 2), 1, 1)  # progreso
+    painter.setBrush(QColor(p.lcd_text))
+    painter.drawRoundedRect(QRectF(26, 5.5, 28, 2.5), 1, 1)  # título
+    painter.drawRoundedRect(QRectF(26, 10, 18, 2), 1, 1)
     painter.fillRect(QRectF(0, 18, 38, h - 18), QColor(p.sidebar))  # barra lateral
     painter.setBrush(QColor(p.accent_soft))
     painter.drawRoundedRect(QRectF(4, 36, 30, 8), 3, 3)  # elemento seleccionado

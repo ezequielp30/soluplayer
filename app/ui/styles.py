@@ -11,6 +11,7 @@ log = logging.getLogger(__name__)
 
 FONT = '"Segoe UI Variable Text", "Segoe UI", sans-serif'
 FONT_DISPLAY = '"Segoe UI Variable Display", "Segoe UI", sans-serif'
+FONT_DIGITS = '"Cascadia Mono", "Consolas", monospace'  # tiempos de la pantalla, como un visor digital
 
 
 _CHEVRONS = {"down": "M6 9l6 6 6-6", "right": "M9 6l6 6-6 6"}
@@ -118,14 +119,22 @@ QMenu::icon {{ padding-left: 8px; }}
     background: {p.bar};
     border-bottom: 1px solid {p.border};
 }}
+/* La canción actual va en una «pantalla» como el visor LCD de los reproductores clásicos. */
 #NowPlaying {{
-    background: {p.elevated};
-    border: 1px solid {p.border};
-    border-radius: 14px;
+    background: {p.lcd_bg};
+    border: 1px solid {_mix(p.lcd_text, p.lcd_bg, 0.18)};
+    border-radius: 12px;
 }}
-#NowTitle {{ font-weight: 600; font-size: 10.5pt; }}
-#NowSubtitle {{ color: {p.muted}; font-size: 9pt; }}
-#TimeLabel {{ color: {p.muted}; font-size: 8.5pt; min-width: 40px; }}
+#NowPlaying QLabel {{ background: transparent; }}
+#NowTitle {{ font-weight: 600; font-size: 10.5pt; color: {p.lcd_text}; }}
+#NowSubtitle {{ color: {p.lcd_muted}; font-size: 9pt; }}
+#TimeLabel {{ color: {p.lcd_muted}; font-family: {FONT_DIGITS}; font-size: 8.5pt; min-width: 40px; }}
+#NowPlaying QSlider::groove:horizontal {{ background: {_mix(p.lcd_text, p.lcd_bg, 0.22)}; }}
+#NowPlaying QSlider::sub-page:horizontal {{ background: {p.lcd_text}; }}
+#NowPlaying QSlider::handle:horizontal {{ background: {p.lcd_text}; }}
+#NowPlaying QSlider::sub-page:horizontal:disabled, #NowPlaying QSlider::handle:horizontal:disabled {{
+    background: {_mix(p.lcd_muted, p.lcd_bg, 0.5)};
+}}
 QToolButton {{
     border: none;
     border-radius: 8px;

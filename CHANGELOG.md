@@ -2,6 +2,16 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.9.0 — 2026-10-24
+
+- **Temas inspirados en reproductores clásicos** (referencias del usuario: Winamp, jetAudio, AIMP, XMPlay,
+  UltraPlayer, MusicMatch): *Grafito*, *Carmesí*, *Acero*, *Medianoche*, *Alto contraste*, *Aluminio*,
+  *Cromo*, *Cobalto* y *Arena*. Se toman como referencia de color, sin copiar sus diseños.
+- **Pantalla de la canción actual** al estilo del visor LCD de esos reproductores: fondo y texto propios de
+  cada tema, tiempos con dígitos de ancho fijo y el medidor de nivel en el color de la pantalla.
+- Temas retirados → el más parecido: Aurora y Vúmetro → Acero, Vino → Carmesí, Océano → Cromo,
+  Lavanda → Cobalto, Neón → Medianoche.
+
 ## 1.8.1 — 2026-10-24
 
 - **Temas más suaves a la vista** (a pedido del usuario): texto menos brillante (≈ 10:1 en lugar de ≈ 15:1,

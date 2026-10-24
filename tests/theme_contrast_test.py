@@ -1,6 +1,6 @@
 """Contraste de todos los temas (WCAG 2.x): texto ≥ 7:1, texto secundario y acento como texto ≥ 4.5:1,
 texto sobre el botón de acento ≥ 4.5:1, avisos legibles (≥ 4.5:1), títulos de sección de la barra lateral
-≥ 4.5:1 (sobre la barra y sobre su píldora) y el botón de acento distinguible del fondo."""
+≥ 4.5:1 (sobre la barra y sobre su píldora), la pantalla de la canción actual y el botón de acento distinguible del fondo."""
 import sys
 sys.path.insert(0, r"D:\reproductor-musica")
 from app.ui.styles import _mix
@@ -28,6 +28,7 @@ rules = [
     ("danger", "bg", 4.5), ("success", "bg", 4.5), ("warning", "bg", 4.5),
     ("accent", "bg", 3.0),  # el botón de acento se distingue del fondo (componente gráfico)
     ("sec_library", "sidebar", 4.5), ("sec_playlists", "sidebar", 4.5), ("sec_folders", "sidebar", 4.5),
+    ("lcd_text", "lcd_bg", 7.0), ("lcd_muted", "lcd_bg", 4.5),  # la «pantalla» de la canción actual
 ]
 results = []
 for key, p in THEMES.items():

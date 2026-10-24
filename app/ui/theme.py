@@ -1,4 +1,5 @@
-"""Temas visuales: 9 paletas (5 oscuras y 4 claras) con fondos casi neutros y un acento propio cada una.
+"""Temas visuales: 9 paletas (5 oscuras y 4 claras) inspiradas en reproductores clásicos de Windows (Winamp,
+jetAudio, AIMP, XMPlay, UltraPlayer), con fondos suaves, un acento propio y una «pantalla» tipo LCD.
 
 Grafito (oscuro) y Aluminio (claro) son los de «auto», que sigue el tema claro/oscuro de Windows.
 Cada paleta trae además tres colores para identificar las secciones de la barra lateral.
@@ -44,6 +45,9 @@ class Palette:
     sec_library: str  # encabezado «Biblioteca» de la barra lateral (≥ 4.5:1 sobre sidebar)
     sec_playlists: str  # encabezado «Playlists»
     sec_folders: str  # encabezado «Carpetas»
+    lcd_bg: str  # «pantalla» de la canción actual, como el visor de los reproductores clásicos
+    lcd_text: str  # título en la pantalla (≥ 7:1 sobre lcd_bg)
+    lcd_muted: str  # artista y tiempos en la pantalla (≥ 4.5:1)
 
 
 # Reglas comunes (las comprueba tests/theme_contrast_test.py): fondos casi neutros con un acento propio;
@@ -52,20 +56,32 @@ class Palette:
 
 GRAPHITE = Palette(
     name="Grafito", dark=True,
-    bg="#1d1e21", sidebar="#151618", bar="#232428", elevated="#282a2e", border="#33353a", hover="#2d2f34",
-    row_alt="#202124", text="#cccccf", muted="#989ba3", faint="#62656e",
-    accent="#e1a956", accent_hover="#e9bc78", accent_text="#e1a956", accent_soft="#3e362a", on_accent="#1f1402",
-    warning="#f0a47d", warning_soft="#3b312e", success="#6bc89a", danger="#f17e7e", cover_a="#303238", cover_b="#222327",
-    sec_library="#82ace0", sec_playlists="#dc98b5", sec_folders="#74ba98",
+    bg="#1e2023", sidebar="#18191c", bar="#232529", elevated="#292b30", border="#35383e", hover="#2e3136",
+    row_alt="#212327", text="#d8dee6", muted="#9aa3ad", faint="#5f656e",
+    accent="#e8a24a", accent_hover="#f0b46a", accent_text="#e8a858", accent_soft="#40362a", on_accent="#1e1405",
+    warning="#f0a07a", warning_soft="#3b322f", success="#7cc99a", danger="#ec7f7f", cover_a="#30333a", cover_b="#212327",
+    sec_library="#8fb8dc", sec_playlists="#d9a0bf", sec_folders="#8fcfaa",
+    lcd_bg="#111416", lcd_text="#9fe0a8", lcd_muted="#78a882",
 )
 
-ALUMINIUM = Palette(
-    name="Aluminio", dark=False,
-    bg="#f4f4f5", sidebar="#eaebed", bar="#eff0f1", elevated="#f9f9f9", border="#dbdde1", hover="#dfe1e5",
-    row_alt="#eeeff1", text="#36373a", muted="#5b5f69", faint="#a6aab2",
-    accent="#c67619", accent_hover="#d88826", accent_text="#93570e", accent_soft="#eee2d6", on_accent="#1f1300",
-    warning="#a94627", warning_soft="#ede4e2", success="#23734b", danger="#b93643", cover_a="#e0e1e5", cover_b="#cdcfd5",
-    sec_library="#3a5e9a", sec_playlists="#873869", sec_folders="#215945",
+CRIMSON = Palette(
+    name="Carmesí", dark=True,
+    bg="#1c1a1b", sidebar="#151314", bar="#211e20", elevated="#282426", border="#383033", hover="#2e292b",
+    row_alt="#1f1c1e", text="#e6dcdc", muted="#ab9d9f", faint="#66595c",
+    accent="#d9534f", accent_hover="#e46d69", accent_text="#ec7a74", accent_soft="#3c2424", on_accent="#1a0605",
+    warning="#f0a070", warning_soft="#3a2d27", success="#7cc99a", danger="#f08c8c", cover_a="#3a2c2e", cover_b="#231d1f",
+    sec_library="#8fb3d9", sec_playlists="#c5a8e8", sec_folders="#e3c27a",
+    lcd_bg="#0e0b0b", lcd_text="#f2766b", lcd_muted="#b3685f",
+)
+
+STEEL = Palette(
+    name="Acero", dark=True,
+    bg="#182022", sidebar="#12191a", bar="#1d2628", elevated="#232d30", border="#303c3f", hover="#283336",
+    row_alt="#1b2325", text="#d9e4e4", muted="#98aaab", faint="#5a6a6c",
+    accent="#4cc3b5", accent_hover="#6fd3c7", accent_text="#5ccdbf", accent_soft="#213c3b", on_accent="#052421",
+    warning="#f0a878", warning_soft="#36332e", success="#8fd6a0", danger="#ee8a8a", cover_a="#2a3739", cover_b="#1c2527",
+    sec_library="#93b5e8", sec_playlists="#e3a3c0", sec_folders="#e6c77a",
+    lcd_bg="#0b1819", lcd_text="#7fe6d6", lcd_muted="#5fa89d",
 )
 
 MIDNIGHT = Palette(
@@ -75,24 +91,7 @@ MIDNIGHT = Palette(
     accent="#8d94f1", accent_hover="#a4a9f4", accent_text="#9ca2f3", accent_soft="#2d3047", on_accent="#0e1133",
     warning="#f1af81", warning_soft="#373031", success="#5fc9a1", danger="#f28a96", cover_a="#2f344b", cover_b="#202330",
     sec_library="#6ab7c6", sec_playlists="#df9cb9", sec_folders="#cfad6d",
-)
-
-AURORA = Palette(
-    name="Aurora", dark=True,
-    bg="#181e1c", sidebar="#121716", bar="#1d2522", elevated="#232b28", border="#2e3934", hover="#28322e",
-    row_alt="#1b211f", text="#c7cecb", muted="#94a6a0", faint="#5a6b65",
-    accent="#48bd89", accent_hover="#68cc9e", accent_text="#57c795", accent_soft="#20392f", on_accent="#032112",
-    warning="#f1b27e", warning_soft="#36332a", success="#97ddb5", danger="#f28d8d", cover_a="#293833", cover_b="#1e2623",
-    sec_library="#93ade4", sec_playlists="#df9eb1", sec_folders="#cfb174",
-)
-
-WINE = Palette(
-    name="Burdeos", dark=True,
-    bg="#1f1a1c", sidebar="#181416", bar="#251f22", elevated="#2b2528", border="#3b3035", hover="#32292d",
-    row_alt="#221c1f", text="#d1cacc", muted="#ad9ca2", faint="#6d5c63",
-    accent="#ef8190", accent_hover="#f299a5", accent_text="#f18f9c", accent_soft="#422c30", on_accent="#2b0911",
-    warning="#f2b487", warning_soft="#3d302b", success="#7ad1ac", danger="#f29487", cover_a="#3f2f36", cover_b="#282024",
-    sec_library="#81bbbf", sec_playlists="#c7a2e8", sec_folders="#d1b374",
+    lcd_bg="#0b0d14", lcd_text="#b4b9ff", lcd_muted="#8a90c8",
 )
 
 HIGH_CONTRAST = Palette(
@@ -102,15 +101,37 @@ HIGH_CONTRAST = Palette(
     accent="#ffd60a", accent_hover="#ffe347", accent_text="#ffd60a", accent_soft="#4d4100", on_accent="#000000",
     warning="#ffb86b", warning_soft="#4a2a00", success="#7dffa8", danger="#ff8f8f", cover_a="#2b2b2b", cover_b="#161616",
     sec_library="#7fd8ff", sec_playlists="#ffa3d6", sec_folders="#8dffb4",
+    lcd_bg="#000000", lcd_text="#ffd60a", lcd_muted="#e0e0e0",
 )
 
-OCEAN = Palette(
-    name="Océano", dark=False,
-    bg="#f2f4f6", sidebar="#e7ecf1", bar="#ecf0f4", elevated="#f9f9f9", border="#d5dce5", hover="#d9e1ea",
-    row_alt="#eceff3", text="#2f3947", muted="#4a5a70", faint="#9dacbe",
-    accent="#1165a7", accent_hover="#0e558e", accent_text="#10609d", accent_soft="#d2e0eb", on_accent="#ffffff",
-    warning="#a94627", warning_soft="#ebe4e3", success="#1d724a", danger="#b93643", cover_a="#d6e1ec", cover_b="#c0d0e0",
-    sec_library="#6150a0", sec_playlists="#8e3a5e", sec_folders="#684819",
+ALUMINIUM = Palette(
+    name="Aluminio", dark=False,
+    bg="#eceef0", sidebar="#e1e4e8", bar="#e6e9ec", elevated="#f4f5f7", border="#cdd2d8", hover="#d8dce1",
+    row_alt="#e5e8eb", text="#23262b", muted="#555b65", faint="#9aa0a9",
+    accent="#cc6f18", accent_hover="#e8862a", accent_text="#984d00", accent_soft="#e9dcd0", on_accent="#1f1000",
+    warning="#a8461f", warning_soft="#e5dddb", success="#287248", danger="#b23838", cover_a="#d9dde2", cover_b="#c5cad1",
+    sec_library="#2e5c99", sec_playlists="#95386f", sec_folders="#2c674e",
+    lcd_bg="#2a2d31", lcd_text="#ffad5c", lcd_muted="#c99a6a",
+)
+
+CHROME = Palette(
+    name="Cromo", dark=False,
+    bg="#eef1f4", sidebar="#e2e7ec", bar="#dde4ea", elevated="#f6f8fa", border="#c8d1da", hover="#d6dee6",
+    row_alt="#e7ecf0", text="#1f2a36", muted="#4f5d6c", faint="#98a5b2",
+    accent="#1f72ad", accent_hover="#1a6399", accent_text="#1e679e", accent_soft="#cfdee9", on_accent="#ffffff",
+    warning="#a8461f", warning_soft="#e7e0df", success="#217246", danger="#b23838", cover_a="#d6e0ea", cover_b="#c1cfdd",
+    sec_library="#4a46a8", sec_playlists="#9e3867", sec_folders="#27694d",
+    lcd_bg="#9fd8ee", lcd_text="#0f2c4a", lcd_muted="#2a5578",
+)
+
+COBALT = Palette(
+    name="Cobalto", dark=False,
+    bg="#eceaf2", sidebar="#e0dde9", bar="#e4e1ed", elevated="#f4f3f8", border="#c9c5d8", hover="#d6d2e3",
+    row_alt="#e6e3ee", text="#22203a", muted="#555170", faint="#9d99b3",
+    accent="#3550c8", accent_hover="#2a42ad", accent_text="#2f47b8", accent_soft="#d1d3ec", on_accent="#ffffff",
+    warning="#a3441e", warning_soft="#e5dadd", success="#276f46", danger="#ad3636", cover_a="#dcd9ea", cover_b="#c8c3dc",
+    sec_library="#1a6076", sec_playlists="#943461", sec_folders="#725410",
+    lcd_bg="#203c9c", lcd_text="#f2f5ff", lcd_muted="#bcc8f2",
 )
 
 SAND = Palette(
@@ -120,24 +141,19 @@ SAND = Palette(
     accent="#a74b2c", accent_hover="#8c3e23", accent_text="#984326", accent_soft="#eadbd2", on_accent="#ffffff",
     warning="#9d5425", warning_soft="#ede4db", success="#407336", danger="#ad3439", cover_a="#e9decf", cover_b="#d9cbb5",
     sec_library="#405c8a", sec_playlists="#7c3d67", sec_folders="#415828",
-)
-
-LAVENDER = Palette(
-    name="Lavanda", dark=False,
-    bg="#f5f4f9", sidebar="#ebe8f4", bar="#f0eef7", elevated="#f9f9f9", border="#dcd7ec", hover="#e1dcf0",
-    row_alt="#f0eef7", text="#3b374c", muted="#5c5475", faint="#aaa3c2",
-    accent="#6f54cf", accent_hover="#5e42ba", accent_text="#664bc5", accent_soft="#e2def3", on_accent="#ffffff",
-    warning="#a94627", warning_soft="#eee4e6", success="#23734b", danger="#b93643", cover_a="#e2dcf4", cover_b="#d1c8ec",
-    sec_library="#1b5550", sec_playlists="#923b5e", sec_folders="#654718",
+    lcd_bg="#3a3128", lcd_text="#f5c27a", lcd_muted="#c9a070",
 )
 
 # Clave guardada en las preferencias → tema. «auto», «light» y «dark» se conservan por compatibilidad.
 THEMES: dict[str, Palette] = {
-    "grafito": GRAPHITE, "aluminio": ALUMINIUM, "medianoche": MIDNIGHT, "aurora": AURORA, "vino": WINE,
-    "alto_contraste": HIGH_CONTRAST, "oceano": OCEAN, "arena": SAND, "lavanda": LAVENDER,
+    "grafito": GRAPHITE, "carmesi": CRIMSON, "acero": STEEL, "medianoche": MIDNIGHT, "alto_contraste": HIGH_CONTRAST,
+    "aluminio": ALUMINIUM, "cromo": CHROME, "cobalto": COBALT, "arena": SAND,
 }
-# Temas retirados en 1.8.0: quien los tenía elegidos pasa al más parecido.
-_LEGACY = {"neon": "medianoche", "vumetro": "aurora"}
+# Temas retirados: quien los tenía elegidos pasa al más parecido.
+_LEGACY = {
+    "neon": "medianoche", "vumetro": "acero", "aurora": "acero", "vino": "carmesi", "oceano": "cromo",
+    "lavanda": "cobalto",
+}
 
 _current: Palette = ALUMINIUM
 _mode: str = MODE_AUTO
