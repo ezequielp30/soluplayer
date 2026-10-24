@@ -7,6 +7,7 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QRadioButton,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -31,6 +32,7 @@ from ..importer import ImportFailure
 from ..online_lookup import SOURCES
 from ..preferences import Preferences
 from . import theme
+from .theme_picker import ThemePicker
 from ..utils import plural
 
 
@@ -254,21 +256,26 @@ class PreferencesDialog(QDialog):
         self.setWindowTitle("Preferencias")
         self.setMinimumWidth(520)
         self._prefs = prefs
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        tabs = QTabWidget()
+        outer.addWidget(tabs)
+        theme_page, general_page = QWidget(), QWidget()
+        tabs.addTab(theme_page, "Tema")
+        tabs.addTab(general_page, "General")
+        layout = QVBoxLayout(general_page)
+        theme_layout = QVBoxLayout(theme_page)
 
-        appearance = QGroupBox("Apariencia")
+        appearance = QGroupBox("Elige un tema")
         appearance_layout = QVBoxLayout(appearance)
-        self.theme_buttons: dict[str, QRadioButton] = {}
-        for value, label in (
-            ("auto", "Automático (sigue el modo claro/oscuro de Windows)"),
-            ("light", "Claro"),
-            ("dark", "Oscuro"),
-        ):
-            radio = QRadioButton(label)
-            radio.setChecked(prefs.theme == value)
-            self.theme_buttons[value] = radio
-            appearance_layout.addWidget(radio)
-        layout.addWidget(appearance)
+        self._original_theme = theme.mode()
+        self.theme_picker = ThemePicker(prefs.theme)
+        self.theme_buttons = self.theme_picker.buttons
+        # Vista previa en vivo: el tema elegido se aplica al momento; «Cancelar» vuelve al anterior.
+        self.theme_picker.chosen.connect(lambda key: theme.apply(QApplication.instance(), key))
+        appearance_layout.addWidget(self.theme_picker)
+        appearance_layout.addWidget(note_label("Se aplica al instante como vista previa; «Guardar» lo deja para las próximas veces."))
+        theme_layout.addWidget(appearance)
+        theme_layout.addStretch(1)
 
         online = QGroupBox("Datos en internet (Herramientas → Buscar datos en internet)")
         online_layout = QVBoxLayout(online)
@@ -319,6 +326,7 @@ class PreferencesDialog(QDialog):
             "previo. Las de un disco externo o de red desconectado se conservan hasta que vuelva a estar."
         ))
         layout.addWidget(library)
+        layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Guardar")
@@ -326,7 +334,7 @@ class PreferencesDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        outer.addWidget(buttons)
 
     def _save(self) -> None:
         # Primero se valida y después se guarda: cada preferencia se escribe al instante, así que
@@ -338,10 +346,16 @@ class PreferencesDialog(QDialog):
         self._prefs.ask_titles_on_import = self.ask_titles.isChecked()
         self._prefs.detect_artist_in_filename = self.detect_artist.isChecked()
         self._prefs.remove_missing_on_start = self.remove_missing.isChecked()
-        self._prefs.theme = next(v for v, radio in self.theme_buttons.items() if radio.isChecked())
+        self._prefs.theme = self.theme_picker.selected()
         self._prefs.online_sources = chosen
         self._prefs.online_covers = self.online_covers.isChecked()
         self.accept()
+
+    def reject(self) -> None:
+        # Se descarta la vista previa: vuelve el tema que había al abrir Preferencias.
+        if theme.mode() != self._original_theme:
+            theme.apply(QApplication.instance(), self._original_theme)
+        super().reject()
 
 
 class TitleReviewDialog(QDialog):

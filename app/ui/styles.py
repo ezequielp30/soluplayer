@@ -127,6 +127,14 @@ QToolButton:hover {{ background: {p.hover}; }}
 QToolButton:pressed {{ background: {p.border}; }}
 QToolButton:checked {{ background: {p.accent_soft}; }}
 QToolButton:focus {{ outline: none; }}
+QToolButton#ThemeCard {{
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 6px 6px 4px 6px;
+    font-size: 9pt;
+}}
+QToolButton#ThemeCard:hover {{ background: {p.hover}; }}
+QToolButton#ThemeCard:checked {{ background: {p.accent_soft}; border: 2px solid {p.accent}; font-weight: 600; }}
 QToolButton#PlayButton {{
     background: {p.accent};
     border-radius: 22px;

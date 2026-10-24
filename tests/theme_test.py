@@ -56,7 +56,7 @@ for value, expect_dark, name in (("dark", True, "Oscuro"), ("light", False, "Cla
     check(f"Preferencias → {name}", theme.current().dark == expect_dark and (bg.lightness() < 80) == expect_dark,
           f"{theme.current().name}, fondo {bg.name()}")
     check("  canción actual en ámbar del tema", title_color is not None and title_color.name() == theme.color("accent_text"), title_color and title_color.name())
-    check("  se guarda en preferencias", win.prefs.theme == value)
+    check("  se guarda en preferencias", theme.resolve(win.prefs.theme) == theme.resolve(value), win.prefs.theme)
     ss = app.styleSheet()
     check("  hoja de estilos con la paleta nueva", theme.color("bg") in ss and theme.color("accent") in ss)
 

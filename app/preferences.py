@@ -49,9 +49,11 @@ class Preferences:
 
     @property
     def theme(self) -> str:
-        """'auto' (sigue a Windows), 'light' o 'dark'."""
-        value = self._s.value(self.THEME, "auto")
-        return value if value in ("auto", "light", "dark") else "auto"
+        """'auto' (sigue a Windows), 'light', 'dark' o la clave de un tema (p. ej. 'medianoche')."""
+        from .ui.theme import valid
+
+        value = str(self._s.value(self.THEME, "auto"))
+        return value if valid(value) else "auto"
 
     @theme.setter
     def theme(self, value: str) -> None:
