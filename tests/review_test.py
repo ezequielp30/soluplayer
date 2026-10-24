@@ -72,7 +72,7 @@ print("\n[1. Ventana de repetidas: calidad y botón]")
 dd = {}
 def dialog(d):
     try:
-        dd["quality"] = d.tree.topLevelItem(0).child(0).text(6)
+        dd["quality"] = d.tree.topLevelItem(0).child(0).toolTip(4)  # columna Calidad: el detalle va en el tooltip
         dd["btn"] = d.btn_gather.isVisible() and d.btn_gather.isEnabled()
         dd["groups"] = len(d._groups)
         # Reproducir una copia para comprobar que se suelta antes de moverla

@@ -1,4 +1,4 @@
-; Instalador de Reproductor de Música (Inno Setup 6).
+﻿; Instalador de Reproductor de Música (Inno Setup 6).
 ; No lo compiles a mano: usa crear-instalador.ps1, que pasa la versión y genera extensiones.iss.
 
 #ifndef AppVersion
@@ -43,6 +43,12 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Crear un acceso directo en el &Escritorio"; GroupDescription: "Accesos directos:"; Flags: unchecked
 Name: "openwith"; Description: "Agregar «{#AppName}» a «Abrir con» para archivos de música (no cambia tu programa predeterminado)"; GroupDescription: "Integración con Windows:"
+
+[InstallDelete]
+; Al actualizar se borra la carpeta interna de la versión anterior: si no, quedarían bibliotecas y
+; complementos viejos mezclados con los nuevos y el programa podría no abrir. Los datos del usuario
+; (biblioteca, playlists, ajustes) están en %LOCALAPPDATA% y no se tocan.
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 Source: "..\build\dist\ReproductorMusica\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

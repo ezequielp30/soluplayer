@@ -14,7 +14,7 @@ $tests = @(
     "step2_test", "step3_test", "folders_test", "titles_test", "dup_test", "review_test", "repair_test",
     "convert_test", "loudness_ui_test", "online_test", "mp3gain_test", "codec_test", "breaker_test",
     "exit_test", "exit_loud_test", "exit_convert_test", "exit_convert2_test", "exit_trash_test",
-    "si_real", "loudness_validate", "runner_probe"
+    "si_real", "loudness_validate", "runner_probe", "robustez_test"
 )
 $failed = @()
 foreach ($t in $tests) {
@@ -26,11 +26,12 @@ foreach ($t in $tests) {
     $text = Get-Content $file -Encoding UTF8 -ErrorAction SilentlyContinue
     $summary = ($text | Select-String -Pattern "RESULTADO|run\(\) devolvió|VALIDACIÓN|cerradas las copias|^6 fin" | Select-Object -Last 1).Line
     $fallas = @($text | Select-String -Pattern "^\s*FALLA\b" -CaseSensitive).Count  # la marca, no la palabra «falla» en un nombre
-    # Un «Segmentation fault» (139 / -1073741819) DESPUÉS de imprimir el resultado es del cierre forzado
-    # de la prueba (os._exit), no del programa.
-    $ok = ($fallas -eq 0) -and $summary -and ($code -eq 0 -or ($summary -and $code -in 139, -1073741819))
+    # Estricto: solo vale código 0. Un cierre anómalo (p. ej. 139 o -1073741819, violación de acceso)
+    # cuenta como falla aunque se haya impreso el resultado: puede esconder un cierre real del programa.
+    $ok = ($fallas -eq 0) -and $summary -and ($code -eq 0)
     if (-not $ok) { $failed += $t }
-    "{0,-22} {1,-6} {2}" -f $t, ($(if ($ok) { "OK" } else { "FALLA" })), $summary
+    $extra = if ($code -ne 0 -and $summary) { " (código de salida $code)" } else { "" }
+    "{0,-22} {1,-6} {2}{3}" -f $t, ($(if ($ok) { "OK" } else { "FALLA" })), $summary, $extra
 }
 ""
 if ($failed.Count) { "Fallaron: $($failed -join ', ')"; exit 1 } else { "Todas las pruebas pasaron ($($tests.Count))."; exit 0 }

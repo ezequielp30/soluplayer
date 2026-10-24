@@ -14,8 +14,12 @@ $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "No se encuentra el entorno virtual .venv. Créalo primero (ver README)." }
 
 # 1. Herramientas
-& $python -m PyInstaller --version *> $null
-if ($LASTEXITCODE -ne 0) { Write-Host "Instalando PyInstaller..."; & $python -m pip install --quiet pyinstaller }
+$pyinstallerVersion = "6.22.3"  # versión probada: fijada para que el paquete sea reproducible
+$found = (& $python -m PyInstaller --version 2>$null)
+if ($LASTEXITCODE -ne 0 -or "$found".Trim() -ne $pyinstallerVersion) {
+    Write-Host "Instalando PyInstaller $pyinstallerVersion..."
+    & $python -m pip install --quiet "pyinstaller==$pyinstallerVersion"
+}
 $iscc = @(
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
@@ -26,12 +30,11 @@ if (-not $iscc) { throw "No se encuentra Inno Setup 6. Instálalo con: winget in
 # 2. Versión (desde app/__init__.py) y datos derivados
 $version = (& $python -c "import app; print(app.__version__)").Trim()
 Write-Host "Versión: $version"
-$parts = ($version.Split(".") + @("0", "0", "0", "0"))[0..3] -join ", "
-(Get-Content packaging\version_info.txt -Raw) `
-    -replace "filevers=\([^)]*\)", "filevers=($parts)" `
-    -replace "prodvers=\([^)]*\)", "prodvers=($parts)" `
-    -replace "'(FileVersion|ProductVersion)', '[^']*'", "'`$1', '$version'" |
-    Set-Content packaging\version_info.txt -Encoding utf8
+& $python tools\version_info.py
+if ($LASTEXITCODE -ne 0) { throw "No se pudo preparar version_info.txt." }
+if (git status --porcelain 2>$null) {
+    Write-Host "Aviso: hay cambios sin guardar en git; para publicar, crea el instalador desde una versión etiquetada." -ForegroundColor Yellow
+}
 
 & $python tools\make_icon.py
 # Extensiones para «Abrir con» (las mismas que acepta el programa)

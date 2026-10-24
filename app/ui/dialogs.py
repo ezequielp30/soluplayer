@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QGroupBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
+    QToolTip,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -485,6 +488,62 @@ def note_label(text: str) -> QLabel:
     label.setObjectName("DialogNote")
     label.setWordWrap(True)
     return label
+
+
+def tool_intro(text: str, details: str) -> QWidget:
+    """Encabezado compacto de las herramientas: una sola línea y un «?» con la explicación completa
+    (como hacen foobar2000, Picard o MusicBee: lo necesario a la vista y el detalle a pedido)."""
+    widget = QWidget()
+    row = QHBoxLayout(widget)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    label = note_label(text)
+    label.setWordWrap(False)
+    info = QToolButton()
+    info.setObjectName("InfoButton")
+    info.setText("?")
+    info.setToolTip(details)
+    info.setCursor(Qt.CursorShape.WhatsThisCursor)
+    info.clicked.connect(lambda: QToolTip.showText(info.mapToGlobal(info.rect().bottomLeft()), details, info))
+    row.addWidget(label)
+    row.addWidget(info)
+    row.addStretch(1)
+    return widget
+
+
+class StatusLabel(QLabel):
+    """Línea de estado que solo ocupa lugar cuando tiene algo que decir (vacía, se oculta)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("DialogNote")
+        self.hide()
+
+    def setText(self, text: str) -> None:  # noqa: N802 (nombre de Qt)
+        super().setText(text)
+        self.setVisible(bool(text))
+
+
+class ResultBanner(QLabel):
+    """Resultado de la última operación en una franja dentro de la ventana (en lugar de un aviso emergente).
+    Se oculta al empezar otra operación."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("ResultBanner")
+        self.setWordWrap(True)
+        self.hide()
+
+    def show_result(self, text: str, ok: bool = True) -> None:
+        self.setProperty("kind", "ok" if ok else "warn")
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.setText(("✓  " if ok else "⚠  ") + text)
+        self.show()
+
+    def clear(self) -> None:
+        self.setText("")
+        self.hide()
 
 
 def empty_state() -> tuple[QWidget, Callable[[str, str], None]]:

@@ -48,18 +48,28 @@ def _taken_at(path: Path) -> datetime | None:
 def check_database(path: Path | str) -> str | None:
     """None si la base está sana; si no, el motivo. Abre en solo lectura."""
     try:
+        if Path(path).stat().st_size == 0:
+            # SQLite toma un archivo vacío como una base nueva y «sana»: tras un corte de luz o un disco
+            # lleno el programa abriría sin canciones ni playlists, sin avisar ni ofrecer el respaldo.
+            return "el archivo de la biblioteca está vacío (0 bytes)"
+    except OSError as exc:
+        return str(exc)
+    try:
         # La ruta va escapada: un «#» o «%» en el nombre de la carpeta cortaría la URI y se revisaría
         # otro archivo (o ninguno).
         uri = "file:" + urllib.request.pathname2url(str(Path(path).resolve())) + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=5)
         try:
             row = conn.execute("PRAGMA quick_check").fetchone()
+            has_tracks = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tracks'").fetchone()
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
         return str(exc)
     if not row or row[0] != "ok":
         return row[0] if row else "sin respuesta"
+    if not has_tracks:
+        return "el archivo no contiene las tablas de la biblioteca"
     return None
 
 

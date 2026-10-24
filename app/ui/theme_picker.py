@@ -109,7 +109,7 @@ class ThemePicker(QWidget):
         self.select(selected)
 
     def select(self, key: str) -> None:
-        button = self.buttons.get(key) or self.buttons[theme.MODE_AUTO]
+        button = self.buttons.get(theme.canonical(key)) or self.buttons[theme.MODE_AUTO]
         button.setChecked(True)
 
     def selected(self) -> str:

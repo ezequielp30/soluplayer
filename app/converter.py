@@ -13,6 +13,7 @@ Seguridad:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import os
@@ -23,7 +24,7 @@ from pathlib import Path
 import lameenc
 import mutagen
 import numpy as np
-from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TRCK, ID3NoHeaderError
+from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TRCK, TXXX, ID3NoHeaderError
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat
 
@@ -139,8 +140,27 @@ class Mp3Writer:
             pass
 
 
+_CREATED_MARK = "ReproductorMusica convertido de"  # etiqueta TXXX: el MP3 lo creó este programa
+
+
+def _origin_id(original: str) -> str:
+    """Huella de la ruta del original (no la ruta en sí: no se guardan rutas ni nombres de usuario en el MP3)."""
+    return hashlib.sha1(os.path.normcase(os.path.abspath(original)).encode("utf-8")).hexdigest()[:20]
+
+
+def created_by_conversion(item: "Conversion") -> bool:
+    """¿El MP3 de este elemento lo creó el programa a partir de ese original? (si no, nunca se toca)."""
+    try:
+        frames = ID3(item.mp3).getall(f"TXXX:{_CREATED_MARK}")
+    except Exception:
+        return False
+    wanted = _origin_id(item.original)
+    return any(str(text) == wanted for frame in frames for text in frame.text)
+
+
 def copy_tags(source: str, mp3: str, track: Track, cover: bytes | None) -> None:
-    """Etiquetas ID3 del MP3: datos de la biblioteca (incluye tus correcciones) + carátula y número de pista."""
+    """Etiquetas ID3 del MP3: datos de la biblioteca (incluye tus correcciones) + carátula y número de pista,
+    más la marca de que lo creó el programa (deshacer solo quita MP3 con esa marca o ya registrados)."""
     try:
         tags = ID3(mp3)
     except ID3NoHeaderError:
@@ -149,6 +169,7 @@ def copy_tags(source: str, mp3: str, track: Track, cover: bytes | None) -> None:
     tags.add(TPE1(encoding=3, text=track.artist))
     tags.add(TALB(encoding=3, text=track.album))
     tags.add(TCON(encoding=3, text=track.genre))
+    tags.add(TXXX(encoding=3, desc=_CREATED_MARK, text=[_origin_id(source)]))
     try:
         easy = mutagen.File(source, easy=True)
         extra = getattr(easy, "tags", None) or {}
@@ -231,11 +252,13 @@ def interrupted_sessions() -> list[ConversionSession]:
 
 
 def pending_items(session: ConversionSession) -> list[Conversion]:
-    """Elementos con algo que deshacer: convertidos, o a medias tras un cierre inesperado
-    (MP3 ya creado u original ya movido aunque el registro no lo marcara como hecho)."""
+    """Elementos con algo que deshacer: convertidos, o a medias tras un cierre inesperado (MP3 creado por
+    el programa u original ya movido aunque el registro no lo marcara como hecho). Un MP3 que ya estaba
+    con ese nombre (del usuario, o el motivo de un «ya existe») no cuenta: no lo creó el programa."""
     return [
         item for item in session.items
-        if item.done or os.path.exists(item.mp3) or journal.was_moved(item.original, item.moved_to)
+        if item.done or journal.was_moved(item.original, item.moved_to)
+        or (os.path.exists(item.mp3) and created_by_conversion(item))
     ]
 
 
@@ -335,7 +358,8 @@ def undo(session: ConversionSession, on_restored=None) -> tuple[list[Conversion]
                     log.error("No se pudo actualizar la biblioteca al deshacer %s: %s", item.original, exc)
                     problems.append(f"{name}: no se pudo actualizar la biblioteca ({exc}); no se tocó nada.")
                     continue
-            if os.path.exists(item.mp3):
+            # Solo un MP3 que creó el programa: registrado como hecho, o con su marca (si no, se conserva).
+            if os.path.exists(item.mp3) and (item.done or created_by_conversion(item)):
                 _moved, failed = move_to_trash([item.mp3])
                 if failed:
                     problems.append(f"{os.path.basename(item.mp3)}: {failed[0][1]}")

@@ -111,6 +111,9 @@ def _scan_file(path: str) -> tuple[ScannedTrack | None, ImportFailure | None]:
         # Formato que FFmpeg reproduce pero cuyas etiquetas no se pueden leer: se importa igual.
         metadata = basic_metadata(path)
     thumb = make_thumbnail(metadata.cover) if metadata.cover else None
+    # La carátula original (a veces varios MB) ya no se usa: soltarla evita que importar miles de
+    # canciones llene la memoria (solo se conserva la miniatura).
+    metadata.cover = None
     return (
         ScannedTrack(
             path=os.path.abspath(path),
@@ -126,6 +129,14 @@ def _scan_file(path: str) -> tuple[ScannedTrack | None, ImportFailure | None]:
 # Carpetas que crea el propio programa: reimportar la música no debe volver a meter los originales
 # convertidos ni las copias reunidas como canciones nuevas (aparecerían como repetidas).
 SKIPPED_FOLDERS = {"_originales convertidos", "_repetidas para revisar"}
+
+
+def in_skipped_folder(path: str) -> bool:
+    """¿El archivo está dentro de una de esas carpetas? (también si se importa esa carpeta directamente o
+    se arrastran sus archivos: si no, los originales se agruparían como «repetidas» de sus MP3 y
+    «Repetidas → A la Papelera» propondría enviarlos)."""
+    parts = os.path.normpath(os.path.abspath(path)).split(os.sep)[:-1]
+    return any(part.casefold() in SKIPPED_FOLDERS for part in parts)
 
 
 def collect_folder(
@@ -197,6 +208,7 @@ class ImportWorker(QObject):
 
             total = len(files)
             seen: set[str] = set()
+            thumbs: dict[str, bytes] = {}  # una sola copia de cada miniatura (las de un mismo álbum se repiten)
             for index, path in enumerate(files):
                 if self._cancelled:
                     result.cancelled = True
@@ -207,8 +219,15 @@ class ImportWorker(QObject):
                     result.duplicates.append(path)
                     continue
                 seen.add(key)
+                if in_skipped_folder(path):
+                    result.failures.append(ImportFailure(
+                        path, "Está en una carpeta del programa (originales convertidos o copias para revisar): no se importa.",
+                    ))
+                    continue
                 track, failure = scan_file(path)
                 if track:
+                    if track.cover_hash:
+                        track.cover_bytes = thumbs.setdefault(track.cover_hash, track.cover_bytes)
                     result.tracks.append(track)
                 else:
                     result.failures.append(failure or ImportFailure(path, "Error desconocido."))

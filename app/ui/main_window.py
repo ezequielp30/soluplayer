@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 import os
 import random
+import sqlite3
 import subprocess
 import sys
 import time
 from functools import partial
 
 from PySide6.QtCore import QPoint, QSettings, Qt, QThread, QTimer, QUrl, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
@@ -37,7 +38,7 @@ from ..equalizer import EqSettings
 from ..file_operations import FileOperations
 from ..folders import breadcrumb as folder_breadcrumb
 from ..folders import build_folder_tree, display_name, tracks_in_folder
-from ..importer import ImportWorker, ScannedTrack, ScanResult, scan_file
+from ..importer import ImportWorker, ScannedTrack, ScanResult, in_skipped_folder, scan_file
 from ..models import Track
 from ..player import PlaybackController, RepeatMode
 from ..preferences import Preferences
@@ -81,6 +82,20 @@ _VIEW_TITLES = {
     "albums": "Álbumes",
     "songs": "Canciones",
 }
+
+
+# Ruta completa: con solo «explorer», Windows lo busca primero en la carpeta actual (p. ej. la de una
+# descarga), donde un «explorer.exe» falso se ejecutaría en su lugar.
+_EXPLORER = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "explorer.exe")
+
+
+def _setting_int(settings, key: str, default: int, low: int, high: int) -> int:
+    """Entero de las preferencias; si está dañado vuelve al de fábrica."""
+    try:
+        value = int(settings.value(key, default))
+    except (TypeError, ValueError):
+        return default
+    return value if low <= value <= high else default
 
 
 class MainWindow(QMainWindow):
@@ -277,18 +292,37 @@ class MainWindow(QMainWindow):
 
     # ================================================================== ajustes
 
+    def _fit_to_screen(self) -> None:
+        """La ventana entra entera en el área visible de su monitor (sin quedar bajo la barra de tareas),
+        también en pantallas chicas (1366×768 o 1280×720 con escala 125 %) o si cambió el monitor."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        frame_extra = max(0, self.frameGeometry().height() - self.geometry().height()) or 32
+        width, height = area.width(), area.height() - frame_extra
+        self.setMinimumSize(min(self.minimumWidth(), width), min(self.minimumHeight(), height))
+        if self.width() > width or self.height() > height:
+            self.resize(min(self.width(), width), min(self.height(), height))
+        frame = self.frameGeometry()
+        if not area.contains(frame):
+            x = min(max(frame.x(), area.x()), area.right() - frame.width() + 1)
+            y = min(max(frame.y(), area.y()), area.bottom() - frame.height() + 1)
+            self.move(max(x, area.x()), max(y, area.y()))
+
     def _restore_settings(self) -> None:
         s = self.settings
         geometry = s.value("window/geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
+        self._fit_to_screen()
         splitter = s.value("window/splitter")
         if splitter is not None:
             self.splitter.restoreState(splitter)
-        volume = int(s.value("player/volume", 70))
+        volume = _setting_int(s, "player/volume", 70, 0, 100)  # un valor dañado no impide abrir
         muted = s.value("player/muted", False, type=bool)
         shuffle = s.value("player/shuffle", False, type=bool)
-        repeat = int(s.value("player/repeat", 0))
+        repeat = _setting_int(s, "player/repeat", 0, 0, 2)
         self.player_bar.set_volume(volume)
         self.player.set_volume(volume)
         self.player_bar.set_muted(muted)
@@ -454,7 +488,7 @@ class MainWindow(QMainWindow):
             )
             return
         if sys.platform == "win32":
-            subprocess.Popen(["explorer", os.path.normpath(path)])
+            subprocess.Popen([_EXPLORER, os.path.normpath(path)])
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
@@ -781,6 +815,8 @@ class MainWindow(QMainWindow):
                     ("Cancelar", QMessageBox.ButtonRole.RejectRole),
                 ],
                 informative=f"Carpeta de revisión:\n{destination}\n\n"
+                "IMPORTANTE: se mueven TODAS las copias de cada canción. Después de escucharlas, quita solo las "
+                "que sobran (o usa Deshacer): si borras la carpeta entera, esas canciones se pierden por completo.\n\n"
                 "Solo se mueven archivos del mismo disco. Los archivos no se modifican, la biblioteca y las playlists "
                 "se actualizan solas, y puedes deshacerlo en Herramientas → Historial de cambios en archivos.",
             )
@@ -1086,7 +1122,16 @@ class MainWindow(QMainWindow):
                     f"«{os.path.basename(folder)}» (la que contiene sus subcarpetas y archivos).",
                 )
                 continue
-            self.db.update_track_paths(changes)
+            # Una canción que ya está en la biblioteca con la ruta nueva (la carpeta se importó otra vez)
+            # no se reubica: chocaría con esa entrada. Queda entre las que faltan.
+            changes = [(tid, p) for tid, p in changes if self.db.track_id_for_path(p) in (None, tid)]
+            backup.create_backup(self.db.conn, "antes-de-reubicar")
+            try:
+                self.db.update_track_paths(changes)
+            except sqlite3.Error as exc:
+                log.error("No se pudo reubicar %s: %s", folder, exc)
+                QMessageBox.warning(self, "Carpeta que no se encuentra", f"No se pudo reubicar la carpeta: {exc}")
+                return 0, []
             found = {track_id for track_id, _p in changes}
             log.info("Carpeta reubicada: %s → %s (%d canciones)", folder, new_folder, len(changes))
             still = [t for t in tracks if t.id not in found]
@@ -1452,7 +1497,8 @@ class MainWindow(QMainWindow):
             self._handle_missing(track)
             return
         if sys.platform == "win32":
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(track.path)])
+            # Una sola cadena: con «/select,» separado, una ruta con comas y sin espacios abría otra carpeta.
+            subprocess.Popen(f'"{_EXPLORER}" /select,"{os.path.normpath(track.path)}"')
         else:
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(track.path)))
 
@@ -1557,6 +1603,9 @@ class MainWindow(QMainWindow):
         new, problems = [], []
         for path in paths:
             if self.db.track_id_for_path(path) is not None:
+                continue
+            if in_skipped_folder(path):
+                problems.append(f"• {os.path.basename(path)}: está en una carpeta del programa (originales convertidos o copias para revisar)")
                 continue
             scanned, failure = scan_file(path)
             if scanned is None:

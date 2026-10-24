@@ -70,7 +70,7 @@ print("[Canción larga: el audio pasa al disco (sin límite de duración)]")
 import glob as _glob
 from app import eq_player as _eqp
 def temps(): return _glob.glob(os.path.join(tempfile.gettempdir(), _eqp._TEMP_PREFIX + "*.pcm"))
-p._store._limit = p._rate  # 1 s en memoria: el tono de 3 s se comporta como una canción de horas
+p._store._limit = p._rate; p._store._step = p._rate  # 1 s en memoria: el tono de 3 s se comporta como una canción de horas
 statuses.clear(); errors.clear()
 p.setSource(QUrl.fromLocalFile(path))
 wait(lambda: p._decode_done, 5000)

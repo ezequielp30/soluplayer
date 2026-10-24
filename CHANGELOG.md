@@ -2,6 +2,49 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.11.0 — 2026-10-24 (revisión de producción)
+
+Correcciones de la revisión de control de calidad (QA, código, seguridad, integridad de datos y
+auditoría de producción). Cada una tiene su prueba en `tests/robustez_test.py`.
+
+- **Papelera:** una carpeta más grande que la Papelera ya no se borra para siempre (se mide su contenido;
+  si la Papelera no tiene tamaño configurado se usa el de Windows). Se detectan unidades `subst`, discos
+  montados en carpetas, accesos directos de carpeta y la directiva del equipo.
+- **Mover a otro disco:** nunca deja copias de más ni archivos a medias (copia a un temporal, fuerza al
+  disco, verifica y recién entonces borra el original; si no puede borrarlo, quita la copia).
+- **Deshacer una conversión** solo envía a la Papelera MP3 que creó el programa (marca propia en el MP3).
+- **Biblioteca vacía o sin tablas** (p. ej. tras un corte de luz): se avisa y se ofrece el respaldo.
+- **Ecualizador:** con el disco lleno ya no se cuelga; memoria limitada en bytes (≈ 14 min) y a tramos.
+- **Errores:** el aviso de error se muestra siempre desde la ventana (antes podía cerrar el programa si
+  el fallo ocurría en una tarea en segundo plano); se registran también los errores al arrancar.
+- **Preferencias dañadas** en el registro ya no impiden abrir el programa.
+- **Importar** miles de canciones usa mucha menos memoria (no se guardan las carátulas originales).
+- **Nombres y rutas:** se rechazan caracteres invisibles, más nombres reservados y nombres demasiado
+  largos para Windows; rutas de más de 260 caracteres con un mensaje claro.
+- **Repetidas:** no se envía la única copia real si la «conservada» no está en el disco; «Reunir para
+  revisar» avisa que mueve todas las copias; los originales convertidos no se pueden reimportar.
+- **Historial:** ya no ofrece deshacer operaciones cuyos archivos ya no existen.
+- **Windows 10/11:** la ventana entra en pantallas chicas y no queda bajo la barra de tareas; el
+  Explorador se abre con su ruta completa; carátulas solo JPEG/PNG por https.
+- **Ventanas de herramientas:** con el ecualizador activo se puede renombrar o mover la canción que suena;
+  sin internet la búsqueda se detiene en vez de esperar canción por canción; errores al guardar se
+  muestran en la franja.
+- **Distribución:** carpeta `licencias` con los textos de licencia de los componentes de terceros; el nombre
+  del programa ya no sale como «MÃºsica» en Windows; al actualizar se borran los archivos de la versión
+  anterior; versiones exactas de las dependencias.
+- **Pruebas:** ya no dependen de tu música ni de tus ajustes; una prueba que termina con un cierre
+  anómalo cuenta como falla.
+
+## 1.10.0 — 2026-10-24 (no se publicó por separado: incluida en 1.11.0)
+
+- **Ventanas de herramientas más compactas** (Buscar datos en internet, Canciones repetidas, Analizar y
+  ajustar volumen, Convertir a MP3), siguiendo cómo lo hacen foobar2000, MusicBrainz Picard, dupeGuru y
+  dBpoweramp: una sola línea de explicación con el detalle en «?», menos columnas (el resto en el tooltip),
+  textos de botones más cortos, ventanas más chicas y la línea de estado solo cuando hay algo que decir.
+- **Al terminar una operación se limpia la lista:** las canciones convertidas, ajustadas, actualizadas o
+  resueltas salen de la vista, y el resultado se muestra en una franja dentro de la ventana en lugar de un
+  aviso emergente.
+
 ## 1.9.0 — 2026-10-24
 
 - **Temas inspirados en reproductores clásicos** (referencias del usuario: Winamp, jetAudio, AIMP, XMPlay,

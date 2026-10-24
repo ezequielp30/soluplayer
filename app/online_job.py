@@ -43,12 +43,19 @@ class LookupWorker(QObject):
             # búsqueda, para no esperar su tiempo límite en cada canción.
             for key in list(sources):
                 strikes[key] = strikes.get(key, 0) + 1 if key in result.failed_sources else 0
-                if strikes[key] >= 2 and len(sources) > 1:
+                if strikes[key] >= 2:
                     sources.remove(key)
                     result.errors.append(
                         f"{SOURCES[key].name} no responde: se omite en el resto de esta búsqueda."
                     )
             self.found.emit(index, result)
+            if not sources:
+                # Ninguna fuente responde (casi siempre: sin internet). Seguir solo haría esperar
+                # el tiempo límite en cada canción: las restantes se marcan y la búsqueda termina.
+                offline = LookupResult(errors=["Ninguna fuente responde (¿sin conexión a internet?)."])
+                for rest in range(index + 1, total):
+                    self.found.emit(rest, offline)
+                break
         self.progress.emit(total, total, "")
         self.finished.emit(self._cancelled)
 

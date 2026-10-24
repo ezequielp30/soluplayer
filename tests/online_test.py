@@ -91,8 +91,9 @@ def batch(d):
         state["apply_btn"] = d.btn_apply.text()
         d.btn_apply.click()
         wait_until(lambda: not d.runner.busy, 60000)
-        state["after_apply"] = d.status.text()
+        state["after_apply"] = d.banner.text()
         state["scores_after"] = [d.table.item(r, COL_SCORE).text() for r in range(d.table.rowCount())]
+        state["hidden_after"] = sum(d.table.isRowHidden(r) for r in range(d.table.rowCount()))
     finally:
         d.reject(); state["done"] = True
 expect(is_(OnlineLookupDialog), batch)
@@ -100,7 +101,7 @@ action("Buscar datos en internet…").trigger(); wait_until(lambda: "done" in st
 
 check("Herramientas → Buscar datos en internet…", "rows" in state)
 check("  fuentes por defecto: MusicBrainz y Deezer (iTunes opcional)", state.get("sources") == {"musicbrainz": True, "deezer": True, "itunes": False}, state.get("sources"))
-check("  opción «solo incompletas»", "de 4" in state.get("incomplete", ""), state.get("incomplete"))
+check("  opción «Solo incompletas»", "de 4" in state.get("incomplete", ""), state.get("incomplete"))
 check("  botón «Buscar en todas (4)»", state.get("btn") == "Buscar en todas (4)", state.get("btn"))
 rows = state.get("rows", {})
 for name, row in rows.items():
@@ -114,8 +115,9 @@ zz = rows.get("zzqx_pista_inexistente_8812.wav", (True, "", "", 0))
 check("  canción inexistente: no se marca", not zz[0], zz)
 check("  varias opciones para elegir por canción", bo[3] >= 3, bo[3])
 check("  elegir «(No cambiar)» desmarca la fila", state.get("lam_unchecked"))
-check("  «Aplicar marcadas (2)»", state.get("apply_btn") == "Aplicar marcadas (2)", state.get("apply_btn"))
+check("  «Aplicar (2)»", state.get("apply_btn") == "Aplicar (2)", state.get("apply_btn"))
 check("  mensaje tras aplicar", "Se actualizaron 2 canciones" in state.get("after_apply", ""), state.get("after_apply"))
+check("  al terminar se limpia la lista: las 2 actualizadas salen de la vista", state.get("hidden_after") == 2, state.get("hidden_after"))
 bo_t = by_file("03 - Queen - Bohemian Rhapsody.wav"); so_t = by_file("musica.wav")
 check("  biblioteca actualizada (título/artista/álbum)", bo_t.title == "Bohemian Rhapsody" and bo_t.artist == "Queen" and bo_t.album not in ("", "Álbum desconocido"),
       (bo_t.title, bo_t.artist, bo_t.album))

@@ -135,7 +135,7 @@ def dup_handler(d):
         idle(d)
         dd["groups"] = [[os.path.basename(t.path) for t in g.tracks] for g in d._groups]
         dd["keep"] = os.path.basename(d._groups[0].keep.path)
-        dd["summary"] = d.summary.text()
+        dd["summary"] = d.banner.text() + " " + d.summary.text()
         # modo contenido
         d.mode.setCurrentIndex(1); d.btn_search.click(); idle(d)
         dd["content_groups"] = [[os.path.basename(t.path) for t in g.tracks] for g in d._groups]
@@ -152,7 +152,7 @@ def dup_handler(d):
         expect(msg("¿Quitar 2 copias"), click("Quitar"))
         d.btn_remove.click(); idle(d)
         dd["after_remove"] = len(win.library)
-        dd["summary_after"] = d.summary.text()
+        dd["summary_after"] = d.banner.text() + " " + d.summary.text()
         dd["groups_after"] = len(d._groups)
     finally:
         d.accept(); dd["done"] = True
@@ -193,7 +193,7 @@ def trash_handler(d):
             c.setCheckState(0, Qt.CheckState.Checked if c.data(0, Qt.ItemDataRole.UserRole).path == copy2 else Qt.CheckState.Unchecked)
         expect(msg("Papelera"), click("Enviar a la papelera"))
         d.btn_trash.click(); idle(d)
-        dd2["summary"] = d.summary.text()
+        dd2["summary"] = d.banner.text() + " " + d.summary.text()
     finally:
         d.accept(); dd2["done"] = True
 expect(is_(DuplicatesDialog), trash_handler)

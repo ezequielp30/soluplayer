@@ -272,7 +272,7 @@ Cómo funciona y límites: el reproductor de Qt no permite procesar el audio, as
 activado el programa usa un motor propio (decodifica con el mismo FFmpeg de Qt, aplica un filtro de fase
 lineal de 8192 coeficientes y envía el audio a la tarjeta de sonido). Con el ecualizador desactivado se usa
 el motor de siempre. El audio de la canción se guarda en memoria (unos 11 MB por minuto); **no hay límite de
-duración**: si un archivo dura más de 30 minutos (por ejemplo un CD completo en un solo archivo), el audio
+duración**: si un archivo dura más de unos 14 minutos (por ejemplo un CD completo en un solo archivo), el audio
 pasa a un archivo temporal en disco, que se borra al cambiar de canción o al cerrar el programa (y, si el
 programa se cerró de golpe, la próxima vez que se usa el ecualizador). Un archivo de 2 horas ocupa
 temporalmente unos 1,3 GB.
@@ -454,9 +454,11 @@ programas (se guardan como archivos `.ui`).
 .\crear-instalador.ps1
 ```
 
-Genera `build\instalador\Instalar-ReproductorMusica-<versión>.exe` (unos 34 MB). La versión se toma de
-`app/__init__.py`. Requisitos (una sola vez): `pip install pyinstaller` dentro de `.venv` y
-`winget install --id JRSoftware.InnoSetup -e --scope user`.
+Genera `build\instalador\Instalar-ReproductorMusica-<versión>.exe` (unos 42 MB). La versión se toma de
+`app/__init__.py`. Requisitos (una sola vez): `pip install -r requirements.txt` dentro de `.venv` (versiones
+exactas probadas; el script instala la versión fijada de PyInstaller) y
+`winget install --id JRSoftware.InnoSetup -e --scope user`. Para publicar, créalo desde una versión
+guardada en git (el script avisa si hay cambios sin guardar).
 
 Qué hace el instalador:
 
@@ -468,8 +470,18 @@ Qué hace el instalador:
   predeterminado. Si el reproductor ya está abierto, la canción se reproduce en esa ventana.
 - El desinstalador pregunta si borrar la biblioteca (por defecto **no**). Los archivos de música nunca se
   borran.
+- Al actualizar, borra los archivos internos de la versión anterior (tu biblioteca y tus ajustes se
+  conservan).
 - El instalador no está firmado: la primera vez Windows puede mostrar «Windows protegió su PC» →
   *Más información* → *Ejecutar de todas formas*.
+
+### Licencias de terceros
+
+El programa incluye Qt/PySide6 y FFmpeg (LGPL), LAME/lameenc (LGPL), mutagen (GPL-2.0 o posterior), NumPy
+(BSD) y Python (PSF). La carpeta `licencias` (copiada al instalar) tiene `TERCEROS.txt` con el detalle y
+los textos completos. Al distribuir el programa hay que incluirla. Como mutagen es GPL, distribuir el
+programa con el código cerrado no es compatible con su licencia: hay que publicarlo bajo GPL o reemplazar
+mutagen por una biblioteca de licencia compatible.
 
 Archivos: `packaging/ReproductorMusica.spec` (PyInstaller), `packaging/instalador.iss` (Inno Setup),
 `packaging/version_info.txt` y `tools/make_icon.py` (genera `assets/icono.ico`).

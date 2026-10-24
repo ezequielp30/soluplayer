@@ -1,7 +1,7 @@
 """Programa real: convierte copias de un WMA y un M4A desde la ventana y sale con Archivo → Salir."""
 import os, shutil, sqlite3, sys, tempfile
 work = tempfile.mkdtemp(prefix="mp_exitconv_")
-os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data"); os.environ["MUSICPLAYER_SILENCIO"] = "1"
+os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data"); os.environ["MUSICPLAYER_ORG"] = "ReproductorMusicaTest"; os.environ["MUSICPLAYER_SILENCIO"] = "1"  # ajustes (registro) aparte: no se tocan los del usuario
 sys.path.insert(0, r"D:\reproductor-musica"); os.chdir(r"D:\reproductor-musica")
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -15,9 +15,19 @@ def _real_originals(ext):
     for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
         found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
     return found
-src = [_real_originals(ext)[0] for ext in (".wma", ".m4a")]
 lib = os.path.join(work, "m"); os.makedirs(lib)
+# Originales reales si quedan (WMA/M4A); si ya no hay en la máquina, tonos WAV generados (también se convierten).
+src = [found[0] for found in (_real_originals(ext) for ext in (".wma", ".m4a")) if found]
 copies = [shutil.copy2(p, os.path.join(lib, f"c{i}{os.path.splitext(p)[1]}")) for i, p in enumerate(src)]
+if len(copies) < 2:
+    import math, struct, wave
+    for i in range(len(copies), 2):
+        path = os.path.join(lib, f"tono{i}.wav")
+        with wave.open(path, "wb") as f:
+            f.setnchannels(2); f.setsampwidth(2); f.setframerate(44100)
+            f.writeframes(b"".join(struct.pack("<hh", v, v) for v in (int(8000 * math.sin(2 * math.pi * 440 * n / 44100)) for n in range(44100 * 4))))
+        copies.append(path)
+print("archivos a convertir:", [os.path.basename(p) for p in copies], flush=True)
 cd.ask = lambda *a, **k: 0
 QMessageBox.information = staticmethod(lambda *a, **k: None)
 def script():

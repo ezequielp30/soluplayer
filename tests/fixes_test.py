@@ -128,6 +128,26 @@ reason = file_ops.trash_block_reason(r"C:\Windows\win.ini")
 winreg.QueryValueEx = real_q
 check("con la Papelera configurada para borrar al instante, no se envía", reason and "borrar los archivos al instante" in reason, reason)
 check("con la Papelera normal, se permite", file_ops.trash_block_reason(r"C:\Windows\win.ini") is None)
+# Carpetas: se mide TODO su contenido (antes se medía la carpeta en sí, 0 bytes, y nunca se bloqueaba).
+import tempfile as _tf
+big = _tf.mkdtemp(prefix="mp_bin_"); os.makedirs(os.path.join(big, "sub"))
+open(os.path.join(big, "sub", "a.bin"), "wb").write(b"\0" * (1536 * 1024))  # 1,5 MB
+small = _tf.mkdtemp(prefix="mp_bin_"); open(os.path.join(small, "b.bin"), "wb").write(b"\0" * 1024)
+winreg.QueryValueEx = lambda h, name: (1, 4) if name == "MaxCapacity" else real_q(h, name)  # Papelera de 1 MB
+r_big, r_small = file_ops.trash_block_reason(big), file_ops.trash_block_reason(small)
+winreg.QueryValueEx = real_q
+check("carpeta más grande que la Papelera: no se envía (se borraría para siempre)", r_big and "carpeta ocupa más" in r_big, r_big)
+check("  carpeta chica: se permite", r_small is None, r_small)
+def _no_capacity(h, name):
+    if name == "MaxCapacity": raise OSError("no existe")
+    return real_q(h, name)
+winreg.QueryValueEx = _no_capacity
+old_fraction = file_ops._DEFAULT_BIN_FRACTION; file_ops._DEFAULT_BIN_FRACTION = 1e-12  # Papelera «por defecto» diminuta
+r_default = file_ops.trash_block_reason(big)
+file_ops._DEFAULT_BIN_FRACTION = old_fraction; winreg.QueryValueEx = real_q
+check("  sin tamaño configurado se usa el de Windows por defecto (y también bloquea)", r_default and "Papelera del disco" in r_default, r_default)
+check("  una unidad normal no se confunde con «subst»", not file_ops._is_subst_drive(r"C:\Windows\win.ini"))
+import shutil as _sh; _sh.rmtree(big, ignore_errors=True); _sh.rmtree(small, ignore_errors=True)
 
 print("[Importación]")
 rf64 = os.path.join(music, "grande.wav")

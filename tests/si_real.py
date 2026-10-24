@@ -10,7 +10,7 @@ for i in range(3):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
         w.writeframes(b"".join(struct.pack("<h", int(6000 * math.sin(2 * math.pi * (400 + 100 * i) * n / 22050))) for n in range(22050 * 2)))
     files.append(p)
-env = dict(os.environ, MUSICPLAYER_DATA_DIR=data, QT_QPA_PLATFORM="offscreen", MUSICPLAYER_SILENCIO="1")
+env = dict(os.environ, MUSICPLAYER_DATA_DIR=data, MUSICPLAYER_ORG="ReproductorMusicaTest", QT_QPA_PLATFORM="offscreen", MUSICPLAYER_SILENCIO="1")
 exe = r"D:\reproductor-musica\.venv\Scripts\python.exe"
 procs = [subprocess.Popen([exe, "main.py", f], cwd=r"D:\reproductor-musica", env=env) for f in files]
 time.sleep(12)

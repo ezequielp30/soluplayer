@@ -1,5 +1,10 @@
 """Diálogo «Analizar y ajustar volumen»: mide todas las canciones y sube, de forma permanente y sin
-pérdida, solo las que están muy bajas (MP3)."""
+pérdida, solo las que están muy bajas (MP3).
+
+Ventana compacta (como el escaneo de ReplayGain de foobar2000): pocas columnas, un estado corto por
+canción con el detalle al pasar el mouse, y el resultado de cada operación en una franja (sin avisos
+emergentes). Al terminar, la lista se actualiza: las canciones ya ajustadas dejan de aparecer como pendientes.
+"""
 
 from __future__ import annotations
 
@@ -30,12 +35,21 @@ from ..models import Track
 from ..mp3gain import STEP_DB, steps_for_gain
 from ..utils import plural
 from . import theme
-from .dialogs import ask, empty_state, note_label, set_primary, tidy_table
+from .dialogs import ResultBanner, StatusLabel, ask, empty_state, set_primary, tidy_table, tool_intro
 from .worker_runner import WorkerRunner
 
-COL_USE, COL_SONG, COL_FORMAT, COL_LUFS, COL_PEAK, COL_DONE, COL_DIAG, COL_GAIN = range(8)
+COL_USE, COL_SONG, COL_LUFS, COL_GAIN, COL_DIAG = range(5)
 _TRACK = Qt.ItemDataRole.UserRole
 FILTER_NEED, FILTER_DONE, FILTER_ALL = "need", "done", "all"
+
+_DETAILS = (
+    "Mide la sonoridad de cada canción con el estándar EBU R128 (LUFS) y su pico real (dBTP).\n"
+    "Solo se proponen las canciones claramente más bajas que el resto de tu biblioteca, y la subida se limita "
+    f"para que el pico nunca pase de {CEILING_DBTP:.0f} dBTP: no se distorsiona.\n"
+    "En los MP3 el ajuste es permanente y sin pérdida (no se recomprime, pasos de 1,5 dB), se oye en cualquier "
+    "reproductor y se puede revertir. WMA, M4A y otros formatos se indican pero no se tocan.\n"
+    "Analizar solo lee los archivos."
+)
 
 
 class LoudnessDialog(QDialog):
@@ -48,47 +62,39 @@ class LoudnessDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Analizar y ajustar volumen")
-        self.resize(1180, 680)
+        self.resize(780, 500)
         self._ops = ops
         self._tracks_provider = tracks_provider
         self._pending_save: list[tuple[int, float | None, float | None]] = []
 
         layout = QVBoxLayout(self)
-        intro = QLabel(
-            "Mide la sonoridad de cada canción con el estándar profesional EBU R128 (LUFS) y su pico real (dBTP). "
-            "Solo se proponen las canciones <b>claramente más bajas</b> que el resto de tu biblioteca, y la subida "
-            f"se limita para que el pico nunca pase de {CEILING_DBTP:.0f} dBTP: <b>no se distorsiona</b>."
-        )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-        layout.addWidget(note_label(
-            "En los MP3 el ajuste es permanente y sin pérdida de calidad (no se recomprime, pasos de 1,5 dB); se "
-            "nota en cualquier reproductor y se puede revertir. WMA, M4A y otros formatos no se pueden ajustar sin "
-            "recomprimir: se indican pero no se tocan."
-        ))
+        layout.addWidget(tool_intro("Sube, sin pérdida, solo las canciones claramente más bajas que el resto.", _DETAILS))
+        self.banner = ResultBanner()
+        layout.addWidget(self.banner)
 
         row = QHBoxLayout()
         self.btn_analyze_new = QPushButton()
         self.btn_analyze_new.clicked.connect(lambda: self._start_analysis(only_new=True))
-        self.btn_analyze_all = QPushButton()
+        self.btn_analyze_all = QPushButton("Reanalizar todas")
+        self.btn_analyze_all.setToolTip("Vuelve a medir todas las canciones (solo lee los archivos)")
         self.btn_analyze_all.clicked.connect(lambda: self._start_analysis(only_new=False))
         self.filter = QComboBox()
-        self.filter.addItem("Mostrar: solo las que necesitan ajuste", FILTER_NEED)
-        self.filter.addItem("Mostrar: ya ajustadas", FILTER_DONE)
-        self.filter.addItem("Mostrar: todas", FILTER_ALL)
+        self.filter.addItem("Necesitan ajuste", FILTER_NEED)
+        self.filter.addItem("Ya ajustadas", FILTER_DONE)
+        self.filter.addItem("Todas", FILTER_ALL)
         self.filter.setCurrentIndex(max(0, self.filter.findData(initial_filter)))
         self.filter.currentIndexChanged.connect(self._refresh_table)
         row.addWidget(self.btn_analyze_new)
         row.addWidget(self.btn_analyze_all)
         row.addStretch(1)
+        row.addWidget(QLabel("Mostrar:"))
         row.addWidget(self.filter)
         layout.addLayout(row)
 
         progress_row = QHBoxLayout()
         self.progress = QProgressBar()
         self.progress.setMaximumHeight(8)
-        self.status = QLabel()
-        self.status.setWordWrap(True)
+        self.status = StatusLabel()
         self.btn_stop = QPushButton("Detener")
         progress_row.addWidget(self.progress, 1)
         progress_row.addWidget(self.status, 3)
@@ -97,10 +103,8 @@ class LoudnessDialog(QDialog):
         self.runner = WorkerRunner(self, self.progress, self.status, self.btn_stop)
         self.runner.busy_changed.connect(self._update_buttons)
 
-        self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(
-            ["", "Canción", "Formato", "Sonoridad", "Pico real", "Ajuste hecho", "Diagnóstico", "Subida"]
-        )
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["", "Canción", "Sonoridad", "Subida", "Estado"])
         tidy_table(self.table)
         self.table.verticalHeader().hide()
         self.table.setAlternatingRowColors(True)
@@ -108,9 +112,9 @@ class LoudnessDialog(QDialog):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for col, width in ((COL_USE, 30), (COL_SONG, 330), (COL_FORMAT, 70), (COL_LUFS, 95), (COL_PEAK, 90), (COL_DONE, 100), (COL_GAIN, 80)):
+        for col, width in ((COL_USE, 30), (COL_LUFS, 95), (COL_GAIN, 70), (COL_DIAG, 170)):
             header.resizeSection(col, width)
-        header.setSectionResizeMode(COL_DIAG, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(COL_SONG, QHeaderView.ResizeMode.Stretch)
         self.table.itemChanged.connect(self._update_buttons)
         self.empty, self._set_empty = empty_state()
         self.stack = QStackedWidget()
@@ -120,12 +124,12 @@ class LoudnessDialog(QDialog):
 
         bottom = QHBoxLayout()
         self.summary = QLabel()
-        self.summary.setWordWrap(True)
+        self.summary.setObjectName("DialogNote")
         bottom.addWidget(self.summary, 1)
-        self.btn_revert = QPushButton("Revertir ajuste de las seleccionadas…")
+        self.btn_revert = QPushButton("Revertir…")
         self.btn_revert.setToolTip("Devuelve las canciones seleccionadas (ya ajustadas) a su volumen original")
         self.btn_revert.clicked.connect(self._revert_selected)
-        self.btn_apply = QPushButton("Aplicar")
+        self.btn_apply = QPushButton("Subir volumen")
         self.btn_apply.clicked.connect(self._apply)
         close = QPushButton("Cerrar")
         close.clicked.connect(self.reject)
@@ -146,8 +150,9 @@ class LoudnessDialog(QDialog):
             return
         tracks = [t for t in self._tracks() if t.available and (not only_new or t.loudness_lufs is None)]
         if not tracks:
-            self.status.setText("No hay canciones pendientes de analizar.")
+            self.banner.show_result("No hay canciones pendientes de analizar.")
             return
+        self.banner.clear()
         worker = AnalyzeWorker(tracks)
         self._measured_count, self._analysis_total = 0, len(tracks)
         worker.measured.connect(self._on_measured)  # método con @Slot: se ejecuta en el hilo principal
@@ -170,12 +175,14 @@ class LoudnessDialog(QDialog):
     def _on_analysis_finished(self, cancelled: bool) -> None:
         self._flush()
         self._ops.changed()
+        self.status.setText("")
         self._refresh_table()
         done = getattr(self, "_measured_count", 0)
         total = getattr(self, "_analysis_total", done)
-        self.status.setText(
+        self.banner.show_result(
             f"Análisis detenido: se midieron {done} de {total}." if cancelled
-            else f"Análisis terminado: {plural(done, 'canción medida', 'canciones medidas')}."
+            else f"Análisis terminado: {plural(done, 'canción medida', 'canciones medidas')}.",
+            ok=not cancelled,
         )
 
     # ------------------------------------------------------------------ tabla
@@ -191,13 +198,41 @@ class LoudnessDialog(QDialog):
             rows.append((track, decision, steps))
         return rows
 
+    @staticmethod
+    def _state(track: Track, decision, steps: int) -> tuple[str, str]:
+        """Estado corto para la lista y explicación completa para el tooltip."""
+        ext = os.path.splitext(track.path)[1].lstrip(".").upper()
+        done = f" Ya se subió +{track.norm_gain_db:.1f} dB." if track.norm_gain_db > 0 else ""
+        if decision is None:
+            return "Sin analizar", "Todavía no se midió." + done
+        if decision.status == "bajo" and steps == 0 and decision.gain_db > 0:
+            if not can_adjust(track.path):
+                return (f"No se puede ajustar ({ext})",
+                        f"Necesita +{decision.gain_db:.1f} dB, pero el formato {ext} no se puede ajustar sin recomprimir.")
+            return "Casi bien", f"Necesita +{decision.gain_db:.1f} dB: menos de un paso de {STEP_DB} dB."
+        if steps:
+            detail = f"Está {decision.wanted_db:.1f} dB por debajo de la referencia: se sube +{steps * STEP_DB:.1f} dB"
+            if decision.limited_by_peak:
+                detail += "; no más, para que los picos no distorsionen."
+            elif decision.wanted_db > MAX_GAIN - track.norm_gain_db:
+                detail += f"; no más: el tope por canción es +{MAX_GAIN:.0f} dB en total."
+            else:
+                detail += f" (pasos de {STEP_DB} dB, sin pérdida)."
+            return "Muy baja", detail + done
+        if track.norm_gain_db > 0:
+            return f"Ajustada +{track.norm_gain_db:.1f} dB", decision.reason + done
+        short = {"alto": "Fuerte", "sin datos": "No se pudo medir"}.get(decision.status)
+        if short is None:
+            short = "No se puede subir" if decision.status == "bajo" else "Adecuado"
+        return short, decision.reason
+
     def _refresh_table(self) -> None:
         mode = self.filter.currentData()
         rows = self._rows()
         analyzed = sum(1 for t, d, _ in rows if d is not None)
         pending = sum(1 for t, d, _ in rows if d is None and t.available)
-        need = [r for r in rows if r[1] is not None and r[1].status == "bajo"]
-        fixable = [r for r in need if r[2] > 0]
+        # «Necesitan ajuste»: las bajas, salvo las ya subidas que no admiten más (ya se resolvieron).
+        need = [r for r in rows if r[1] is not None and r[1].status == "bajo" and not (r[0].norm_gain_db > 0 and r[2] == 0)]
         done = [r for r in rows if r[0].norm_gain_db > 0]
         shown = {FILTER_NEED: need, FILTER_DONE: done, FILTER_ALL: rows}[mode]
         self.table.blockSignals(True)
@@ -210,40 +245,22 @@ class LoudnessDialog(QDialog):
             else:
                 use.setFlags(Qt.ItemFlag.ItemIsEnabled)
             use.setData(_TRACK, (track, steps))
-            ext = os.path.splitext(track.path)[1].lstrip(".").upper()
             lufs = f"{track.loudness_lufs:.1f} LUFS" if track.loudness_lufs is not None else "—"
-            peak = f"{track.true_peak_db:.1f} dBTP" if track.true_peak_db is not None else "—"
-            done_text = f"+{track.norm_gain_db:.1f} dB" if track.norm_gain_db > 0 else ""
-            if decision is None:
-                diag = "Sin analizar"
-            elif decision.status == "bajo" and steps == 0 and decision.gain_db > 0:
-                diag = (
-                    f"Necesita +{decision.gain_db:.1f} dB, pero el formato {ext} no se puede ajustar sin recomprimir."
-                    if not can_adjust(track.path) else f"Necesita +{decision.gain_db:.1f} dB: menos de un paso de {STEP_DB} dB."
-                )
-            elif steps:
-                applied = steps * STEP_DB
-                diag = f"Muy baja ({decision.wanted_db:.1f} dB bajo la referencia): se sube +{applied:.1f} dB"
-                if decision.limited_by_peak:
-                    diag += "; no más, para que los picos no distorsionen."
-                elif decision.wanted_db > MAX_GAIN - track.norm_gain_db:
-                    diag += f"; no más: el tope por canción es +{MAX_GAIN:.0f} dB en total."
-                else:
-                    diag += f" (pasos de {STEP_DB} dB, sin pérdida)."
-            else:
-                diag = decision.reason
+            state, detail = self._state(track, decision, steps)
+            peak = f"\nPico real: {track.true_peak_db:.1f} dBTP" if track.true_peak_db is not None else ""
             gain = f"+{steps * STEP_DB:.1f} dB" if steps else ""
-            cells = [use, track.title + " — " + track.artist, ext, lufs, peak, done_text, diag, gain]
-            for col, value in enumerate(cells):
+            for col, value in enumerate([use, track.title + " — " + track.artist, lufs, gain, state]):
                 item = value if isinstance(value, QTableWidgetItem) else QTableWidgetItem(value)
                 if col == COL_SONG:
                     item.setToolTip(track.path)
-                if col == COL_DIAG:
-                    item.setToolTip(diag)
-                if col in (COL_LUFS, COL_PEAK, COL_GAIN, COL_DONE):
+                if col in (COL_LUFS, COL_DIAG):
+                    item.setToolTip(detail + peak)
+                if col in (COL_LUFS, COL_GAIN):
                     item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
                 if col == COL_GAIN and steps:
                     item.setForeground(theme.qcolor("accent_text"))
+                if col == COL_DIAG and not steps:
+                    item.setForeground(theme.qcolor("muted"))
                 self.table.setItem(row, col, item)
         self.table.blockSignals(False)
 
@@ -252,27 +269,22 @@ class LoudnessDialog(QDialog):
             self.stack.setCurrentWidget(self.table)
         else:
             if analyzed == 0 and mode != FILTER_DONE:
-                self._set_empty(
-                    "Aún no se analizó ninguna canción",
-                    "Pulsa «Analizar las no analizadas» para medir el volumen de tu biblioteca. "
-                    "Analizar solo lee los archivos: no cambia nada.",
-                )
+                self._set_empty("Aún no se analizó ninguna canción", "Pulsa «Analizar» para medir el volumen de tu biblioteca.")
             elif mode == FILTER_DONE:
-                self._set_empty("Todavía no se ajustó ninguna canción", "Las canciones que subas aparecerán aquí para poder revertirlas.")
+                self._set_empty("Ninguna canción ajustada", "Las que subas aparecerán aquí para poder revertirlas.")
             else:
-                self._set_empty("Ninguna canción necesita ajuste", "Todas las analizadas tienen un volumen parecido al resto de tu biblioteca.")
+                self._set_empty("Ninguna canción necesita ajuste", "Todas tienen un volumen parecido al resto de tu biblioteca.")
             self.stack.setCurrentWidget(self.empty)
 
         total = len(rows)
-        self.btn_analyze_new.setText(f"Analizar las no analizadas ({pending})")
-        self.btn_analyze_all.setText(f"Volver a analizar todas ({total})")
+        self.btn_analyze_new.setText(f"Analizar ({pending})" if pending else "Analizar")
+        self.btn_analyze_new.setToolTip(f"Mide las {pending} canciones que aún no se analizaron")
         # Un solo botón ámbar: analizar mientras falte, después subir el volumen.
         set_primary(self.btn_analyze_new, pending > 0)
         set_primary(self.btn_apply, pending == 0)
         self.summary.setText(
-            f"Analizadas: <b>{analyzed}</b> de {total} · referencia de tu biblioteca: <b>{self._reference:.1f} LUFS</b><br>"
-            f"Muy bajas: <b>{len(need)}</b> · se pueden subir sin distorsionar: <b>{len(fixable)}</b> · "
-            f"ya ajustadas: <b>{len(done)}</b>"
+            f"Analizadas: {analyzed} de {total} · referencia {self._reference:.1f} LUFS · "
+            f"muy bajas: {len(need)} · ajustadas: {len(done)}"
         )
         self._update_buttons()
 
@@ -288,10 +300,12 @@ class LoudnessDialog(QDialog):
     def _update_buttons(self, *_args) -> None:
         busy = self.runner.busy
         jobs = self._checked_jobs()
-        self.btn_apply.setText(f"Subir volumen de las marcadas ({len(jobs)})")
+        self.btn_apply.setText(f"Subir volumen ({len(jobs)})" if jobs else "Subir volumen")
         self.btn_apply.setEnabled(bool(jobs) and not busy)
-        for button in (self.btn_analyze_new, self.btn_analyze_all, self.btn_revert, self.filter):
+        for button in (self.btn_analyze_new, self.btn_analyze_all, self.filter):
             button.setEnabled(not busy)
+        self.btn_revert.setEnabled(not busy and self.filter.currentData() != FILTER_NEED)
+        self.btn_revert.setVisible(self.filter.currentData() != FILTER_NEED)
 
     # ------------------------------------------------------------------ aplicar / revertir
 
@@ -305,9 +319,7 @@ class LoudnessDialog(QDialog):
             f"¿Subir el volumen de {plural(len(jobs), 'canción', 'canciones')} de forma permanente?",
             [("Subir volumen", QMessageBox.ButtonRole.AcceptRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
             QMessageBox.Icon.Question,
-            "Se modifican los archivos MP3 sin recomprimirlos (sin pérdida de calidad) y sin superar "
-            f"{CEILING_DBTP:.0f} dBTP, así que no se distorsionan. El cambio se oye en cualquier reproductor. "
-            "Se puede revertir desde esta misma ventana.",
+            "Sin recomprimir ni distorsionar. Se puede revertir desde esta ventana (Mostrar: Ya ajustadas).",
         )
         if choice == 0:
             self._run_adjust(jobs)
@@ -320,7 +332,7 @@ class LoudnessDialog(QDialog):
             if track.norm_gain_db > 0 and can_adjust(track.path):
                 jobs.append((track, -round(track.norm_gain_db / STEP_DB)))
         if not jobs:
-            QMessageBox.information(self, "Revertir", "Selecciona en la lista canciones ya ajustadas (filtro «ya ajustadas»).")
+            self.banner.show_result("Selecciona en la lista canciones ya ajustadas para revertirlas.", ok=False)
             return
         if ask(
             self, "Revertir ajuste",
@@ -332,6 +344,7 @@ class LoudnessDialog(QDialog):
     def _run_adjust(self, jobs: list[tuple[Track, int]]) -> None:
         if not self._ops.begin_volume_adjust({t.id for t, _ in jobs}):
             return
+        self.banner.clear()
         self._adjusted: list[tuple[Track, int]] = []
         self._adjust_errors: list[str] = []
         self._adjust_by_id = {t.id: t for t, _ in jobs}
@@ -347,11 +360,12 @@ class LoudnessDialog(QDialog):
             self._adjusted.append((track, steps))
             self._ops.record_volume(track, steps, total_steps)
         if error:
-            self._adjust_errors.append(f"• {track.title}: {error}")
+            self._adjust_errors.append(f"{track.title}: {error}")
 
     def _on_adjust_finished(self) -> None:
         self._ops.changed()
-        self._refresh_table()
+        self.status.setText("")
+        self._refresh_table()  # operación terminada: las ajustadas dejan de figurar como pendientes
         up = sum(1 for _t, s in self._adjusted if s > 0)
         down = sum(1 for _t, s in self._adjusted if s < 0)
         text = []
@@ -360,9 +374,11 @@ class LoudnessDialog(QDialog):
         if down:
             text.append(f"Se {'revirtió' if down == 1 else 'revirtieron'} {plural(down, 'canción', 'canciones')}.")
         if self._adjust_errors:
-            text.append(f"No se pudieron ajustar {len(self._adjust_errors)}:\n" + "\n".join(self._adjust_errors[:15]))
-        self.status.setText(" ".join(t.split("\n")[0] for t in text))
-        QMessageBox.information(self, "Volumen", "\n\n".join(text) or "No se cambió nada.")
+            text.append(f"No se pudieron ajustar {len(self._adjust_errors)} (pasa el mouse por aquí).")
+            self.banner.setToolTip("\n".join(self._adjust_errors[:15]))
+        else:
+            self.banner.setToolTip("")
+        self.banner.show_result(" ".join(text) or "No se cambió nada.", ok=not self._adjust_errors)
 
     def reject(self) -> None:
         if self.runner.request_close(wait_ms=20000):

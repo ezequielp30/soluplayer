@@ -288,6 +288,19 @@ QPushButton#PrimaryButton:focus {{ border: 2px solid {p.accent_soft}; }}
 QPushButton#DangerButton {{ color: {p.danger}; border: 1px solid {p.danger}; }}
 QPushButton#DangerButton:disabled {{ color: {p.faint}; border: 1px solid {p.border}; }}
 #DialogNote {{ color: {p.muted}; }}
+QToolButton#InfoButton {{
+    border: 1px solid {p.border};
+    border-radius: 9px;
+    min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px;
+    padding: 0;
+    color: {p.muted};
+    font-size: 8pt;
+    font-weight: 700;
+}}
+QToolButton#InfoButton:hover {{ color: {p.accent_text}; border-color: {p.accent_text}; }}
+#ResultBanner {{ border-radius: 8px; padding: 6px 10px; color: {p.text}; }}
+#ResultBanner[kind="ok"] {{ background: {_mix(p.success, p.bg, 0.14)}; }}
+#ResultBanner[kind="warn"] {{ background: {p.warning_soft}; }}
 #MissingBanner {{
     background: {p.warning_soft};
     border-radius: 10px;

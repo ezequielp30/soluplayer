@@ -7,12 +7,12 @@ import os
 import sqlite3
 import sys
 
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__, backup, error_log
-from .config import APP_NAME, ORG_NAME, database_path, resource_path
+from .config import APP_NAME, ORG_NAME, data_dir, database_path, resource_path
 from .database import Database
 from .preferences import Preferences
 from .single_instance import InstanceServer, acquire_or_forward
@@ -20,6 +20,12 @@ from .ui import theme, worker_runner
 from .ui.main_window import MainWindow
 
 log = logging.getLogger(__name__)
+
+
+class _ErrorNotifier(QObject):
+    """Vive en el hilo principal; emitir su señal desde cualquier hilo muestra el aviso en el principal."""
+
+    show = Signal(str)
 
 
 def _check_and_maybe_restore() -> bool:
@@ -61,7 +67,10 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
-    app.setOrganizationName(ORG_NAME)
+    # MUSICPLAYER_ORG: otro lugar del registro para los ajustes (lo usan las pruebas para no leer ni
+    # cambiar los del usuario).
+    org = os.environ.get("MUSICPLAYER_ORG") or ORG_NAME
+    app.setOrganizationName(org)
     app.setStyle("Fusion")
     icon_file = resource_path("assets", "icono.ico")
     if icon_file.exists():
@@ -69,6 +78,12 @@ def run() -> int:
 
     # Archivos recibidos desde Windows («Abrir con», doble clic, arrastrar al ícono).
     paths = [os.path.abspath(a) for a in sys.argv[1:] if os.path.isfile(a)]
+    try:
+        # Carpeta actual segura: al abrir una canción desde el Explorador, Windows deja como carpeta
+        # actual la de esa canción (p. ej. una descarga), y desde ahí se podrían cargar programas.
+        os.chdir(data_dir())
+    except OSError:
+        pass
     try:
         lock = acquire_or_forward(paths)
     except TimeoutError:
@@ -85,9 +100,10 @@ def run() -> int:
     app._instance_lock = lock  # vive hasta el final del programa (al salir se libera el cerrojo)
 
     error_log.setup()
+    error_log.install_excepthook()  # desde ya: un fallo al arrancar también queda en el registro
     log.info("Inicio de %s %s", APP_NAME, __version__)
 
-    prefs = Preferences(QSettings(ORG_NAME, "ReproductorMusica"))
+    prefs = Preferences(QSettings(org, "ReproductorMusica"))
     theme.apply(app, prefs.theme)
 
     if not _check_and_maybe_restore():
@@ -107,17 +123,29 @@ def run() -> int:
         return 1
     backup.backup_if_due(db.conn)
 
-    window = MainWindow(db)
+    try:
+        window = MainWindow(db)
+    except Exception as exc:
+        log.exception("No se pudo crear la ventana principal")
+        QMessageBox.critical(
+            None, APP_NAME,
+            f"El programa no pudo iniciarse:\n{type(exc).__name__}: {exc}\n\nLos detalles se guardaron en:\n{error_log.log_path()}",
+        )
+        return 1
 
-    def notify(summary: str) -> None:
-        # Diferido: el aviso no debe abrirse dentro del código que acaba de fallar.
-        QTimer.singleShot(0, lambda: QMessageBox.warning(
+    # El aviso de error se entrega SIEMPRE en el hilo de la ventana (señal en cola), aunque el fallo
+    # ocurra en una tarea en segundo plano: crear una ventana desde otro hilo cerraría el programa.
+    notifier = _ErrorNotifier()
+    notifier.show.connect(
+        lambda summary: QMessageBox.warning(
             window,
             "Ocurrió un error inesperado",
             f"{summary}\n\nEl programa sigue funcionando. Los detalles se guardaron en:\n{error_log.log_path()}",
-        ))
-
-    error_log.install_excepthook(notify)
+        ),
+        Qt.ConnectionType.QueuedConnection,  # diferido: no se abre dentro del código que acaba de fallar
+    )
+    app._error_notifier = notifier
+    error_log.install_excepthook(notifier.show.emit)
     window.show()
     QTimer.singleShot(0, window.startup_checks)
     QTimer.singleShot(1500, window.sync_volume_annotations)

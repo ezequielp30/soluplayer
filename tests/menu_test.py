@@ -415,7 +415,7 @@ def t_missing_and_explorer():
     c.table.selectRow(row)
     expect(is_(QMenu), pick_menu("Mostrar en el Explorador"))
     c._table_menu(c.table.visualRect(c.proxy.index(row, 1)).center()); spin(100)
-    check("Clic derecho → «Mostrar en el Explorador»", explorer_calls and explorer_calls[-1][0] == "explorer" and explorer_calls[-1][1] == "/select,",
+    check("Clic derecho → «Mostrar en el Explorador»", explorer_calls and isinstance(explorer_calls[-1], str) and explorer_calls[-1].lower().startswith('"' + os.environ.get("SystemRoot", r"C:\Windows").lower()) and '/select,"' in explorer_calls[-1],  # ruta completa del Explorador
           explorer_calls[-1:] )
     win.player.stop(); win.player._player.setSource(__import__('PySide6.QtCore',fromlist=['QUrl']).QUrl()); spin(300)
     target = os.path.join(music, "B tono.wav")

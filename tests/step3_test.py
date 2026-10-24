@@ -7,7 +7,7 @@ os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_SILENCIO"] = "1"
 import lameenc
 from PySide6.QtCore import QEventLoop, QSettings, QTimer
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QToolButton
 app = QApplication(sys.argv); app.setOrganizationName("ReproductorMusicaTest")
 QSettings("ReproductorMusicaTest", "ReproductorMusica").clear()
 from app import backup, converter, mp3gain
@@ -128,16 +128,11 @@ quiet = next(t for t in win.library if t.title == "Uno")
 def adjust(d):
     try:
         d._run_adjust([(quiet, 2)])
-        # Los dos avisos pueden llegar en cualquier orden (con un archivo chico el ajuste termina enseguida).
-        def either(b):
-            seen.setdefault("blocked" if "modificando" in b.text() else "done_msg", True)
-            b.accept()
-        either_msg = lambda w: msg("Se están modificando archivos")(w) or msg("Se subió")(w)
-        expect(either_msg, either)
-        expect(either_msg, either)
+        expect(msg("Se están modificando archivos"), lambda b: (seen.setdefault("blocked", True), b.accept()))
         d.reject()  # mientras modifica archivos no se puede cerrar
         seen["still_open"] = d.isVisible()
-        wait_until(lambda: "done_msg" in seen and "blocked" in seen, 60000)
+        # El resultado queda en la franja de la ventana (ya no hay aviso emergente al terminar).
+        wait_until(lambda: "blocked" in seen and not d.runner.busy and "Se subió" in d.banner.text(), 60000)
     finally:
         d.reject()
 expect(is_(LoudnessDialog), adjust)
@@ -167,14 +162,14 @@ def dups(d):
         wait_until(lambda: not d.runner.busy)
         seen["dup_empty"] = d.stack.currentWidget() is d.empty
         seen["danger"] = d.btn_trash.objectName()
-        seen["intro_gather"] = any("Reunir en una carpeta" in w.text() for w in d.findChildren(QLabel))
+        seen["intro_gather"] = any("Reunir para revisar" in w.toolTip() for w in d.findChildren(QToolButton, "InfoButton"))
     finally:
         d.accept()
 expect(is_(DuplicatesDialog), dups)
 win._open_duplicates(); spin(300)
 check("sin repetidas: estado vacío", seen.get("dup_empty"))
 check("«Enviar a la papelera» se distingue (botón de peligro)", seen.get("danger") == "DangerButton")
-check("la introducción menciona «Reunir en una carpeta»", seen.get("intro_gather"))
+check("la explicación («?») menciona «Reunir para revisar»", seen.get("intro_gather"))
 
 # ---------------------------------------------------------------- 5. preferencias
 print("[5. Preferencias]")

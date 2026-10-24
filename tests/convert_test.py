@@ -66,10 +66,24 @@ def _real_originals(ext):
     for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
         found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
     return found
-wmas = _real_originals(".wma")
-w20 = next(p for p in wmas if audio_quality(p).kbps == 20)
-w128 = next(p for p in wmas if audio_quality(p).kbps == 128)
-m4a = _real_originals(".m4a")[0]
+def _tone(path, rate, channels, secs=6):
+    with wave.open(path, "wb") as f:
+        f.setnchannels(channels); f.setsampwidth(2); f.setframerate(rate)
+        frame = lambda v: struct.pack("<" + "h" * channels, *([v] * channels))
+        f.writeframes(b"".join(frame(int(9000 * math.sin(2 * math.pi * 440 * i / rate))) for i in range(rate * secs)))
+    return path
+# Originales reales (WMA de 20 y 128 kbps, M4A) si quedan en el equipo; si no, tonos WAV generados en su
+# lugar: se prueba igual toda la conversión, salvo el códec WMA en sí.
+wmas, m4as = _real_originals(".wma"), _real_originals(".m4a")
+w20 = next((p for p in wmas if audio_quality(p).kbps == 20), None)
+w128 = next((p for p in wmas if audio_quality(p).kbps == 128), None)
+REAL_WMA = bool(w20 and w128)
+gen = os.path.join(work, "generados"); os.makedirs(gen)
+if not REAL_WMA:
+    print("AVISO: no hay WMA reales en este equipo: se usan tonos WAV generados (no se prueba el códec WMA)")
+    w20 = _tone(os.path.join(gen, "wma20.wav"), 22050, 1)  # mono 22 kHz → 128 kbps
+    w128 = _tone(os.path.join(gen, "wma128.wav"), 44100, 2)  # sin pérdida estéreo → 320 kbps
+m4a = m4as[0] if m4as else _tone(os.path.join(gen, "m4a.wav"), 44100, 2)
 real = {"wma20": w20, "wma128": w128, "m4a": m4a}
 real_hashes = {k: sha(p) for k, p in real.items()}
 lib = os.path.join(work, "Musica");
@@ -91,7 +105,8 @@ c = db.conn; c.execute("insert into tracks (path, path_key, title, artist, album
                       (bad, bad.lower(), "Roto", "X", "Y", "Z", 1000, "2026-01-01")); c.commit()
 win = mw.MainWindow(db); win.show(); spin(200)
 tid = {os.path.basename(t.path): t.id for t in win.library}
-pl = db.create_playlist("Favoritas"); db.add_to_playlist(pl.id, [tid["PRUEBA_reproductor_m4a.m4a"], tid["PRUEBA_reproductor_wma20.wma"]])
+name = lambda k: os.path.basename(copies[k])
+pl = db.create_playlist("Favoritas"); db.add_to_playlist(pl.id, [tid[name("m4a")], tid[name("wma20")]])
 before = {k: measure(p) for k, p in copies.items()}
 win._on_play_requested([t for t in win.library if t.path == copies["wma128"]], 0); spin(500)
 
@@ -104,9 +119,10 @@ def dialog(d):
             rows[os.path.basename(t.path)] = d.table.item(r, COL_MP3).text()
         state["rows"] = rows; state["summary"] = d.summary.text()
         expect(msg("¿Convertir"), click("Convertir"))
-        expect(msg("a MP3."), lambda b: (state.setdefault("final", b.text()), b.accept()))
         d.btn_convert.click()
-        wait_until(lambda: not d.runner.busy and "final" in state)
+        # El resultado ya no sale en un aviso emergente: queda en la franja de la ventana.
+        wait_until(lambda: not d.runner.busy and d.banner.isVisible())
+        state["final"] = d.banner.text()
         state["states"] = {os.path.basename(d.table.item(r, COL_USE).data(Qt.ItemDataRole.UserRole).path): d.table.item(r, COL_STATE).text() for r in range(d.table.rowCount())}
     finally:
         d.reject(); state["done"] = True
@@ -116,11 +132,13 @@ win._open_convert(); wait_until(lambda: "done" in state)
 rows = state.get("rows", {})
 print("     lista:", rows)
 check("Convertir a MP3: encuentra los 5 que no son MP3", len(rows) == 5, state.get("summary"))
-check("  calidad adaptada: 20→128, 128→256, 196→320, WAV→320",
-      rows.get("PRUEBA_reproductor_wma20.wma") == "MP3 128 kbps" and rows.get("PRUEBA_reproductor_wma128.wma") == "MP3 256 kbps"
-      and rows.get("PRUEBA_reproductor_m4a.m4a") == "MP3 320 kbps" and rows.get("PRUEBA_reproductor_tono.wav") == "MP3 320 kbps", rows)
+expected = {"wma20": 128, "wma128": 256 if REAL_WMA else 320, "m4a": 320}
+check("  calidad adaptada: " + ("20→128, 128→256, 196→320, WAV→320" if REAL_WMA else "mono 22 kHz→128, WAV→320"),
+      all(rows.get(name(k)) == f"MP3 {v} kbps" for k, v in expected.items())
+      and rows.get("PRUEBA_reproductor_tono.wav") == "MP3 320 kbps", rows)
 print("     estados:", state.get("states"))
 check("  resultado: 4 convertidas, el archivo roto no", "Se convirtieron 4 canciones" in state.get("final", "") and "no se pudo convertir" in state.get("final", ""), state.get("final"))
+check("  al terminar se limpia la lista: solo queda la que falló", list(state.get("states", {}).values()) == ["No se convirtió"], state.get("states"))
 win._reload_library()
 mp3s = {k: os.path.splitext(p)[0] + ".mp3" for k, p in copies.items()}
 check("  los MP3 existen junto a donde estaba el original", all(os.path.exists(p) for p in mp3s.values()))
@@ -134,7 +152,11 @@ for k, p in mp3s.items():
     if b[1] is not None and b[1] > 0:  # original con picos por encima de 0 dBFS
         check(f"  {k}: sin recorte (pico {a[1]} dBTP no aplastado) y mismo nivel ±1,6 dB", a[1] > 0 and abs(a[0] - b[0]) < 1.6)
     else:
-        check(f"  {k}: suena igual (sonoridad ±0,3 LU, pico ±0,5 dB)", abs(a[0] - b[0]) < 0.3 and abs(a[1] - b[1]) < 0.5)
+        # LAME a 128–192 kbps baja el nivel ~0,3–0,5 dB (medido: mono y estéreo, tonos y señal tipo música;
+        # a 256–320 kbps, −0,04 dB). Es del codificador y queda por debajo de lo audible (~1 dB).
+        tol = 0.6 if info.info.bitrate <= 192000 else 0.3
+        check(f"  {k}: suena igual (sonoridad ±{tol:.1f} LU, pico ±{tol + 0.2:.1f} dB)".replace(".", ","),
+              abs(a[0] - b[0]) < tol and abs(a[1] - b[1]) < tol + 0.2)
 from app.metadata import read_metadata
 lib_titles = {t.path: t.title for t in win.library}
 check("  título de la biblioteca pasa al MP3", all(mutagen.File(p, easy=True).get("title") == [lib_titles[p]] for p in mp3s.values()))
@@ -171,6 +193,9 @@ check("  la biblioteca vuelve a los originales", all(any(t.path == p for t in wi
 check("Tus archivos reales no se tocaron", all(sha(p) == real_hashes[k] for k, p in real.items()))
 check("todos los diálogos esperados aparecieron", not pending, pending)
 win.player.stop(); win.close(); QSettings("ReproductorMusicaTest", "ReproductorMusica").clear()
+# Soltar el audio antes de terminar el proceso: cortar a la fuerza (os._exit) con la salida de audio de Qt
+# todavía abierta provocaba a veces un cierre anómalo de la prueba (no del programa, que sale por la ventana).
+win.player.release_source(); win.deleteLater(); spin(500)
 if errors: print("\n".join(errors))
 print(f"\nRESULTADO: {sum(results)}/{len(results)} correctas, {len(errors)} errores")
 sys.stdout.flush(); os._exit(0 if all(results) and not errors else 1)

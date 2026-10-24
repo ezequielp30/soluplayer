@@ -28,14 +28,20 @@ a = Analysis(
         # Menús editables con Qt Designer, y su copia original de respaldo.
         (os.path.join(ROOT, "assets", "menus.ui"), "assets"),
         (os.path.join(ROOT, "assets", "menus.original.ui"), "assets"),
+        # Licencias de los componentes de terceros (obligatorio al distribuir el programa).
+        (os.path.join(ROOT, "licencias"), "licencias"),
     ],
     hiddenimports=["PySide6.QtSvg", "PySide6.QtNetwork"],
     excludes=EXCLUDES,
     noarchive=False,
 )
-# Complementos que Qt arrastra pero el programa no usa: teclado virtual (con todo Qml/Quick)
-# y el lector de PDF. Quitarlos ahorra varias decenas de MB.
-_UNUSED = ("qtvirtualkeyboard", "qt6virtualkeyboard", "qt6quick", "qt6qml", "qpdf", "qt6pdf", "qt6opengl.dll")
+# Complementos que Qt arrastra pero el programa no usa: teclado virtual (con todo Qml/Quick), el lector de
+# PDF y decodificadores de imagen que nunca hacen falta (las carátulas solo se aceptan en JPEG o PNG):
+# quitarlos ahorra espacio y deja menos código nativo expuesto a imágenes manipuladas.
+_UNUSED = (
+    "qtvirtualkeyboard", "qt6virtualkeyboard", "qt6quick", "qt6qml", "qpdf", "qt6pdf", "qt6opengl.dll",
+    "qtiff.dll", "qwebp.dll", "qicns.dll", "qtga.dll", "qwbmp.dll",
+)
 a.binaries = [b for b in a.binaries if not any(u in b[0].lower().replace("\\", "/").split("/")[-1] for u in _UNUSED)]
 
 pyz = PYZ(a.pure)

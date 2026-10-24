@@ -1,7 +1,14 @@
-"""Diálogo para buscar y resolver canciones repetidas."""
+"""Diálogo para buscar y resolver canciones repetidas.
+
+Ventana compacta (como los resultados agrupados de dupeGuru): una línea de explicación con el detalle en
+«?», pocas columnas (la ruta completa va en el tooltip) y el resultado de cada acción en una franja; al
+terminar una acción se vuelve a buscar, así la lista queda limpia.
+"""
 
 from __future__ import annotations
 
+import os
+import sqlite3
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -28,22 +35,33 @@ from ..metadata import Quality
 from ..models import Track
 from ..utils import format_time, plural
 from . import theme
-from .dialogs import ask, empty_state
+from .dialogs import ResultBanner, StatusLabel, ask, empty_state, tool_intro
 from .worker_runner import WorkerRunner
 
 # (id de la copia que se conserva, copias a quitar)
 Plan = list[tuple[int, list[Track]]]
 
 _TRACK_ROLE = Qt.ItemDataRole.UserRole
+COL_ACTION, COL_TITLE, COL_ARTIST, COL_DURATION, COL_QUALITY, COL_FOLDER = range(6)
+
+_DETAILS = (
+    "Busca la misma canción importada más de una vez. En cada grupo se propone conservar una copia (la "
+    "disponible de mayor tamaño) y se marcan las demás.\n"
+    "• Quitar de la biblioteca: los archivos se quedan en el disco.\n"
+    "• Papelera: los archivos van a la Papelera de Windows (se pueden recuperar).\n"
+    "• Reunir para revisar: pone todas las copias de cada canción juntas en una carpeta para escucharlas "
+    "(se puede deshacer en el Historial).\n"
+    "Las playlists pasan a usar la copia que conservas."
+)
 
 
 def _size_text(track: Track) -> str:
     size = file_size(track)
-    return f"{size / 1_048_576:.1f} MB" if size else "—"
+    return f"{size / 1_048_576:.1f} MB" if size else ""
 
 
 class DuplicatesDialog(QDialog):
-    COLUMNS = ("Acción", "Título", "Artista", "Álbum", "Duración", "Tamaño", "Calidad", "Ubicación")
+    COLUMNS = ("Acción", "Título", "Artista", "Duración", "Calidad", "Carpeta")
 
     def __init__(
         self,
@@ -54,32 +72,27 @@ class DuplicatesDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Canciones repetidas")
-        self.resize(1100, 600)
+        self.resize(820, 500)
         self._tracks_provider = tracks_provider
         self._apply_plan = apply_plan
         self._gather = gather
         self._groups: list[DuplicateGroup] = []
         self._qualities: dict[int, Quality | None] = {}
         self._updating = False
-        self._message = ""  # resultado de la última acción, se muestra sobre el resumen
 
         layout = QVBoxLayout(self)
-        intro = QLabel(
-            "Busca la misma canción importada más de una vez. En cada grupo se propone conservar una copia "
-            "(la disponible de mayor tamaño) y marcar las demás. Con las marcadas puedes <b>quitarlas de la "
-            "biblioteca</b> o <b>enviarlas a la Papelera</b>; las playlists pasan a usar la copia que conservas. "
-            "Si prefieres escucharlas antes, <b>Reunir en una carpeta</b> pone todas las copias de cada canción "
-            "juntas (se puede deshacer)."
-        )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
+        layout.addWidget(tool_intro("Encuentra la misma canción importada más de una vez y deja una sola copia.", _DETAILS))
+        self.banner = ResultBanner()
+        layout.addWidget(self.banner)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Criterio:"))
         self.mode = QComboBox()
-        self.mode.addItem("Mismo título y artista (duración parecida)", MODE_METADATA)
-        self.mode.addItem("Archivos idénticos (mismo contenido, más lento)", MODE_CONTENT)
-        row.addWidget(self.mode, 1)
+        self.mode.addItem("Mismo título y artista", MODE_METADATA)
+        self.mode.addItem("Archivos idénticos (más lento)", MODE_CONTENT)
+        self.mode.setToolTip("Mismo título y artista: también exige una duración parecida")
+        row.addWidget(self.mode)
+        row.addStretch(1)
         self.btn_search = QPushButton("Buscar")
         self.btn_search.setObjectName("PrimaryButton")
         self.btn_search.clicked.connect(self._new_search)
@@ -89,7 +102,7 @@ class DuplicatesDialog(QDialog):
         progress_row = QHBoxLayout()
         self.progress = QProgressBar()
         self.progress.setMaximumHeight(8)
-        self.status = QLabel()
+        self.status = StatusLabel()
         self.btn_stop = QPushButton("Detener")
         progress_row.addWidget(self.progress, 1)
         progress_row.addWidget(self.status, 3)
@@ -98,10 +111,6 @@ class DuplicatesDialog(QDialog):
         self.runner = WorkerRunner(self, self.progress, self.status, self.btn_stop)
         self.runner.busy_changed.connect(self._update_summary)
 
-        self.summary = QLabel()
-        self.summary.setWordWrap(True)
-        layout.addWidget(self.summary)
-
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(self.COLUMNS)
         self.tree.setAlternatingRowColors(True)
@@ -109,7 +118,7 @@ class DuplicatesDialog(QDialog):
         header = self.tree.header()
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for col, width in enumerate((110, 220, 160, 160, 70, 80, 190)):
+        for col, width in ((COL_ACTION, 150), (COL_TITLE, 170), (COL_ARTIST, 140), (COL_DURATION, 70), (COL_QUALITY, 150)):
             header.resizeSection(col, width)
         header.setStretchLastSection(True)
         self.tree.itemChanged.connect(self._on_item_changed)
@@ -119,12 +128,16 @@ class DuplicatesDialog(QDialog):
         self.stack.addWidget(self.empty)
         layout.addWidget(self.stack, 1)
 
+        self.summary = QLabel()
+        self.summary.setObjectName("DialogNote")
+        layout.addWidget(self.summary)
+
         buttons = QHBoxLayout()
         self.btn_suggested = QPushButton("Restaurar sugerencia")
         self.btn_suggested.setToolTip("Vuelve a marcar todas las copias menos la sugerida para conservar")
         self.btn_suggested.clicked.connect(self._apply_suggestion)
         buttons.addWidget(self.btn_suggested)
-        self.btn_gather = QPushButton("Reunir en una carpeta para revisar…")
+        self.btn_gather = QPushButton("Reunir para revisar…")
         self.btn_gather.setToolTip(
             "Mueve todas las copias de cada canción repetida a una subcarpeta con su nombre, para escucharlas "
             "y compararlas. Se puede deshacer en Herramientas → Historial de cambios en archivos."
@@ -133,12 +146,12 @@ class DuplicatesDialog(QDialog):
         self.btn_gather.setVisible(gather is not None)
         buttons.addWidget(self.btn_gather)
         buttons.addStretch(1)
-        self.btn_remove = QPushButton("Quitar marcadas de la biblioteca")
-        self.btn_remove.setToolTip("Los archivos se quedan en el disco")
+        self.btn_remove = QPushButton("Quitar de la biblioteca")
+        self.btn_remove.setToolTip("Quita las copias marcadas de la biblioteca; los archivos se quedan en el disco")
         self.btn_remove.clicked.connect(lambda: self._apply(trash=False))
-        self.btn_trash = QPushButton("Enviar marcadas a la papelera…")
+        self.btn_trash = QPushButton("A la Papelera…")
         self.btn_trash.setObjectName("DangerButton")  # se distingue de «Quitar de la biblioteca»: borra archivos
-        self.btn_trash.setToolTip("Quita las copias de la biblioteca y envía sus archivos a la Papelera de reciclaje")
+        self.btn_trash.setToolTip("Quita las copias marcadas y envía sus archivos a la Papelera de reciclaje")
         self.btn_trash.clicked.connect(lambda: self._apply(trash=True))
         close = QPushButton("Cerrar")
         close.clicked.connect(self.accept)
@@ -151,7 +164,7 @@ class DuplicatesDialog(QDialog):
     # ------------------------------------------------------------------ búsqueda
 
     def _new_search(self) -> None:
-        self._message = ""  # el aviso de la acción anterior ya no corresponde
+        self.banner.clear()  # el resultado de la acción anterior ya no corresponde
         self.search()
 
     def search(self) -> None:
@@ -186,7 +199,7 @@ class DuplicatesDialog(QDialog):
         bold.setBold(True)
         for index, group in enumerate(self._groups):
             first = group.keep
-            parent = QTreeWidgetItem([f"«{first.title}» — {first.artist}  ·  {len(group.tracks)} copias"])
+            parent = QTreeWidgetItem([f"{first.title} — {first.artist}  ·  {len(group.tracks)} copias"])
             parent.setFont(0, bold)
             parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
             parent.setData(0, _TRACK_ROLE, index)
@@ -194,22 +207,27 @@ class DuplicatesDialog(QDialog):
             parent.setFirstColumnSpanned(True)
             for track in group.tracks:
                 quality = self._qualities.get(track.id)
-                quality_text = f"{quality.codec} · {quality.text()}" if quality else "—"
+                size = _size_text(track)
+                short = f"{quality.codec} {quality.kbps} kbps" if quality and quality.kbps else (quality.codec if quality else "")
+                quality_text = " · ".join(x for x in (short, size) if x) or "—"
+                folder = os.path.basename(os.path.dirname(track.path)) or track.path
                 child = QTreeWidgetItem(
                     [
                         "",
                         track.title,
                         track.artist,
-                        track.album,
                         format_time(track.duration_ms) if track.duration_ms else "—",
-                        _size_text(track),
                         quality_text,
-                        track.path if track.available else f"(no encontrado) {track.path}",
+                        folder if track.available else f"(no encontrado) {folder}",
                     ]
                 )
                 child.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsSelectable)
                 child.setData(0, _TRACK_ROLE, track)
-                child.setToolTip(7, track.path)
+                tip = f"{track.path}\nÁlbum: {track.album}"
+                for col in (COL_TITLE, COL_FOLDER):
+                    child.setToolTip(col, tip)
+                if quality:
+                    child.setToolTip(COL_QUALITY, f"{quality.codec} · {quality.text()}" + (f" · {size}" if size else ""))
                 child.setCheckState(0, Qt.CheckState.Unchecked if track.id == group.keep_id else Qt.CheckState.Checked)
                 parent.addChild(child)
                 self._style_child(child)
@@ -250,26 +268,23 @@ class DuplicatesDialog(QDialog):
 
     def _update_summary(self, *_args) -> None:
         busy = self.runner.busy
-        prefix = self._message + "<br>" if self._message else ""
-        if busy:
-            self.summary.setText(prefix)
-        elif not self._groups:
-            self.summary.setText(prefix)
-            self._set_empty(
-                "No hay canciones repetidas",
-                "No se encontraron repetidas con este criterio. Puedes probar con el otro criterio de búsqueda.",
-            )
-            self.stack.setCurrentWidget(self.empty)
+        marked = self._marked()
+        if busy or not self._groups:
+            self.summary.setText("")
+            if not busy:
+                self._set_empty("No hay canciones repetidas", "Puedes probar con el otro criterio de búsqueda.")
+                self.stack.setCurrentWidget(self.empty)
         else:
             copies = sum(len(g.tracks) for g in self._groups)
             self.summary.setText(
-                prefix + f"Se encontraron <b>{plural(len(self._groups), 'canción repetida', 'canciones repetidas')}</b> "
-                f"({copies} copias en total). Marcadas para quitar: <b>{self._marked()}</b>."
+                f"{plural(len(self._groups), 'canción repetida', 'canciones repetidas')} · {copies} copias · "
+                f"marcadas para quitar: {marked}"
             )
             self.stack.setCurrentWidget(self.tree)
-        has = self._marked() > 0 and not busy
+        has = marked > 0 and not busy
         self.btn_remove.setEnabled(has)
         self.btn_trash.setEnabled(has)
+        self.btn_remove.setText(f"Quitar de la biblioteca ({marked})" if has else "Quitar de la biblioteca")
         self.btn_suggested.setEnabled(bool(self._groups) and not busy)
         self.btn_gather.setEnabled(bool(self._groups) and not busy)
         self.btn_search.setEnabled(not busy)
@@ -294,8 +309,8 @@ class DuplicatesDialog(QDialog):
             return
         message = self._gather(list(self._groups))
         if message:
-            self._message = message
-            self.search()  # las rutas cambiaron
+            self.banner.show_result(message)
+            self.search()  # las rutas cambiaron: la lista se rehace
 
     def _apply(self, trash: bool) -> None:
         plan: Plan = []
@@ -319,17 +334,11 @@ class DuplicatesDialog(QDialog):
             return
         if trash:
             text = f"¿Enviar {plural(count, 'copia', 'copias')} a la Papelera de reciclaje?"
-            info = (
-                "Se quitarán de la biblioteca y sus archivos irán a la Papelera de Windows "
-                "(podrás recuperarlos desde allí). Las playlists pasarán a usar la copia conservada."
-            )
+            info = "Se podrán recuperar desde la Papelera de Windows. Las playlists usarán la copia conservada."
             confirm = "Enviar a la papelera"
         else:
             text = f"¿Quitar {plural(count, 'copia', 'copias')} de la biblioteca?"
-            info = (
-                "Los archivos NO se borran del disco. Las playlists pasarán a usar la copia conservada. "
-                "Si vuelves a importar esa carpeta, las copias volverán a aparecer."
-            )
+            info = "Los archivos NO se borran del disco. Las playlists usarán la copia conservada."
             confirm = "Quitar"
         choice = ask(
             self,
@@ -341,10 +350,13 @@ class DuplicatesDialog(QDialog):
         )
         if choice != 0:
             return
-        message = self._apply_plan(plan, trash)
+        try:
+            message = self._apply_plan(plan, trash)
+        except (sqlite3.Error, OSError) as exc:
+            message = f"No se pudo completar: {exc}. Vuelve a buscar antes de intentarlo de nuevo."
         if message:
-            self._message = message
-        self.search()
+            self.banner.show_result(message, ok="no se pud" not in message.lower())
+        self.search()  # operación terminada: la lista se rehace sin lo que ya se resolvió
 
     def reject(self) -> None:
         if self.runner.request_close():

@@ -1,7 +1,7 @@
 """Arranca main.py de verdad, importa, reproduce y cierra con Archivo → Salir. Comprueba el código de salida."""
 import math, os, struct, sys, tempfile, wave
 work = tempfile.mkdtemp(prefix="mp_exit_")
-os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
+os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data"); os.environ["MUSICPLAYER_ORG"] = "ReproductorMusicaTest"  # ajustes (registro) aparte: no se tocan los del usuario
 folder = os.path.join(work, "m"); os.makedirs(folder)
 for n in range(3):
     with wave.open(os.path.join(folder, f"t{n}.wav"), "wb") as w:

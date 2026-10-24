@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shutil
+import unicodedata
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QFile
@@ -20,7 +21,12 @@ from .file_ops import trash_block_reason
 log = logging.getLogger(__name__)
 
 _INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+_RESERVED = {
+    "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+    *(f"COM{i}" for i in "123456789¹²³"), *(f"LPT{i}" for i in "123456789¹²³"),
+}
+MAX_PATH = 259  # sin «rutas largas» activadas, Windows no admite rutas de 260 caracteres o más
+_MOVING_SUFFIX = ".moviendo.tmp"
 
 
 class FileManagerError(Exception):
@@ -55,12 +61,23 @@ def check_name(name: str, is_folder: bool = False) -> str:
         raise FileManagerError(f"El nombre no puede contener estos caracteres: {shown}")
     if clean.endswith("."):
         raise FileManagerError("El nombre no puede terminar en punto.")
+    # Caracteres invisibles o que invierten el texto (U+200B, U+202E…): sirven para disfrazar un nombre.
+    if any(unicodedata.category(c) == "Cf" for c in clean):
+        raise FileManagerError("El nombre tiene caracteres invisibles o de control de texto. Escríbelo de nuevo.")
     stem = clean if is_folder else os.path.splitext(clean)[0]
-    if stem.split(".")[0].upper() in _RESERVED:
+    if stem.split(".")[0].strip().upper() in _RESERVED:
         raise FileManagerError(f"«{clean}» es un nombre reservado de Windows.")
-    if len(clean) > 200:
+    if len(clean.encode("utf-16-le")) // 2 > 200:  # Windows cuenta en UTF-16: un emoji ocupa 2
         raise FileManagerError("El nombre es demasiado largo (máximo 200 caracteres).")
     return clean
+
+
+def _check_path_length(target: str) -> None:
+    if len(os.path.abspath(target).encode("utf-16-le")) // 2 > MAX_PATH:
+        raise FileManagerError(
+            "La ruta completa quedaría demasiado larga para Windows (más de 260 caracteres). "
+            "Usa un nombre más corto o una carpeta menos profunda."
+        )
 
 
 def rename_file(path: str, new_name: str) -> str:
@@ -91,6 +108,7 @@ def _rename(source: str, target: str) -> str:
         return source  # sin cambios
     if os.path.exists(target) and not same:
         raise FileManagerError(f"Ya existe «{name}» en esa carpeta. Elige otro nombre.")
+    _check_path_length(target)
     try:
         os.rename(source, target)  # solo cambia mayúsculas/minúsculas también funciona en Windows
     except OSError as exc:
@@ -104,6 +122,7 @@ def create_folder(parent: str, name: str) -> str:
     target = os.path.join(parent, clean)
     if os.path.exists(target):
         raise FileManagerError(f"Ya existe «{clean}» en esa carpeta.")
+    _check_path_length(os.path.join(target, "x" * 40 + ".mp3"))  # que quepan canciones dentro
     try:
         os.makedirs(target)
     except OSError as exc:
@@ -118,9 +137,47 @@ class MoveResult:
     failed: list[tuple[str, str]] = field(default_factory=list)  # (ruta, motivo)
 
 
+def _move_across_drives(path: str, target: str) -> None:
+    """Mueve a otro disco sin dejar nunca dos copias ni ninguna: se copia a un temporal (sin pisar nada),
+    se fuerza al disco y se verifica; recién entonces se borra el original y el temporal toma su nombre.
+    Si el original no se puede borrar (solo lectura, abierto en otro programa), se quita la copia."""
+    if not os.access(path, os.W_OK):
+        raise PermissionError(errno.EACCES, "el archivo es de solo lectura", path)
+    temp = target + _MOVING_SUFFIX
+    try:
+        with open(path, "rb") as src, open(temp, "xb") as dst:  # «x»: falla si ya existe, no sobrescribe
+            shutil.copyfileobj(src, dst, 1024 * 1024)
+            dst.flush()
+            os.fsync(dst.fileno())
+        shutil.copystat(path, temp)
+        if os.path.getsize(temp) != os.path.getsize(path):
+            raise OSError(errno.EIO, "la copia no quedó completa")
+    except BaseException:
+        _remove_quietly(temp)
+        raise
+    try:
+        os.remove(path)
+    except OSError:
+        _remove_quietly(temp)  # el original sigue en su sitio: no queda ninguna copia de más
+        raise
+    try:
+        os.rename(temp, target)  # mismo disco y misma carpeta: instantáneo
+    except OSError as exc:
+        # El original ya se borró, pero la canción está entera en el temporal: se avisa dónde.
+        log.error("Movido pero sin renombrar: %s quedó como %s (%s)", path, temp, exc)
+        raise OSError(errno.EIO, f"la canción quedó como «{os.path.basename(temp)}» en la carpeta de destino") from exc
+
+
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def move_files(paths: list[str], destination: str) -> MoveResult:
     """Mueve archivos a otra carpeta. En el mismo disco es un renombrado instantáneo; a otro disco se
-    copia, se comprueba el tamaño y recién entonces se borra el original. Nunca sobrescribe."""
+    copia de forma segura (ver _move_across_drives). Nunca sobrescribe."""
     result = MoveResult()
     if not os.path.isdir(destination):
         for p in paths:
@@ -139,14 +196,15 @@ def move_files(paths: list[str], destination: str) -> MoveResult:
             result.failed.append((path, f"En la carpeta de destino ya hay un archivo llamado «{name}»."))
             continue
         try:
+            _check_path_length(target)
+        except FileManagerError as exc:
+            result.failed.append((path, str(exc)))
+            continue
+        try:
             if os.path.splitdrive(os.path.abspath(path))[0].lower() == os.path.splitdrive(os.path.abspath(target))[0].lower():
                 os.rename(path, target)
             else:
-                shutil.copy2(path, target)
-                if os.path.getsize(target) != os.path.getsize(path):
-                    os.remove(target)
-                    raise OSError(errno.EIO, "la copia no quedó completa")
-                os.remove(path)
+                _move_across_drives(path, target)
         except OSError as exc:
             result.failed.append((path, explain(exc, name)))
             continue

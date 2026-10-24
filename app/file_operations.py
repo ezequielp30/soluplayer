@@ -140,6 +140,15 @@ class FileOperations:
             existing = []
             for keep_id, tracks in plan:
                 keep = by_id.get(keep_id)
+                if keep is None or not os.path.exists(keep.path):
+                    # La copia «conservada» no está en el disco: enviar las demás dejaría la canción
+                    # sin ningún archivo. No se envía nada de este grupo.
+                    for track in tracks:
+                        if os.path.exists(track.path):
+                            failed[track.path] = (
+                                "La copia que conservas no se encuentra en el disco: no se envió para no quedarte sin ninguna."
+                            )
+                    continue
                 for track in tracks:
                     if not os.path.exists(track.path):
                         continue
@@ -149,7 +158,7 @@ class FileOperations:
                         continue
                     existing.append(track.path)
             trashed, failed_list = move_to_trash(existing)
-            failed = dict(failed_list)
+            failed.update(failed_list)
         groups = [
             (keep_id, [t.id for t in tracks if t.path not in failed])  # si no se pudo enviar, sigue en la biblioteca
             for keep_id, tracks in plan
@@ -264,20 +273,28 @@ class FileOperations:
         for s in review_folder.list_sessions():
             moved = s.moved()
             undone = s.status == review_folder.STATUS_UNDONE
+            # Solo se puede devolver lo que sigue en la carpeta de revisión (si se borró, no hay qué deshacer).
+            present = [m for m in moved if os.path.exists(m.target)]
+            state = "Deshecha" if undone else ("Interrumpida" if s.status == review_folder.STATUS_RUNNING else "Hecha")
+            if not undone and moved and not present:
+                state = "Ya no están los archivos"
             entries.append(HistoryEntry(
                 KIND_REVIEW, _when(s.created_at), "Reunir repetidas para revisar",
                 f"{plural(len(moved) if not undone else len(s.moves), 'archivo')} → {s.destination}",
-                "Deshecha" if undone else ("Interrumpida" if s.status == review_folder.STATUS_RUNNING else "Hecha"),
-                can_undo=not undone and bool(moved), count=len(moved), session=s, location=s.destination,
+                state, can_undo=not undone and bool(present), count=len(present), session=s, location=s.destination,
             ))
         for s in converter.list_sessions():
             pending = converter.pending_items(s)
             undone = s.status == converter.STATUS_UNDONE
+            # Solo se puede deshacer una conversión cuyo original sigue en algún lado (en su sitio o guardado).
+            restorable = [i for i in pending if os.path.exists(i.original) or (i.moved_to and os.path.exists(i.moved_to))]
+            state = "Deshecha" if undone else ("Interrumpida" if s.status == converter.STATUS_RUNNING else "Hecha")
+            if not undone and pending and not restorable:
+                state = "Ya no están los originales"
             entries.append(HistoryEntry(
                 KIND_CONVERSION, _when(s.created_at), "Convertir a MP3",
                 f"{plural(len(pending) if not undone else len(s.items), 'canción', 'canciones')} · originales en {s.originals_root}",
-                "Deshecha" if undone else ("Interrumpida" if s.status == converter.STATUS_RUNNING else "Hecha"),
-                can_undo=not undone and bool(pending), count=len(pending), session=s, location=s.originals_root,
+                state, can_undo=not undone and bool(restorable), count=len(restorable), session=s, location=s.originals_root,
             ))
         adjusted = [t for t in library if t.norm_gain_db > 0]
         if adjusted:

@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
 )
 
 from ..equalizer import BAND_LABELS, MAX_DB, PRESETS, EqSettings
-from ..eq_player import RAM_MINUTES
 from ..preferences import Preferences
 from .dialogs import ask, note_label
 
@@ -109,7 +108,7 @@ class EqualizerDialog(QDialog):
         layout.addWidget(self.prevent)
         layout.addWidget(note_label(
             "El ecualizador cambia el sonido real (no solo el dibujo). Con el ecualizador activado el programa usa "
-            f"su propio motor de audio. Las canciones de más de {RAM_MINUTES} minutos usan un archivo temporal en "
+            "su propio motor de audio. Las canciones largas (más de unos 14 minutos) usan un archivo temporal en "
             "disco (unos 11 MB por minuto) que se borra al cambiar de canción."
         ))
 

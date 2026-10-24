@@ -1,7 +1,13 @@
-"""Diálogo «Buscar datos en internet»: título, artista, álbum y carátula desde bases de datos de música."""
+"""Diálogo «Buscar datos en internet»: título, artista, álbum y carátula desde bases de datos de música.
+
+Ventana compacta (como la comparación de MusicBrainz Picard: lo justo a la vista y el detalle a pedido):
+una línea de explicación con «?», las opciones en una fila, y al aplicar las canciones actualizadas salen
+de la lista y el resultado se muestra en una franja.
+"""
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Callable
 
 from PySide6.QtCore import Qt, Slot
@@ -16,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,13 +32,22 @@ from PySide6.QtWidgets import (
 from ..models import Track
 from ..online_job import CoverWorker, LookupWorker, Update
 from ..online_lookup import SOURCES, Candidate, LookupResult, Query, needs_data
-from ..utils import format_time, normalize_text
+from ..utils import format_time, normalize_text, plural
 from . import theme
-from .dialogs import note_label, tidy_table
+from .dialogs import ResultBanner, StatusLabel, empty_state, tidy_table, tool_intro
 from .worker_runner import WorkerRunner
 
 SAFE_SCORE = 0.85  # a partir de aquí la coincidencia se marca sola
 COL_USE, COL_CURRENT, COL_PROPOSAL, COL_SCORE = range(4)
+
+_DETAILS = (
+    "Busca el título, artista, álbum y carátula correctos en bases de datos de música (MusicBrainz, Deezer, "
+    "iTunes). Elige la propuesta correcta en cada canción; las coincidencias seguras "
+    f"(≥ {int(SAFE_SCORE * 100)} %) se marcan solas.\n"
+    "Solo se envían el título y el artista de cada canción.\n"
+    "Los cambios se guardan en la biblioteca: tus archivos no se modifican."
+)
+
 
 def _same(track: Track, candidate: Candidate) -> bool:
     return (normalize_text(track.title), normalize_text(track.artist), normalize_text(track.album)) == (
@@ -58,7 +74,7 @@ class OnlineLookupDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Buscar datos en internet")
-        self.resize(1080, 640)
+        self.resize(820, 500)
         self._all_tracks = list(tracks)
         self._apply_updates = apply_updates
         self._results: dict[int, LookupResult] = {}
@@ -67,19 +83,12 @@ class OnlineLookupDialog(QDialog):
         single = len(tracks) == 1
 
         layout = QVBoxLayout(self)
-        intro = QLabel(
-            "Busca el título, artista, álbum y carátula correctos en bases de datos de música. "
-            "Elige la propuesta correcta en cada canción y pulsa «Aplicar marcadas»."
-        )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-        layout.addWidget(note_label(
-            "Solo se envían el título y el artista de cada canción. "
-            "Los cambios se guardan en la biblioteca: tus archivos no se modifican."
-        ))
+        layout.addWidget(tool_intro("Corrige título, artista, álbum y carátula. Tus archivos no se modifican.", _DETAILS))
+        self.banner = ResultBanner()
+        layout.addWidget(self.banner)
 
         sources_row = QHBoxLayout()
-        sources_row.addWidget(QLabel("<b>Bases de datos:</b>"))
+        sources_row.addWidget(QLabel("Fuentes:"))
         self.source_boxes: dict[str, QCheckBox] = {}
         for key, source in SOURCES.items():
             box = QCheckBox(source.name)
@@ -88,15 +97,17 @@ class OnlineLookupDialog(QDialog):
             box.toggled.connect(self._update_buttons)
             self.source_boxes[key] = box
             sources_row.addWidget(box)
-        sources_row.addStretch(1)
-        self.covers = QCheckBox("Actualizar también la carátula")
+        sources_row.addSpacing(12)
+        self.covers = QCheckBox("Carátulas")
+        self.covers.setToolTip("Descargar también la carátula de las canciones que actualices")
         self.covers.setChecked(with_covers)
         sources_row.addWidget(self.covers)
+        sources_row.addStretch(1)
         layout.addLayout(sources_row)
 
         scope_row = QHBoxLayout()
         incomplete = sum(1 for t in tracks if needs_data(t))
-        self.only_incomplete = QCheckBox(f"Solo canciones con datos incompletos ({incomplete} de {len(tracks)})")
+        self.only_incomplete = QCheckBox(f"Solo incompletas ({incomplete} de {len(tracks)})")
         self.only_incomplete.setToolTip("Sin artista o álbum, o con un título que parece un nombre de archivo")
         self.only_incomplete.setVisible(not single)
         self.only_incomplete.toggled.connect(self._update_buttons)
@@ -111,7 +122,6 @@ class OnlineLookupDialog(QDialog):
             self.query_artist.setText(query.artist or "")
             self.query_title.setPlaceholderText("Título")
             self.query_artist.setPlaceholderText("Artista (opcional)")
-            scope_row.addWidget(QLabel("Buscar:"))
             scope_row.addWidget(self.query_title, 2)
             scope_row.addWidget(self.query_artist, 1)
             self.query_title.returnPressed.connect(self.start_search)
@@ -127,9 +137,8 @@ class OnlineLookupDialog(QDialog):
         progress_row = QHBoxLayout()
         self.progress = QProgressBar()
         self.progress.setMaximumHeight(8)
-        self.status = QLabel()
-        self.status.setObjectName("EmptyMessage")
-        self.btn_cancel = QPushButton("Detener búsqueda")
+        self.status = StatusLabel()
+        self.btn_cancel = QPushButton("Detener")
         progress_row.addWidget(self.progress, 1)
         progress_row.addWidget(self.status, 2)
         progress_row.addWidget(self.btn_cancel)
@@ -138,31 +147,37 @@ class OnlineLookupDialog(QDialog):
         self.runner.busy_changed.connect(self._update_buttons)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["", "Canción en tu biblioteca", "Propuesta (elige la correcta)", "Coincidencia"])
+        self.table.setHorizontalHeaderLabels(["", "Canción", "Propuesta", "%"])
         tidy_table(self.table)
         self.table.verticalHeader().hide()
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(36)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(COL_USE, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(COL_CURRENT, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(COL_PROPOSAL, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(COL_SCORE, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(COL_CURRENT, 330)
+        header.resizeSection(COL_CURRENT, 250)
         self.table.itemChanged.connect(lambda *_: self._update_buttons())
-        layout.addWidget(self.table, 1)
+        self.empty, self._set_empty = empty_state()
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.table)
+        self.stack.addWidget(self.empty)
+        layout.addWidget(self.stack, 1)
 
         bottom = QHBoxLayout()
-        self.btn_safe = QPushButton(f"Marcar solo coincidencias seguras (≥ {int(SAFE_SCORE * 100)} %)")
+        self.btn_safe = QPushButton("Solo seguras")
+        self.btn_safe.setToolTip(f"Marca solo las coincidencias de {int(SAFE_SCORE * 100)} % o más")
         self.btn_safe.clicked.connect(self._mark_safe)
-        self.btn_none = QPushButton("Desmarcar todas")
+        self.btn_none = QPushButton("Ninguna")
+        self.btn_none.setToolTip("Desmarca todas")
         self.btn_none.clicked.connect(lambda: self._set_all_checked(False))
         bottom.addWidget(self.btn_safe)
         bottom.addWidget(self.btn_none)
         bottom.addStretch(1)
-        self.btn_apply = QPushButton("Aplicar marcadas")
+        self.btn_apply = QPushButton("Aplicar")
         self.btn_apply.setObjectName("PrimaryButton")
         self.btn_apply.clicked.connect(self._apply)
         close = QPushButton("Cerrar")
@@ -171,6 +186,7 @@ class OnlineLookupDialog(QDialog):
         bottom.addWidget(close)
         layout.addLayout(bottom)
 
+        self._show_list_or_empty()
         self._update_buttons()
         if single:
             self.start_search()
@@ -190,11 +206,11 @@ class OnlineLookupDialog(QDialog):
             return
         sources = self._sources()
         if not sources:
-            QMessageBox.information(self, "Elige una base de datos", "Marca al menos una base de datos para buscar.")
+            QMessageBox.information(self, "Elige una fuente", "Marca al menos una fuente para buscar.")
             return
         self._rows = self._targets()
         if not self._rows:
-            self.status.setText("No hay canciones que buscar con estas opciones.")
+            self.banner.show_result("No hay canciones que buscar con estas opciones.", ok=False)
             return
         if len(self._all_tracks) == 1:  # modo de una sola canción (con los campos de búsqueda)
             title = " ".join(self.query_title.text().split()) or self._rows[0].title
@@ -202,6 +218,7 @@ class OnlineLookupDialog(QDialog):
             queries = [Query(title, artist, self._rows[0].duration_ms)]
         else:
             queries = [Query.from_track(t) for t in self._rows]
+        self.banner.clear()
         self._results.clear()
         self._errors.clear()
         self._fill_rows()
@@ -224,7 +241,7 @@ class OnlineLookupDialog(QDialog):
 
     def _on_search_finished(self, cancelled: bool) -> None:
         found = sum(1 for r in self._results.values() if r.candidates)
-        text = f"{'Búsqueda detenida. ' if cancelled else ''}Se encontraron datos para {found} de {len(self._rows)}."
+        text = f"{'Búsqueda detenida. ' if cancelled else ''}Datos encontrados para {found} de {len(self._rows)}."
         if self._errors:
             text += "  Avisos: " + " ".join(sorted(self._errors))
         self.status.setText(text)
@@ -232,10 +249,22 @@ class OnlineLookupDialog(QDialog):
 
     # ------------------------------------------------------------------ tabla
 
+    def _show_list_or_empty(self) -> None:
+        visible = sum(1 for r in range(self.table.rowCount()) if not self.table.isRowHidden(r))
+        if visible:
+            self.stack.setCurrentWidget(self.table)
+        elif self._rows:
+            self._set_empty("Listo", "Todas las canciones buscadas ya están actualizadas.")
+            self.stack.setCurrentWidget(self.empty)
+        else:
+            self._set_empty("Busca para ver propuestas", "Pulsa «Buscar» para consultar las bases de datos de música.")
+            self.stack.setCurrentWidget(self.empty)
+
     def _fill_rows(self) -> None:
         self.table.blockSignals(True)
         self.table.setRowCount(len(self._rows))
         for row, track in enumerate(self._rows):
+            self.table.setRowHidden(row, False)
             use = QTableWidgetItem()
             use.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             use.setCheckState(Qt.CheckState.Unchecked)
@@ -249,6 +278,7 @@ class OnlineLookupDialog(QDialog):
             self.table.setCellWidget(row, COL_PROPOSAL, None)
             self.table.setItem(row, COL_SCORE, QTableWidgetItem(""))
         self.table.blockSignals(False)
+        self._show_list_or_empty()
 
     def _fill_proposal(self, row: int, result: LookupResult) -> None:
         track = self._rows[row]
@@ -256,7 +286,7 @@ class OnlineLookupDialog(QDialog):
         if not result.candidates:
             item = self.table.item(row, COL_PROPOSAL)
             item.setText("Sin resultados" + (" (error de conexión)" if result.errors else ""))
-            item.setToolTip("\n".join(result.errors) or "Prueba con otra base de datos o corrige el título y el artista.")
+            item.setToolTip("\n".join(result.errors) or "Prueba con otra fuente o corrige el título y el artista.")
             self.table.item(row, COL_USE).setFlags(Qt.ItemFlag.NoItemFlags)
             self.table.blockSignals(False)
             return
@@ -336,7 +366,7 @@ class OnlineLookupDialog(QDialog):
     def _update_buttons(self, *_args) -> None:
         busy = self.runner.busy
         count = len(self._chosen()) if self._rows else 0
-        self.btn_apply.setText(f"Aplicar marcadas ({count})")
+        self.btn_apply.setText(f"Aplicar ({count})" if count else "Aplicar")
         self.btn_apply.setEnabled(count > 0 and not busy)
         self.btn_search.setEnabled(not busy and bool(self._sources()))
         if len(self._all_tracks) > 1:
@@ -361,10 +391,15 @@ class OnlineLookupDialog(QDialog):
         )
 
     def _on_covers_ready(self, updates: list[Update]) -> None:
-        message = self._apply_updates(updates)
+        try:
+            message = self._apply_updates(updates)
+        except (sqlite3.Error, OSError) as exc:
+            self.banner.show_result(f"No se pudieron guardar los datos: {exc}", ok=False)
+            self._update_buttons()
+            return
         applied = {track.id: candidate for track, candidate, _cover in updates}
         # Las canciones de esta ventana pasan a tener los datos nuevos (si no, una búsqueda nueva o
-        # «Marcar seguras» las compararían con los datos viejos y las volverían a proponer).
+        # «Solo seguras» las compararían con los datos viejos y las volverían a proponer).
         def refreshed(track: Track) -> Track:
             candidate = applied.get(track.id)
             if candidate is None:
@@ -377,7 +412,8 @@ class OnlineLookupDialog(QDialog):
 
         self._rows = [refreshed(t) for t in self._rows]
         self._all_tracks = [refreshed(t) for t in self._all_tracks]
-        # Las filas aplicadas quedan como «Actualizada» y sin marcar.
+        # Operación terminada: las filas aplicadas salen de la vista (se ocultan para no cambiar los
+        # índices de las demás) y el resultado queda en la franja.
         self.table.blockSignals(True)
         for row, track in enumerate(self._rows):
             if track.id in applied:
@@ -385,14 +421,13 @@ class OnlineLookupDialog(QDialog):
                 use.setCheckState(Qt.CheckState.Unchecked)
                 use.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.table.item(row, COL_SCORE).setText("Actualizada")
-                self.table.item(row, COL_SCORE).setForeground(theme.qcolor("success"))
-                combo = self.table.cellWidget(row, COL_PROPOSAL)
-                if combo is not None:
-                    combo.setEnabled(False)
+                self.table.setRowHidden(row, True)
         self.table.blockSignals(False)
-        self.status.setText(message)
+        self.status.setText("")
+        self.banner.show_result(message or f"Se actualizaron {plural(len(applied), 'canción', 'canciones')}.")
+        self._show_list_or_empty()
         self._update_buttons()
 
     def reject(self) -> None:
-        if self.runner.request_close(wait_ms=15000):
+        if self.runner.request_close(wait_ms=60000):  # que lo elegido llegue a guardarse
             super().reject()

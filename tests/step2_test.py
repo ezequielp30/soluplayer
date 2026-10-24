@@ -51,6 +51,14 @@ def track(tid, path, **kw):
 music = os.path.join(ROOT, "Musica")
 os.makedirs(music)
 
+
+def program_mp3(item):
+    """MP3 como lo deja el programa: con su marca de «creado a partir de este original»."""
+    from mutagen.id3 import ID3, TXXX
+    open(item.mp3, "wb").write(b"mp3 creado")
+    tags = ID3(); tags.add(TXXX(encoding=3, desc=converter._CREATED_MARK, text=[converter._origin_id(item.original)]))
+    tags.save(item.mp3)
+
 # ---------------------------------------------------------------- 1. cierre inesperado en la conversión
 print("1. Conversión: cierre inesperado justo después de mover el original")
 src = os.path.join(music, "cancion.wma")
@@ -59,7 +67,7 @@ t1 = track(1, src)
 session = converter.new_session([t1])
 session.save()
 item = session.items[0]
-open(item.mp3, "wb").write(b"mp3 creado")  # el MP3 ya se había creado
+program_mp3(item)  # el MP3 ya se había creado
 # Simula el cierre: se anota la intención y se mueve, pero el registro no llega a guardar nada más.
 target = converter.original_target(item, session.originals_root)
 item.moved_to = target
@@ -79,7 +87,7 @@ check("la sesión queda deshecha", converter.list_sessions()[0].status == conver
 print("2. Conversión: cierre ANTES de mover (solo la intención anotada)")
 session = converter.new_session([t1])
 item = session.items[0]
-open(item.mp3, "wb").write(b"mp3 creado")
+program_mp3(item)
 item.moved_to = converter.original_target(item, session.originals_root)
 session.save()  # se cierra aquí: el original nunca se movió
 again = [s for s in converter.interrupted_sessions() if s.id == session.id][0]

@@ -191,6 +191,11 @@ def system_is_dark() -> bool:
     return hints.colorScheme() == Qt.ColorScheme.Dark
 
 
+def canonical(key: str) -> str:
+    """Clave vigente de un tema (las de temas retirados pasan al que los reemplaza)."""
+    return _LEGACY.get(key, key)
+
+
 def resolve(requested: str) -> Palette:
     requested = _LEGACY.get(requested, requested)
     if requested in THEMES:

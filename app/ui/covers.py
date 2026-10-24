@@ -7,6 +7,7 @@ from collections import OrderedDict
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
 
+from ..artwork import image_format
 from ..database import Database
 from . import theme
 from .icons import glyph_pixmap
@@ -31,7 +32,8 @@ class CoverProvider:
         if cover_hash:
             data = self._db.get_cover(cover_hash)
             source = QPixmap()
-            if data and source.loadFromData(data):
+            fmt = image_format(data) if data else None
+            if fmt and source.loadFromData(data, fmt):
                 result = _rounded(source, size)
         if result is None:
             result = _placeholder(size)

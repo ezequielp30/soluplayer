@@ -4,7 +4,23 @@ from __future__ import annotations
 
 import json
 
+import math
+
 from PySide6.QtCore import QSettings
+
+
+def _number(value, default: float, low: float = -24.0, high: float = 24.0) -> float:
+    """Número leído de las preferencias; si está dañado vuelve al de fábrica."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return min(high, max(low, number)) if math.isfinite(number) else default
+
+
+def _gains(values) -> list[float]:
+    values = values if isinstance(values, list) else []
+    return [_number(g, 0.0) for g in values[:10]] + [0.0] * (10 - len(values[:10]))
 
 
 class Preferences:
@@ -52,9 +68,11 @@ class Preferences:
     @property
     def theme(self) -> str:
         """'auto' (sigue a Windows), 'light', 'dark' o la clave de un tema (p. ej. 'medianoche')."""
-        from .ui.theme import valid
+        from .ui.theme import canonical, valid
 
-        value = str(self._s.value(self.THEME, "auto"))
+        # Un tema retirado se lee como el que lo reemplaza: Preferencias lo muestra marcado y, al
+        # guardar, no se cambia a «Automático».
+        value = canonical(str(self._s.value(self.THEME, "auto")))
         return value if valid(value) else "auto"
 
     @theme.setter
@@ -96,9 +114,17 @@ class Preferences:
         if not isinstance(data, dict):
             data = {}
         state = {**default, **{k: v for k, v in data.items() if k in default}}
-        gains = state["gains"] if isinstance(state["gains"], list) else []
-        state["gains"] = [float(g) for g in gains[:10]] + [0.0] * (10 - len(gains[:10]))
-        state["custom"] = state["custom"] if isinstance(state["custom"], dict) else {}
+        # Un valor dañado en el registro de Windows vuelve al de fábrica (antes impedía abrir el programa).
+        state["gains"] = _gains(state["gains"])
+        state["preamp"] = _number(state["preamp"], 0.0)
+        state["enabled"] = bool(state["enabled"])
+        state["prevent_clipping"] = bool(state["prevent_clipping"])
+        state["preset"] = str(state["preset"])
+        custom = state["custom"] if isinstance(state["custom"], dict) else {}
+        state["custom"] = {
+            str(name): {"gains": _gains(p.get("gains")), "preamp": _number(p.get("preamp"), 0.0)}
+            for name, p in custom.items() if isinstance(p, dict)
+        }
         return state
 
     def set_equalizer(self, state: dict) -> None:

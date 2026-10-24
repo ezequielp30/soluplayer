@@ -130,7 +130,7 @@ check("Menú carpeta → Agregar carpeta a playlist", db.playlist(p.id).track_co
 
 expect(is_(QMenu), pick("Mostrar en el Explorador"))
 sb._folder_menu(pos_m); spin(100)
-check("Menú carpeta → Mostrar en el Explorador", explorer and explorer[-1][0] == "explorer" and explorer[-1][1].endswith("Música"), explorer[-1:])
+check("Menú carpeta → Mostrar en el Explorador", explorer and os.path.basename(explorer[-1][0]).lower() == "explorer.exe" and os.path.isabs(explorer[-1][0]) and explorer[-1][1].endswith("Música"), explorer[-1:])
 
 sb.select_folder(musica.data(0, Qt.ItemDataRole.UserRole)); spin(100)
 expect(is_(QMenu), pick("Contraer todo"))

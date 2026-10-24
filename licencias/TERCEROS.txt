@@ -1,0 +1,27 @@
+Reproductor de Música — componentes de terceros
+================================================
+
+Este programa incluye los siguientes componentes. Cada uno conserva su propia licencia; los textos
+completos están en esta misma carpeta.
+
+Componente            Uso en el programa                          Licencia              Código fuente
+--------------------  ------------------------------------------  --------------------  ------------------------------------------
+Qt 6 / PySide6 6.12   Interfaz, reproducción de audio             LGPL-3.0              https://code.qt.io  ·  https://download.qt.io
+Shiboken6 6.12        Enlace entre Python y Qt                    LGPL-3.0              https://code.qt.io/cgit/pyside/pyside-setup.git
+FFmpeg (de Qt)        Decodificación de los formatos de audio     LGPL-2.1 o posterior  https://ffmpeg.org/download.html
+mutagen 1.48          Lectura y escritura de etiquetas de audio   GPL-2.0 o posterior   https://github.com/quodlibet/mutagen
+LAME / lameenc 1.9    Codificación a MP3                          LGPL-3.0 o posterior  https://lame.sourceforge.io · https://github.com/chrisstaite/lameenc
+NumPy 2.5             Cálculo del ecualizador y del volumen       BSD-3-Clause y otras  https://github.com/numpy/numpy
+Python 3.12           Lenguaje del programa                       PSF License           https://www.python.org/downloads/source/
+
+Archivos de licencia
+--------------------
+GPL-2.0.txt          GNU General Public License, versión 2 (mutagen)
+GPL-3.0.txt          GNU General Public License, versión 3 (texto al que remite la LGPL-3.0)
+LGPL-3.0.txt         GNU Lesser General Public License, versión 3 (Qt, PySide6, Shiboken6, LAME/lameenc)
+LGPL-2.1.txt         GNU Lesser General Public License, versión 2.1 (FFmpeg)
+numpy-LICENSE.txt    Licencia de NumPy y de los componentes que incluye
+Python-LICENSE.txt   Licencia de Python (PSF)
+
+Bibliotecas LGPL: se distribuyen como archivos DLL/PYD separados dentro de la carpeta «_internal» del
+programa instalado, de modo que se pueden reemplazar por otra versión compatible.

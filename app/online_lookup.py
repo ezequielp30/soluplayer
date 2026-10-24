@@ -22,6 +22,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
+from . import __version__
 from .metadata import UNKNOWN_ALBUM, UNKNOWN_ARTIST
 from .models import Track
 from .titles import suggest_from_filename
@@ -29,7 +30,7 @@ from .utils import normalize_text
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "ReproductorMusica/1.0 (aplicacion de escritorio personal)"
+USER_AGENT = f"ReproductorMusica/{__version__} (aplicacion de escritorio)"
 TIMEOUT_S = 12
 
 
@@ -301,11 +302,15 @@ def needs_data(track: Track) -> bool:
 
 def download(url: str, limit_bytes: int = 8 * 1024 * 1024) -> bytes | None:
     """Descarga una carátula. Devuelve None si no existe o falla (no es un error grave)."""
-    if not url.lower().startswith(("https://", "http://")):
+    if url.lower().startswith("http://"):
+        url = "https://" + url[7:]  # las fuentes sirven las carátulas también por https: sin texto plano
+    if not url.lower().startswith("https://"):
         return None  # nunca leer archivos locales (file://) ni otros esquemas
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+            if not response.geturl().lower().startswith("https://"):
+                return None  # una redirección a http (o a otro esquema) no se sigue
             data = response.read(limit_bytes + 1)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException):
         return None
