@@ -149,7 +149,8 @@ class PlayerBar(QFrame):
         now = QFrame()
         now.setObjectName("NowPlaying")
         now.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        now.setMinimumWidth(280)
+        now.setMinimumWidth(200)
+        now.setMaximumWidth(320)  # compacta, como en el diseño; el espacio sobrante va al buscador
         now_layout = QHBoxLayout(now)
         now_layout.setContentsMargins(8, 8, 14, 8)
         now_layout.setSpacing(12)
@@ -192,7 +193,7 @@ class PlayerBar(QFrame):
         progress.addWidget(self.remaining)
         info.addLayout(progress)
         now_layout.addLayout(info, 1)
-        layout.addWidget(now, 1)
+        layout.addWidget(now, 3)
 
         # Modos y volumen
         self.btn_shuffle = _tool_button("shuffle", "Orden aleatorio", 18, checkable=True)
@@ -219,7 +220,8 @@ class PlayerBar(QFrame):
         self.search.setClearButtonEnabled(True)
         self._search_action = self.search.addAction(icon("search", MUTED, 16), QLineEdit.ActionPosition.LeadingPosition)
         self.search.setMaximumWidth(300)
-        layout.addWidget(self.search)
+        self.search.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.search, 1)  # se encoge cuando falta espacio (máximo 300 px)
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.setInterval(180)

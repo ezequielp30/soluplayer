@@ -153,7 +153,7 @@ QLineEdit:focus {{ border: 1px solid {p.accent}; }}
 QLineEdit#SearchField {{
     border-radius: 17px;
     padding: 7px 12px 7px 6px;
-    min-width: 200px;
+    min-width: 120px;
     min-height: 20px;
 }}
 
