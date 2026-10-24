@@ -52,47 +52,47 @@ class Palette:
 
 GRAPHITE = Palette(
     name="Grafito", dark=True,
-    bg="#17181b", sidebar="#0f1012", bar="#1d1e22", elevated="#232529", border="#2e3035", hover="#282a2f",
-    row_alt="#1a1b1e", text="#ededf0", muted="#a3a6ae", faint="#62656e",
-    accent="#f5b14c", accent_hover="#f9c473", accent_text="#f5b14c", accent_soft="#3d3223", on_accent="#1f1402",
-    warning="#ff9f6e", warning_soft="#3c2e28", success="#5fd49a", danger="#ff7070", cover_a="#2b2d33", cover_b="#1c1d21",
-    sec_library="#7db8ff", sec_playlists="#f59bc2", sec_folders="#6fd6a4",
+    bg="#1d1e21", sidebar="#151618", bar="#232428", elevated="#282a2e", border="#33353a", hover="#2d2f34",
+    row_alt="#202124", text="#cccccf", muted="#989ba3", faint="#62656e",
+    accent="#e1a956", accent_hover="#e9bc78", accent_text="#e1a956", accent_soft="#3e362a", on_accent="#1f1402",
+    warning="#f0a47d", warning_soft="#3b312e", success="#6bc89a", danger="#f17e7e", cover_a="#303238", cover_b="#222327",
+    sec_library="#82ace0", sec_playlists="#dc98b5", sec_folders="#74ba98",
 )
 
 ALUMINIUM = Palette(
     name="Aluminio", dark=False,
-    bg="#fafafb", sidebar="#f0f1f3", bar="#f5f6f7", elevated="#ffffff", border="#e1e3e7", hover="#e5e7eb",
-    row_alt="#f4f5f7", text="#17181b", muted="#5b5f69", faint="#a6aab2",
-    accent="#d97706", accent_hover="#ec8a12", accent_text="#a15800", accent_soft="#f4e4d1", on_accent="#1f1300",
-    warning="#b4401c", warning_soft="#f3e7e5", success="#1c7a4b", danger="#c42b3a", cover_a="#e6e7eb", cover_b="#d2d4da",
-    sec_library="#1c56b8", sec_playlists="#a01f6f", sec_folders="#106a4a",
+    bg="#f4f4f5", sidebar="#eaebed", bar="#eff0f1", elevated="#f9f9f9", border="#dbdde1", hover="#dfe1e5",
+    row_alt="#eeeff1", text="#36373a", muted="#5b5f69", faint="#a6aab2",
+    accent="#c67619", accent_hover="#d88826", accent_text="#93570e", accent_soft="#eee2d6", on_accent="#1f1300",
+    warning="#a94627", warning_soft="#ede4e2", success="#23734b", danger="#b93643", cover_a="#e0e1e5", cover_b="#cdcfd5",
+    sec_library="#3a5e9a", sec_playlists="#873869", sec_folders="#215945",
 )
 
 MIDNIGHT = Palette(
     name="Medianoche", dark=True,
-    bg="#13151e", sidebar="#0d0f16", bar="#181b26", elevated="#1e2130", border="#2a2e40", hover="#232738",
-    row_alt="#161822", text="#eaecf6", muted="#a2a7bf", faint="#5d6279",
-    accent="#8b93ff", accent_hover="#a5abff", accent_text="#9ca3ff", accent_soft="#2b2e4b", on_accent="#0e1133",
-    warning="#ffad73", warning_soft="#392d2c", success="#52d6a4", danger="#ff7d8c", cover_a="#2a2f46", cover_b="#1a1d2b",
-    sec_library="#5fd2e8", sec_playlists="#f7a0c6", sec_folders="#f2c062",
+    bg="#191b24", sidebar="#13151c", bar="#1e212b", elevated="#242735", border="#2f3345", hover="#282c3d",
+    row_alt="#1c1e28", text="#c9cbd4", muted="#979cb3", faint="#5d6279",
+    accent="#8d94f1", accent_hover="#a4a9f4", accent_text="#9ca2f3", accent_soft="#2d3047", on_accent="#0e1133",
+    warning="#f1af81", warning_soft="#373031", success="#5fc9a1", danger="#f28a96", cover_a="#2f344b", cover_b="#202330",
+    sec_library="#6ab7c6", sec_playlists="#df9cb9", sec_folders="#cfad6d",
 )
 
 AURORA = Palette(
     name="Aurora", dark=True,
-    bg="#121816", sidebar="#0c1110", bar="#171f1c", elevated="#1d2623", border="#29342f", hover="#222d29",
-    row_alt="#151b19", text="#e8f0ec", muted="#9fb2ab", faint="#5a6b65",
-    accent="#3ecf8e", accent_hover="#62dca4", accent_text="#4fd89b", accent_soft="#1a392c", on_accent="#032112",
-    warning="#ffb070", warning_soft="#383024", success="#8ee6b4", danger="#ff8080", cover_a="#24332e", cover_b="#18201d",
-    sec_library="#94b6ff", sec_playlists="#f7a3bb", sec_folders="#f0c46c",
+    bg="#181e1c", sidebar="#121716", bar="#1d2522", elevated="#232b28", border="#2e3934", hover="#28322e",
+    row_alt="#1b211f", text="#c7cecb", muted="#94a6a0", faint="#5a6b65",
+    accent="#48bd89", accent_hover="#68cc9e", accent_text="#57c795", accent_soft="#20392f", on_accent="#032112",
+    warning="#f1b27e", warning_soft="#36332a", success="#97ddb5", danger="#f28d8d", cover_a="#293833", cover_b="#1e2623",
+    sec_library="#93ade4", sec_playlists="#df9eb1", sec_folders="#cfb174",
 )
 
 WINE = Palette(
     name="Burdeos", dark=True,
-    bg="#191416", sidebar="#120e10", bar="#1f191c", elevated="#261f22", border="#362b30", hover="#2d2428",
-    row_alt="#1c1619", text="#f3ebee", muted="#b9a7ae", faint="#6d5c63",
-    accent="#ff7d8e", accent_hover="#ff99a6", accent_text="#ff8d9c", accent_soft="#42272c", on_accent="#2b0911",
-    warning="#ffb27a", warning_soft="#3e2d26", success="#6fdcae", danger="#ff8a7a", cover_a="#3a2a31", cover_b="#221a1e",
-    sec_library="#7fd3d9", sec_playlists="#d6a8ff", sec_folders="#f2c66c",
+    bg="#1f1a1c", sidebar="#181416", bar="#251f22", elevated="#2b2528", border="#3b3035", hover="#32292d",
+    row_alt="#221c1f", text="#d1cacc", muted="#ad9ca2", faint="#6d5c63",
+    accent="#ef8190", accent_hover="#f299a5", accent_text="#f18f9c", accent_soft="#422c30", on_accent="#2b0911",
+    warning="#f2b487", warning_soft="#3d302b", success="#7ad1ac", danger="#f29487", cover_a="#3f2f36", cover_b="#282024",
+    sec_library="#81bbbf", sec_playlists="#c7a2e8", sec_folders="#d1b374",
 )
 
 HIGH_CONTRAST = Palette(
@@ -106,29 +106,29 @@ HIGH_CONTRAST = Palette(
 
 OCEAN = Palette(
     name="Océano", dark=False,
-    bg="#f8fafc", sidebar="#edf2f7", bar="#f2f6fa", elevated="#ffffff", border="#dae2eb", hover="#dfe7f0",
-    row_alt="#f2f5f9", text="#0f1a2a", muted="#4a5a70", faint="#9dacbe",
-    accent="#0067b8", accent_hover="#00579c", accent_text="#0062ad", accent_soft="#d3e4f2", on_accent="#ffffff",
-    warning="#b4401c", warning_soft="#f1e7e6", success="#16794a", danger="#c42b3a", cover_a="#dce7f2", cover_b="#c5d5e6",
-    sec_library="#5338b8", sec_playlists="#a8205a", sec_folders="#814d00",
+    bg="#f2f4f6", sidebar="#e7ecf1", bar="#ecf0f4", elevated="#f9f9f9", border="#d5dce5", hover="#d9e1ea",
+    row_alt="#eceff3", text="#2f3947", muted="#4a5a70", faint="#9dacbe",
+    accent="#1165a7", accent_hover="#0e558e", accent_text="#10609d", accent_soft="#d2e0eb", on_accent="#ffffff",
+    warning="#a94627", warning_soft="#ebe4e3", success="#1d724a", danger="#b93643", cover_a="#d6e1ec", cover_b="#c0d0e0",
+    sec_library="#6150a0", sec_playlists="#8e3a5e", sec_folders="#684819",
 )
 
 SAND = Palette(
     name="Arena", dark=False,
-    bg="#fbf8f3", sidebar="#f2ebe1", bar="#f7f2ea", elevated="#fffdfa", border="#e6dccf", hover="#ebe1d3",
-    row_alt="#f6f1e9", text="#2a2018", muted="#6a5a49", faint="#b4a592",
-    accent="#b5441e", accent_hover="#983817", accent_text="#a43d1a", accent_soft="#f0ddd3", on_accent="#ffffff",
-    warning="#a8521a", warning_soft="#f3e7dd", success="#3d7a32", danger="#b8292f", cover_a="#efe4d4", cover_b="#dfd0ba",
-    sec_library="#2a56a0", sec_playlists="#8f2a6e", sec_folders="#41661a",
+    bg="#f5f2ed", sidebar="#ece5db", bar="#f1ece4", elevated="#f9f7f4", border="#e0d6ca", hover="#e5dbce",
+    row_alt="#f0ebe3", text="#463d36", muted="#6a5a49", faint="#b4a592",
+    accent="#a74b2c", accent_hover="#8c3e23", accent_text="#984326", accent_soft="#eadbd2", on_accent="#ffffff",
+    warning="#9d5425", warning_soft="#ede4db", success="#407336", danger="#ad3439", cover_a="#e9decf", cover_b="#d9cbb5",
+    sec_library="#405c8a", sec_playlists="#7c3d67", sec_folders="#415828",
 )
 
 LAVENDER = Palette(
     name="Lavanda", dark=False,
-    bg="#fbfaff", sidebar="#f1eefa", bar="#f6f4fd", elevated="#ffffff", border="#e2ddf2", hover="#e7e2f6",
-    row_alt="#f6f4fd", text="#1d1830", muted="#5c5475", faint="#aaa3c2",
-    accent="#6847dc", accent_hover="#5735c7", accent_text="#5f3ed2", accent_soft="#e5dffa", on_accent="#ffffff",
-    warning="#b4401c", warning_soft="#f4e7e8", success="#1c7a4b", danger="#c42b3a", cover_a="#e8e2fa", cover_b="#d6cdf2",
-    sec_library="#09675f", sec_playlists="#ad2059", sec_folders="#7d4d00",
+    bg="#f5f4f9", sidebar="#ebe8f4", bar="#f0eef7", elevated="#f9f9f9", border="#dcd7ec", hover="#e1dcf0",
+    row_alt="#f0eef7", text="#3b374c", muted="#5c5475", faint="#aaa3c2",
+    accent="#6f54cf", accent_hover="#5e42ba", accent_text="#664bc5", accent_soft="#e2def3", on_accent="#ffffff",
+    warning="#a94627", warning_soft="#eee4e6", success="#23734b", danger="#b93643", cover_a="#e2dcf4", cover_b="#d1c8ec",
+    sec_library="#1b5550", sec_playlists="#923b5e", sec_folders="#654718",
 )
 
 # Clave guardada en las preferencias → tema. «auto», «light» y «dark» se conservan por compatibilidad.

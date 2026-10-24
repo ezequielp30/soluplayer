@@ -2,6 +2,12 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.8.1 — 2026-10-24
+
+- **Temas más suaves a la vista** (a pedido del usuario): texto menos brillante (≈ 10:1 en lugar de ≈ 15:1,
+  sigue por encima del 7:1 recomendado), oscuros un poco menos negros, claros sin blanco puro, acentos y
+  colores de sección menos saturados y píldoras más tenues. *Alto contraste* no cambia (es el de accesibilidad).
+
 ## 1.8.0 — 2026-10-24
 
 - **Temas rediseñados:** 9 temas (5 oscuros, 4 claros) con fondos casi neutros, un acento propio y mejor

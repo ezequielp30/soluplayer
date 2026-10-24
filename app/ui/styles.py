@@ -79,7 +79,7 @@ def _mix(color: str, base: str, amount: float) -> str:
 
 
 def build_stylesheet(p: Palette) -> str:
-    soft = 0.14 if p.dark else 0.10  # intensidad de la píldora de los títulos de sección
+    soft = 0.10 if p.dark else 0.08  # intensidad de la píldora de los títulos de sección
     return _arrow_rules(p) + f"""
 * {{
     font-family: {FONT};

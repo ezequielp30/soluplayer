@@ -37,7 +37,7 @@ for key, p in THEMES.items():
         if r < need:
             bad.append(f"{fg}/{bg} {r:.2f}<{need}")
     for sec in ("sec_library", "sec_playlists", "sec_folders"):  # título sobre su píldora
-        pill = _mix(getattr(p, sec), p.sidebar, 0.14 if p.dark else 0.10)
+        pill = _mix(getattr(p, sec), p.sidebar, 0.10 if p.dark else 0.08)
         if ratio(getattr(p, sec), pill) < 4.5:
             bad.append(f"{sec}/píldora {ratio(getattr(p, sec), pill):.2f}<4.5")
     results.append(not bad)
