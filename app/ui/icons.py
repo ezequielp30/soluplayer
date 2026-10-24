@@ -79,6 +79,19 @@ _SHAPES: dict[str, tuple[str, str]] = {
         '<path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>'
         '<path d="M12 9v4"/><path d="M12 17h.01"/>',
     ),
+    # Títulos de sección de la barra lateral (distintos de los iconos de cada fila).
+    "library": (_STROKE, '<path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/>'),
+    "playlists": (
+        _STROKE,
+        '<path d="M3 6h14"/><path d="M3 12h8"/><path d="M3 18h7"/>'
+        '<path d="M18 20.5C15 18.6 13.5 17 13.5 15.2c0-1.4 1-2.4 2.3-2.4.9 0 1.6.4 2.2 1.2.6-.8 1.3-1.2 2.2-1.2 1.3 0 2.3 1 '
+        '2.3 2.4 0 1.8-1.5 3.4-4.5 5.3z"/>',
+    ),
+    "folder_open": (
+        _STROKE,
+        '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5'
+        'a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.69.9H18a2 2 0 0 1 2 2v2"/>',
+    ),
     "folder": (
         _STROKE,
         '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13'

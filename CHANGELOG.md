@@ -2,6 +2,15 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.8.0 — 2026-10-24
+
+- **Temas rediseñados:** 9 temas (5 oscuros, 4 claros) con fondos casi neutros, un acento propio y mejor
+  jerarquía entre barra lateral, paneles y selección. *Vino* pasa a llamarse *Burdeos*; *Neón* y *Vúmetro
+  verde* se retiran (quien los usaba pasa a *Medianoche* y *Aurora*). Aluminio cumple ahora el contraste
+  sin excepciones.
+- **Barra lateral:** Biblioteca, Playlists y Carpetas tienen cada una su color e icono, adaptados a cada
+  tema; la fila elegida lleva una marca del color del acento.
+
 ## 1.7.1 — 2026-10-24
 
 - **Ecualizador sin límite de duración:** los archivos de más de 30 minutos ya no suenan sin ecualizar. Su

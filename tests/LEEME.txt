@@ -18,7 +18,7 @@ Principales:
   eq_dsp_test      mide el ecualizador con señales de prueba
   eq_player_test   motor de reproducción con ecualizador (salida de audio real, en silencio)
   eq_ui_test       ecualizador dentro del programa
-  theme_contrast_test  contraste de los 11 temas
+  theme_contrast_test  contraste de los 9 temas (y de los títulos de sección)
   menus_test       menús leídos de assets\menus.ui (editor gráfico)
   fixes_test       cada fallo encontrado por la revisión de los agentes, reproducido y corregido
   cleanup_test     quitar automáticamente canciones y carpetas que ya no existen

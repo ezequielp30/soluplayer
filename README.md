@@ -242,9 +242,12 @@ buscar música nueva en ella, expandir/contraer. El botón de la sección import
 
 ### Temas
 
-**Archivo → Preferencias… → pestaña Tema**: 11 temas con una miniatura de la ventana en sus colores —
-*Grafito*, *Aluminio*, *Medianoche*, *Aurora*, *Vino*, *Neón*, *Vúmetro verde*, *Alto contraste*, *Océano*,
-*Arena* y *Lavanda* — más *Automático* (Grafito o Aluminio según el modo claro/oscuro de Windows). Al
+**Archivo → Preferencias… → pestaña Tema**: 9 temas con una miniatura de la ventana en sus colores —
+oscuros *Grafito*, *Medianoche*, *Aurora*, *Burdeos* y *Alto contraste*; claros *Aluminio*, *Océano*, *Arena*
+y *Lavanda* — más *Automático* (Grafito o Aluminio según el modo claro/oscuro de Windows). Fondos casi
+neutros y un acento propio en cada tema. En la barra lateral, *Biblioteca*, *Playlists* y *Carpetas* tienen
+cada una su color e icono, adaptados a cada tema. (Quien tenía *Neón* o *Vúmetro verde*, de versiones
+anteriores, pasa a *Medianoche* o *Aurora*.) Al
 elegir uno se aplica al instante, sin reiniciar; *Guardar* lo deja para las próximas veces y *Cancelar*
 vuelve al anterior. La disposición de la ventana es la misma en todos: solo cambian los colores. Todos
 cumplen el contraste recomendado (WCAG) para texto; lo comprueba `tests\theme_contrast_test.py`.

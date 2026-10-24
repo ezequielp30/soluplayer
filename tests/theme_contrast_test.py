@@ -1,7 +1,9 @@
 """Contraste de todos los temas (WCAG 2.x): texto ≥ 7:1, texto secundario y acento como texto ≥ 4.5:1,
-texto sobre el botón de acento ≥ 4.5:1, avisos legibles (≥ 4.5:1) y bordes/selección distinguibles."""
+texto sobre el botón de acento ≥ 4.5:1, avisos legibles (≥ 4.5:1), títulos de sección de la barra lateral
+≥ 4.5:1 (sobre la barra y sobre su píldora) y el botón de acento distinguible del fondo."""
 import sys
 sys.path.insert(0, r"D:\reproductor-musica")
+from app.ui.styles import _mix
 from app.ui.theme import THEMES
 
 
@@ -25,16 +27,19 @@ rules = [
     ("on_accent", "accent", 4.5), ("on_accent", "accent_hover", 4.5),
     ("danger", "bg", 4.5), ("success", "bg", 4.5), ("warning", "bg", 4.5),
     ("accent", "bg", 3.0),  # el botón de acento se distingue del fondo (componente gráfico)
+    ("sec_library", "sidebar", 4.5), ("sec_playlists", "sidebar", 4.5), ("sec_folders", "sidebar", 4.5),
 ]
 results = []
 for key, p in THEMES.items():
     bad = []
     for fg, bg, need in rules:
         r = ratio(getattr(p, fg), getattr(p, bg))
-        if r < need and not (key == "aluminio" and (fg, bg) == ("accent", "bg")):
-            # Excepción conocida: el ámbar de Aluminio (el tema claro original) sobre blanco da 2:1; el
-            # botón se reconoce por su texto (9:1). Se conserva para no cambiar la esencia del diseño.
+        if r < need:
             bad.append(f"{fg}/{bg} {r:.2f}<{need}")
+    for sec in ("sec_library", "sec_playlists", "sec_folders"):  # título sobre su píldora
+        pill = _mix(getattr(p, sec), p.sidebar, 0.14 if p.dark else 0.10)
+        if ratio(getattr(p, sec), pill) < 4.5:
+            bad.append(f"{sec}/píldora {ratio(getattr(p, sec), pill):.2f}<4.5")
     results.append(not bad)
     print(("  OK  " if not bad else " FALLA"), f"{p.name:15s}", "; ".join(bad))
 print(f"\nRESULTADO: {sum(results)}/{len(results)} temas con buen contraste")

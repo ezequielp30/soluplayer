@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QSizePolicy,
     QSplitter,
     QToolButton,
     QTreeWidget,
@@ -65,7 +66,8 @@ class Sidebar(QFrame):
         layout.setContentsMargins(10, 10, 10, 8)
         layout.setSpacing(4)
 
-        layout.addWidget(self._section_label("Biblioteca"))
+        self._section_glyphs: list[QLabel] = []
+        layout.addWidget(self._section_label("Biblioteca", "library", "library"), 0, Qt.AlignmentFlag.AlignLeft)
         self.library_list = self._make_list()
         self.library_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for kind, label, icon_name in LIBRARY_VIEWS:
@@ -75,7 +77,7 @@ class Sidebar(QFrame):
             self.library_list.addItem(item)
         self.library_list.setFixedHeight(ITEM_HEIGHT * len(LIBRARY_VIEWS) + 4 * len(LIBRARY_VIEWS))
         layout.addWidget(self.library_list)
-        layout.addSpacing(6)
+        layout.addSpacing(8)
 
         # Playlists y Carpetas comparten el espacio restante; el divisor permite repartirlo.
         sections = QSplitter(Qt.Orientation.Vertical)
@@ -88,7 +90,7 @@ class Sidebar(QFrame):
         playlists_layout.setContentsMargins(0, 0, 0, 0)
         playlists_layout.setSpacing(4)
         self.btn_new = self._header_button("Nueva playlist", self.create_playlist_requested.emit)
-        playlists_layout.addLayout(self._section_header("Playlists", self.btn_new))
+        playlists_layout.addLayout(self._section_header("Playlists", "playlists", "playlists", self.btn_new))
 
         self.playlist_list = self._make_list()
         self.playlist_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -99,7 +101,7 @@ class Sidebar(QFrame):
         playlists_layout.addWidget(self.playlist_list, 1)
 
         self.empty_playlists = QLabel("Aún no tienes playlists.\nPulsa + para crear una.")
-        self.empty_playlists.setObjectName("SectionLabel")
+        self.empty_playlists.setObjectName("SidebarHint")
         self.empty_playlists.setWordWrap(True)
         playlists_layout.addWidget(self.empty_playlists)
         # Siempre caben al menos VISIBLE_PLAYLISTS playlists sin desplazarse (encabezado + filas con su margen).
@@ -113,7 +115,7 @@ class Sidebar(QFrame):
         folders_layout.setContentsMargins(0, 0, 0, 0)
         folders_layout.setSpacing(4)
         self.btn_add_folder = self._header_button("Importar carpeta…", self.import_folder_requested.emit, "folder_plus")
-        folders_layout.addLayout(self._section_header("Carpetas", self.btn_add_folder))
+        folders_layout.addLayout(self._section_header("Carpetas", "folders", "folder_open", self.btn_add_folder))
 
         self.folder_tree = QTreeWidget()
         self.folder_tree.setHeaderHidden(True)
@@ -132,7 +134,7 @@ class Sidebar(QFrame):
         folders_layout.addWidget(self.folder_tree, 1)
 
         self.empty_folders = QLabel("Las carpetas de tu música aparecerán aquí al importarla.")
-        self.empty_folders.setObjectName("SectionLabel")
+        self.empty_folders.setObjectName("SidebarHint")
         self.empty_folders.setWordWrap(True)
         folders_layout.addWidget(self.empty_folders)
         folders_panel.setMinimumHeight(self.btn_add_folder.sizeHint().height() + 4 + ITEM_HEIGHT + 2)
@@ -159,16 +161,30 @@ class Sidebar(QFrame):
 
     # ------------------------------------------------------------------ construcción
 
-    @staticmethod
-    def _section_label(text: str) -> QLabel:
-        label = QLabel(text.upper())
-        label.setObjectName("SectionLabel")
-        return label
+    def _section_label(self, text: str, section: str, icon_name: str) -> QFrame:
+        """Título de sección: icono y texto en el color propio de la sección, sobre una píldora tenue."""
+        frame = QFrame()
+        frame.setObjectName("SectionHeader")
+        frame.setProperty("section", section)
+        frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(8, 4, 10, 4)
+        row.setSpacing(7)
+        glyph = QLabel()
+        glyph.setProperty("icon_name", icon_name)
+        glyph.setProperty("role", f"sec_{section}")
+        glyph.setPixmap(icon(icon_name, f"sec_{section}", 15).pixmap(15, 15))
+        title = QLabel(text.upper())
+        title.setObjectName("SectionTitle")
+        row.addWidget(glyph)
+        row.addWidget(title)
+        self._section_glyphs.append(glyph)
+        return frame
 
-    def _section_header(self, text: str, button: QToolButton) -> QHBoxLayout:
+    def _section_header(self, text: str, section: str, icon_name: str, button: QToolButton) -> QHBoxLayout:
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(self._section_label(text))
+        header.addWidget(self._section_label(text, section, icon_name))
         header.addStretch(1)
         header.addWidget(button)
         return header
@@ -235,6 +251,8 @@ class Sidebar(QFrame):
             self.library_list.item(row).setIcon(icon(icon_name, MUTED, 18))
         for button in (self.btn_new, self.btn_add_folder):
             button.setIcon(icon(button.property("icon_name"), MUTED, 16))
+        for glyph in self._section_glyphs:
+            glyph.setPixmap(icon(glyph.property("icon_name"), glyph.property("role"), 15).pixmap(15, 15))
         for row in range(self.playlist_list.count()):
             self.playlist_list.item(row).setIcon(icon("playlist", MUTED, 18))
         for item in self._folder_items():

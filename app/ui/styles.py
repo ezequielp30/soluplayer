@@ -70,7 +70,16 @@ QComboBox::drop-down {{ border: none; width: 26px; subcontrol-origin: padding; s
     return rules.replace("{{", "{").replace("}}", "}")
 
 
+def _mix(color: str, base: str, amount: float) -> str:
+    """«color» sobre «base» con opacidad «amount», como hex (QSS no mezcla colores por sí mismo)."""
+    a, b = color.lstrip("#"), base.lstrip("#")
+    return "#" + "".join(
+        f"{round(int(a[i:i + 2], 16) * amount + int(b[i:i + 2], 16) * (1 - amount)):02x}" for i in (0, 2, 4)
+    )
+
+
 def build_stylesheet(p: Palette) -> str:
+    soft = 0.14 if p.dark else 0.10  # intensidad de la píldora de los títulos de sección
     return _arrow_rules(p) + f"""
 * {{
     font-family: {FONT};
@@ -161,7 +170,7 @@ QLineEdit#SearchField {{
 QSlider {{ min-height: 18px; }}
 QSlider::groove:horizontal {{
     height: 4px;
-    background: {p.border};
+    background: {p.border if p.dark else _mix(p.faint, p.bg, 0.55)};
     border-radius: 2px;
 }}
 QSlider::sub-page:horizontal {{
@@ -203,14 +212,19 @@ QSlider#EqSlider::handle:vertical:disabled {{ background: {p.faint}; }}
 /* ---------- barra lateral ---------- */
 #Sidebar {{
     background: {p.sidebar};
-    border-right: 1px solid {p.border};
+    border-right: 1px solid {p.sidebar if p.dark else p.border};
 }}
-#SectionLabel {{
-    color: {p.muted};
-    font-size: 8pt;
-    font-weight: 600;
-    padding-left: 8px;
-}}
+/* Títulos de sección: cada uno con su color e icono, sobre una píldora tenue del mismo color. */
+#SectionHeader {{ border-radius: 7px; }}
+#SectionHeader[section="library"] {{ background: {_mix(p.sec_library, p.sidebar, soft)}; }}
+#SectionHeader[section="playlists"] {{ background: {_mix(p.sec_playlists, p.sidebar, soft)}; }}
+#SectionHeader[section="folders"] {{ background: {_mix(p.sec_folders, p.sidebar, soft)}; }}
+#SectionHeader QLabel {{ background: transparent; }}
+#SectionTitle {{ font-size: 8pt; font-weight: 700; }}
+#SectionHeader[section="library"] #SectionTitle {{ color: {p.sec_library}; }}
+#SectionHeader[section="playlists"] #SectionTitle {{ color: {p.sec_playlists}; }}
+#SectionHeader[section="folders"] #SectionTitle {{ color: {p.sec_folders}; }}
+#SidebarHint {{ color: {p.muted}; font-size: 8.5pt; padding-left: 8px; }}
 #Sidebar QListWidget, #Sidebar QTreeWidget {{
     background: transparent;
     border: none;
@@ -230,6 +244,8 @@ QSlider#EqSlider::handle:vertical:disabled {{ background: {p.faint}; }}
     color: {p.text};
     font-weight: 600;
 }}
+/* En las listas, la fila elegida lleva además una marca del acento a la izquierda. */
+#Sidebar QListWidget::item:selected {{ border-left: 3px solid {p.accent}; padding-left: 3px; }}
 #Sidebar QTreeWidget {{ show-decoration-selected: 0; }}
 /* La sangría de la fila seleccionada con el fondo de la barra: se resalta la fila como un solo bloque
    (con «transparent» Qt la pinta igual con el color de selección). */
@@ -339,7 +355,7 @@ QProgressBar::chunk {{ background: {p.accent}; border-radius: 4px; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
-    background: {p.border};
+    background: {p.border if p.dark else _mix(p.faint, p.bg, 0.6)};
     border-radius: 3px;
     min-height: 32px;
     min-width: 32px;
