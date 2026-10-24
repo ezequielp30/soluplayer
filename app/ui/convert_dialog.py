@@ -1,0 +1,242 @@
+"""Diálogo «Convertir a MP3»: busca en la biblioteca los archivos que no son MP3 y los convierte."""
+
+from __future__ import annotations
+
+import os
+from typing import Callable
+
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .. import converter
+from ..file_operations import FileOperations
+from ..metadata import audio_quality
+from ..models import Track
+from ..utils import plural
+from . import theme
+from .dialogs import ask, note_label, tidy_table
+from .worker_runner import WorkerRunner
+
+COL_USE, COL_SONG, COL_FORMAT, COL_NOW, COL_MP3, COL_STATE = range(6)
+_TRACK = Qt.ItemDataRole.UserRole
+
+
+class ConvertDialog(QDialog):
+    def __init__(
+        self,
+        ops: FileOperations,
+        tracks_provider: Callable[[], list[Track]],
+        parent: QWidget | None = None,
+        open_history: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Convertir a MP3")
+        self.resize(1100, 620)
+        self._ops = ops
+        self._tracks_provider = tracks_provider
+        self._open_history = open_history
+
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            "Busca en tu biblioteca las canciones que no son MP3 (WMA, M4A, FLAC, WAV…) y las convierte a MP3 con "
+            "<b>LAME</b>, el codificador de referencia. Se usa el <b>doble de kbps que el original</b> (entre 128 y 320; "
+            "320 para formatos sin pérdida, menos si el original es mono o de baja frecuencia) para no añadir pérdida "
+            "audible. Título, artista, álbum, género y carátula pasan al MP3, y las playlists lo usan automáticamente."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        layout.addWidget(note_label(
+            "Convertir no puede mejorar la calidad que ya tiene un archivo (un WMA de 20 kbps no sonará mejor). "
+            f"Los originales no se borran: se guardan en «{converter.ORIGINALS_FOLDER_NAME}» y la conversión se "
+            "puede deshacer en Herramientas → Historial de cambios en archivos."
+        ))
+
+        progress_row = QHBoxLayout()
+        self.progress = QProgressBar()
+        self.progress.setMaximumHeight(8)
+        self.status = QLabel()
+        self.btn_stop = QPushButton("Detener")
+        progress_row.addWidget(self.progress, 1)
+        progress_row.addWidget(self.status, 3)
+        progress_row.addWidget(self.btn_stop)
+        layout.addLayout(progress_row)
+        self.runner = WorkerRunner(self, self.progress, self.status, self.btn_stop)
+        self.runner.busy_changed.connect(self._update_buttons)
+
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["", "Canción", "Formato", "Calidad actual", "MP3 resultante", "Estado"])
+        tidy_table(self.table)
+        self.table.verticalHeader().hide()
+        self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for col, width in ((COL_USE, 30), (COL_SONG, 380), (COL_FORMAT, 70), (COL_NOW, 180), (COL_MP3, 120)):
+            header.resizeSection(col, width)
+        header.setSectionResizeMode(COL_STATE, QHeaderView.ResizeMode.Stretch)
+        self.table.itemChanged.connect(self._update_buttons)
+        layout.addWidget(self.table, 1)
+
+        bottom = QHBoxLayout()
+        self.summary = QLabel()
+        bottom.addWidget(self.summary, 1)
+        self.btn_history = QPushButton("Historial y deshacer…")
+        self.btn_history.setToolTip("Deshacer una conversión: los originales vuelven a su sitio")
+        self.btn_history.clicked.connect(self._history)
+        self.btn_history.setVisible(open_history is not None)
+        self.btn_convert = QPushButton("Convertir")
+        self.btn_convert.setObjectName("PrimaryButton")
+        self.btn_convert.clicked.connect(self._convert)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(self.reject)
+        bottom.addWidget(self.btn_history)
+        bottom.addWidget(self.btn_convert)
+        bottom.addWidget(close)
+        layout.addLayout(bottom)
+
+        self.scan()
+
+    # ------------------------------------------------------------------ búsqueda
+
+    def scan(self) -> None:
+        """Busca en la biblioteca los archivos que no son MP3."""
+        tracks = sorted(
+            (t for t in self._tracks_provider() if os.path.splitext(t.path)[1].lower() != ".mp3"),
+            key=lambda t: t.path.lower(),
+        )
+        self.table.blockSignals(True)
+        self.table.setRowCount(len(tracks))
+        size = 0
+        for row, track in enumerate(tracks):
+            ext = os.path.splitext(track.path)[1].lstrip(".").upper()
+            use = QTableWidgetItem()
+            use.setData(_TRACK, track)
+            try:
+                # Se vuelve a mirar el disco: el archivo pudo desaparecer después de cargar la biblioteca.
+                file_size = os.path.getsize(track.path) if track.available else None
+            except OSError:
+                file_size = None
+            if file_size is not None:
+                use.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                use.setCheckState(Qt.CheckState.Checked)
+                quality = audio_quality(track.path)  # se lee una sola vez por archivo
+                now = quality.text()
+                result = f"MP3 {converter.target_bitrate(track.path, quality)} kbps"
+                state = "Pendiente"
+                size += file_size
+            else:
+                use.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                now, result, state = "—", "—", "El archivo no se encuentra"
+            for col, value in enumerate([use, f"{track.title} — {track.artist}", ext, now, result, state]):
+                item = value if isinstance(value, QTableWidgetItem) else QTableWidgetItem(value)
+                if col == COL_SONG:
+                    item.setToolTip(track.path)
+                self.table.setItem(row, col, item)
+        self.table.blockSignals(False)
+        self.summary.setText(
+            f"Archivos que no son MP3: <b>{len(tracks)}</b> ({size / 1_048_576:.0f} MB)" if tracks
+            else "Todas las canciones de la biblioteca ya son MP3."
+        )
+        self._update_buttons()
+
+    def _checked(self) -> list[tuple[int, Track]]:
+        rows = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, COL_USE)
+            if item.flags() & Qt.ItemFlag.ItemIsUserCheckable and item.checkState() == Qt.CheckState.Checked:
+                rows.append((row, item.data(_TRACK)))
+        return rows
+
+    def _update_buttons(self, *_args) -> None:
+        busy = self.runner.busy
+        count = len(self._checked())
+        self.btn_convert.setText(f"Convertir las marcadas ({count})")
+        self.btn_convert.setEnabled(count > 0 and not busy)
+        self.btn_history.setEnabled(not busy)
+
+    # ------------------------------------------------------------------ convertir
+
+    def _convert(self) -> None:
+        checked = self._checked()
+        if not checked:
+            return
+        tracks = [t for _, t in checked]
+        session = converter.new_session(tracks, self._ops.db.known_path_keys())
+        if ask(
+            self,
+            "Convertir a MP3",
+            f"¿Convertir {plural(len(tracks), 'canción', 'canciones')} a MP3?",
+            [("Convertir", QMessageBox.ButtonRole.AcceptRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Question,
+            f"Los originales se guardarán en:\n{session.originals_root}\n\n"
+            "La biblioteca y las playlists pasarán a usar los MP3. Se hace un respaldo de la biblioteca antes "
+            "y se puede deshacer en Herramientas → Historial de cambios en archivos.",
+        ) != 0:
+            return
+        if not self._ops.begin_conversion(session):
+            return
+        self._session = session
+        self._rows = [row for row, _ in checked]
+        self._ok = self._failed = 0
+        worker = converter.ConvertWorker(list(zip(session.items, tracks, strict=True)))
+        worker.converted.connect(self._on_converted)  # método @Slot: se ejecuta en el hilo principal
+        self.runner.start(worker, len(tracks), "Convirtiendo…", self._on_finished, label="Convirtiendo", modifies_files=True)
+
+    @Slot(int, str)
+    def _on_converted(self, index: int, error: str) -> None:
+        item = self._session.items[index]
+        row = self._rows[index]
+        state = self.table.item(row, COL_STATE)
+        if error:
+            self._failed += 1
+            state.setText(f"No se convirtió: {error}")
+            state.setForeground(theme.qcolor("danger"))
+            return
+        problem = self._ops.record_converted(item, self._session)
+        if problem:
+            self._failed += 1
+            state.setText(f"No se convirtió: {problem}")
+            state.setForeground(theme.qcolor("danger"))
+            return
+        self._ok += 1
+        state.setText("Convertida" + ("" if item.moved_to else " (el original quedó en su carpeta)"))
+        state.setForeground(theme.qcolor("success"))
+        self.table.item(row, COL_USE).setFlags(Qt.ItemFlag.ItemIsEnabled)
+
+    def _on_finished(self, cancelled: bool) -> None:
+        self._ops.finish_conversion(self._session)
+        text = f"Se {'convirtió' if self._ok == 1 else 'convirtieron'} {plural(self._ok, 'canción', 'canciones')} a MP3."
+        if self._failed:
+            text += f" {plural(self._failed, 'no se pudo convertir', 'no se pudieron convertir')} (el motivo está en la lista)."
+        if cancelled:
+            text = "Conversión detenida. " + text
+        self.status.setText(text)
+        self._update_buttons()
+        QMessageBox.information(
+            self, "Convertir a MP3",
+            text + "\n\nAhora también puedes subir el volumen de las que estén bajas en "
+            "Herramientas → Analizar y ajustar volumen.",
+        )
+
+    # ------------------------------------------------------------------ deshacer
+
+    def _history(self) -> None:
+        if self._open_history is not None:
+            self._open_history()
+            self.scan()
+
+    def reject(self) -> None:
+        if self.runner.request_close():
+            super().reject()

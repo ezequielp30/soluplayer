@@ -1,0 +1,30 @@
+Pruebas del Reproductor de Música
+==================================
+
+Cada archivo *_test.py se ejecuta por separado, desde la carpeta del proyecto:
+
+    .venv\Scripts\python.exe -u tests\menu_test.py
+
+Al final imprime «RESULTADO: N/N correctas». Usan carpetas temporales y otra carpeta de datos
+(MUSICPLAYER_DATA_DIR), así que no tocan tu biblioteca ni tu música.
+
+Excepción: loudness_ui_test.py y convert_test.py COPIAN algunas canciones reales de tu biblioteca a una
+carpeta temporal para probar con audio real (las originales no se modifican; la prueba lo comprueba).
+
+Principales:
+  menu_test        todas las opciones de menú (90 comprobaciones)
+  menus_test       menús leídos de assets\menus.ui (editor gráfico)
+  fixes_test       cada fallo encontrado por la revisión de los agentes, reproducido y corregido
+  cleanup_test     quitar automáticamente canciones y carpetas que ya no existen
+  step2_test       registro común, cierre inesperado, anotación de volumen en el MP3
+  step3_test       Historial, tareas en segundo plano, menús reorganizados
+  review_test      reunir repetidas en una carpeta y devolverlas
+  dup_test         buscar repetidas, quitar o enviar a la Papelera
+  convert_test     convertir a MP3 y deshacer
+  loudness_ui_test analizar y ajustar volumen, revertir
+  online_test      datos en internet (hace consultas reales)
+  theme_test, folders_test, titles_test, repair_test, mp3gain_test
+  exit_*_test      cerrar el programa con tareas en marcha
+  si_real          una sola copia del programa con varios procesos reales
+
+Un «Segmentation fault» después de «RESULTADO» es del cierre forzado de la prueba, no del programa.

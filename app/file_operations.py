@@ -1,0 +1,378 @@
+"""Coordinador de las operaciones que modifican archivos del usuario (sin ventanas).
+
+Reúne en un solo sitio lo que antes estaba repartido entre la ventana principal y los diálogos, y
+garantiza siempre el mismo orden:
+
+    respaldo de la biblioteca → soltar el archivo si está sonando → operar → actualizar la biblioteca → avisar
+
+Las ventanas solo piden confirmación y muestran el resultado. También arma el «Historial de cambios en
+archivos»: reuniones de repetidas, conversiones a MP3 y ajustes de volumen, con su forma de deshacerlos.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Callable
+
+from . import backup, converter, mp3gain, review_folder
+from .database import Database
+from .duplicates import DuplicateGroup
+from .file_ops import move_to_trash
+from .models import Track
+from .utils import plural
+
+log = logging.getLogger(__name__)
+
+KIND_REVIEW = "reunion"
+KIND_CONVERSION = "conversion"
+KIND_VOLUME = "volumen"
+
+# (id de la copia que se conserva, copias a quitar)
+DuplicatesPlan = list[tuple[int, list[Track]]]
+
+
+@dataclass
+class HistoryEntry:
+    kind: str
+    when: datetime | None
+    title: str
+    detail: str
+    status: str  # texto para el usuario
+    can_undo: bool
+    count: int = 0
+    session: object = None
+    location: str = ""  # carpeta relacionada («Abrir carpeta»)
+
+
+@dataclass
+class UndoOutcome:
+    restored: int
+    problems: list[str] = field(default_factory=list)
+    message: str = ""
+
+
+@dataclass
+class DuplicatesOutcome:
+    removed: int
+    trashed: list[str]
+    failed: dict[str, str]
+    trash: bool
+
+    @property
+    def message(self) -> str:
+        text = f"Se {'quitó' if self.removed == 1 else 'quitaron'} {plural(self.removed, 'copia', 'copias')} de la biblioteca"
+        if self.trash:
+            n = len(self.trashed)
+            text += f" y {plural(n, 'archivo')} {'se envió' if n == 1 else 'se enviaron'} a la Papelera."
+        else:
+            text += "."
+        if self.failed:
+            text += (
+                f" {plural(len(self.failed), 'archivo')} no se pudo enviar a la Papelera y se dejó en la biblioteca: "
+                + "; ".join(f"{os.path.basename(p)} ({r})" for p, r in self.failed.items())
+            )
+        return text
+
+
+@dataclass
+class GatherOutcome:
+    session: review_folder.Session
+    problems: list[review_folder.Skipped]
+    error: str = ""  # no se pudo actualizar la biblioteca: se devolvió todo
+
+
+def _when(text: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+
+
+class FileOperations:
+    def __init__(
+        self,
+        db: Database,
+        release_files: Callable[[set[int]], None],
+        forget_tracks: Callable[[set[int]], None],
+        on_changed: Callable[[], None],
+        confirm_without_backup: Callable[[], bool],
+    ) -> None:
+        """`release_files`: el reproductor suelta esas canciones si están sonando.
+        `forget_tracks`: el reproductor las quita de su cola (se van de la biblioteca).
+        `on_changed`: recargar la biblioteca y refrescar la ventana.
+        `confirm_without_backup`: preguntar si seguir cuando el respaldo previo falla."""
+        self.db = db
+        self._release = release_files
+        self._forget = forget_tracks
+        self._on_changed = on_changed
+        self._confirm_without_backup = confirm_without_backup
+
+    # ------------------------------------------------------------------ comunes
+
+    def _prepare(self, reason: str, track_ids: set[int]) -> bool:
+        """Respaldo y soltar los archivos. False si el usuario prefiere no seguir sin respaldo."""
+        if backup.create_backup(self.db.conn, reason) is None and not self._confirm_without_backup():
+            log.info("Operación cancelada: no se pudo crear el respaldo «%s»", reason)
+            return False
+        self._release(track_ids)
+        return True
+
+    def changed(self) -> None:
+        self._on_changed()
+
+    # ------------------------------------------------------------------ repetidas
+
+    def remove_duplicates(self, plan: DuplicatesPlan, trash: bool, library: list[Track]) -> DuplicatesOutcome | None:
+        """Quita copias repetidas de la biblioteca (y opcionalmente envía sus archivos a la Papelera)."""
+        remove_ids = {t.id for _, tracks in plan for t in tracks}
+        if not self._prepare("antes-de-repetidas", set()):
+            return None
+        # Si alguna copia está sonando, se descarga del reproductor para que Windows libere el archivo.
+        self._forget(remove_ids)
+        failed: dict[str, str] = {}
+        trashed: list[str] = []
+        if trash:
+            by_id = {t.id: t for t in library}
+            existing = []
+            for keep_id, tracks in plan:
+                keep = by_id.get(keep_id)
+                for track in tracks:
+                    if not os.path.exists(track.path):
+                        continue
+                    # El mismo archivo físico con otra ruta (unidad mapeada, enlace…): enviarlo
+                    # a la Papelera borraría también la copia que se conserva.
+                    if keep is not None and os.path.exists(keep.path) and os.path.samefile(track.path, keep.path):
+                        continue
+                    existing.append(track.path)
+            trashed, failed_list = move_to_trash(existing)
+            failed = dict(failed_list)
+        groups = [
+            (keep_id, [t.id for t in tracks if t.path not in failed])  # si no se pudo enviar, sigue en la biblioteca
+            for keep_id, tracks in plan
+        ]
+        removed = self.db.merge_duplicate_groups(groups)
+        self._on_changed()
+        return DuplicatesOutcome(removed, trashed, failed, trash)
+
+    def gather(self, session: review_folder.Session, groups: list[DuplicateGroup], skipped, report=None) -> GatherOutcome | None:
+        """Mueve las copias de cada canción repetida a la carpeta de revisión (plan ya confirmado)."""
+        if not self._prepare("antes-de-reunir-repetidas", {m.track_id for m in session.moves}):
+            return None
+        session, failed = review_folder.execute(session, groups, report)
+        try:
+            self.db.update_track_paths([(m.track_id, m.target) for m in session.moves])
+        except sqlite3.Error as exc:
+            # La biblioteca no se pudo actualizar: se devuelven los archivos para no dejar rutas rotas.
+            log.error("No se pudieron guardar las rutas nuevas (%s); se deshace la reunión", exc)
+            review_folder.undo(session)
+            self._on_changed()
+            return GatherOutcome(session, list(skipped) + failed, str(exc))
+        self._on_changed()
+        return GatherOutcome(session, list(skipped) + failed)
+
+    # ------------------------------------------------------------------ conversión a MP3
+
+    def begin_conversion(self, session: converter.ConversionSession) -> bool:
+        if not self._prepare("antes-de-convertir-a-mp3", {i.track_id for i in session.items}):
+            return False
+        session.save()  # el plan queda anotado antes de crear nada
+        return True
+
+    def record_converted(self, item: converter.Conversion, session: converter.ConversionSession) -> str:
+        """Un MP3 creado y verificado: la biblioteca pasa al MP3 y después el original se guarda aparte.
+        Primero la biblioteca: si no acepta la ruta nueva, el original no se toca y el MP3 recién creado
+        se quita. Devuelve «» si salió bien, o el motivo del fallo."""
+        try:
+            # Mismo id: las playlists siguen intactas.
+            self.db.update_track_paths([(item.track_id, item.mp3)])
+        except sqlite3.Error as exc:
+            log.error("La biblioteca no aceptó %s (%s); se quita el MP3 y el original queda igual", item.mp3, exc)
+            try:
+                os.remove(item.mp3)
+            except OSError:
+                pass
+            return "la biblioteca no pudo usar el MP3; el original quedó como estaba."
+        try:
+            converter.move_original(item, session)  # anota el destino ANTES de mover
+        except OSError as exc:
+            log.warning("No se pudo mover el original %s: %s", item.original, exc)
+        self.db.save_loudness([(item.track_id, None, None)])  # el volumen del MP3 se medirá de nuevo
+        self.db.set_norm_gains([(item.track_id, 0.0)])
+        item.done = True
+        session.save()
+        return ""
+
+    def finish_conversion(self, session: converter.ConversionSession) -> None:
+        session.status = converter.STATUS_DONE
+        session.save()
+        self._on_changed()
+
+    # ------------------------------------------------------------------ volumen
+
+    def begin_volume_adjust(self, track_ids: set[int]) -> bool:
+        return self._prepare("antes-de-ajustar-volumen", track_ids)
+
+    def record_volume(self, track: Track, steps: int, total_steps: int) -> None:
+        """Un MP3 ajustado. Se guarda en el acto: si algo se detiene a mitad, queda anotado."""
+        self.db.save_loudness([(
+            track.id,
+            track.loudness_lufs + steps * mp3gain.STEP_DB if track.loudness_lufs is not None else None,
+            track.true_peak_db + steps * mp3gain.STEP_DB if track.true_peak_db is not None else None,
+        )])
+        # El total sale de la anotación del propio archivo (fuente fiable), no de una suma en memoria.
+        self.db.set_norm_gains([(track.id, round(max(0, total_steps) * mp3gain.STEP_DB, 2))])
+
+    def save_measurements(self, rows: list[tuple[int, float | None, float | None]]) -> None:
+        if rows:
+            self.db.save_loudness(rows)
+
+    def recover_volume_from_file(self, track_id: int, annotated_steps: int) -> None:
+        """El MP3 dice que ya fue ajustado y la biblioteca no lo recuerda (respaldo restaurado,
+        canción reimportada…): se recupera desde el archivo, así se puede revertir."""
+        self.db.set_norm_gains([(track_id, round(annotated_steps * mp3gain.STEP_DB, 2))])
+
+    @staticmethod
+    def sync_volume_annotations(library: list[Track], playing_id: int | None) -> tuple[int, int]:
+        """Las canciones ajustadas (según la biblioteca) reciben la anotación dentro del propio MP3.
+        Solo agrega la que falta; no cambia el audio. Devuelve (escritas, pendientes)."""
+        written = failed = 0
+        for track in library:
+            if track.norm_gain_db <= 0 or not track.path.lower().endswith(".mp3") or not track.available:
+                continue
+            if track.id == playing_id:
+                continue  # está sonando: se hará en el próximo arranque
+            try:
+                if mp3gain.read_applied_steps(track.path) == 0:
+                    mp3gain.write_applied_steps(track.path, round(track.norm_gain_db / mp3gain.STEP_DB))
+                    written += 1
+            except Exception as exc:
+                failed += 1
+                log.warning("No se pudo anotar el ajuste de volumen en %s: %s", track.path, exc)
+        if written or failed:
+            log.info("Anotaciones de ajuste de volumen: %d escritas, %d pendientes", written, failed)
+        return written, failed
+
+    # ------------------------------------------------------------------ historial y deshacer
+
+    def history(self, library: list[Track]) -> list[HistoryEntry]:
+        """Todas las operaciones sobre archivos, de la más reciente a la más antigua."""
+        entries: list[HistoryEntry] = []
+        for s in review_folder.list_sessions():
+            moved = s.moved()
+            undone = s.status == review_folder.STATUS_UNDONE
+            entries.append(HistoryEntry(
+                KIND_REVIEW, _when(s.created_at), "Reunir repetidas para revisar",
+                f"{plural(len(moved) if not undone else len(s.moves), 'archivo')} → {s.destination}",
+                "Deshecha" if undone else ("Interrumpida" if s.status == review_folder.STATUS_RUNNING else "Hecha"),
+                can_undo=not undone and bool(moved), count=len(moved), session=s, location=s.destination,
+            ))
+        for s in converter.list_sessions():
+            pending = converter.pending_items(s)
+            undone = s.status == converter.STATUS_UNDONE
+            entries.append(HistoryEntry(
+                KIND_CONVERSION, _when(s.created_at), "Convertir a MP3",
+                f"{plural(len(pending) if not undone else len(s.items), 'canción', 'canciones')} · originales en {s.originals_root}",
+                "Deshecha" if undone else ("Interrumpida" if s.status == converter.STATUS_RUNNING else "Hecha"),
+                can_undo=not undone and bool(pending), count=len(pending), session=s, location=s.originals_root,
+            ))
+        adjusted = [t for t in library if t.norm_gain_db > 0]
+        if adjusted:
+            entries.append(HistoryEntry(
+                KIND_VOLUME, None, "Ajustar volumen (MP3, sin pérdida)",
+                f"{plural(len(adjusted), 'canción ajustada', 'canciones ajustadas')} · se revierten desde la ventana de volumen",
+                "Vigente", can_undo=True, count=len(adjusted),
+            ))
+        entries.sort(key=lambda e: (e.when is not None, e.when or datetime.min), reverse=True)
+        return entries
+
+    def undoable_track_ids(self) -> set[int]:
+        """Canciones que, aunque falte su archivo, deshacer una operación del Historial recuperaría: las de
+        una conversión cuyo original sigue guardado (deshacer lo devuelve y la biblioteca vuelve a él).
+        (Una reunión de repetidas no puede recuperar un archivo que ya no está en la carpeta de revisión.)"""
+        ids: set[int] = set()
+        for s in converter.list_sessions():
+            if s.status == converter.STATUS_UNDONE:
+                continue
+            for item in s.items:
+                if os.path.exists(item.original) or (item.moved_to and os.path.exists(item.moved_to)):
+                    ids.add(item.track_id)
+        return ids
+
+    def remove_missing(self, tracks: list[Track]) -> int:
+        """Quita de la biblioteca (y de las playlists) canciones cuyo archivo ya no existe. Con respaldo
+        previo; si el respaldo falla, no se quita nada. No toca ningún archivo de música."""
+        if not tracks:
+            return 0
+        if backup.create_backup(self.db.conn, "antes-de-quitar-faltantes") is None:
+            log.warning("No se quitaron las canciones faltantes: no se pudo crear el respaldo previo")
+            return 0
+        ids = {t.id for t in tracks}
+        self._forget(ids)
+        removed = self.db.remove_tracks(ids)
+        log.info("Quitadas de la biblioteca %d canciones cuyo archivo ya no existe:\n%s",
+                 removed, "\n".join(f"  {t.path}" for t in tracks))
+        self._on_changed()
+        return removed
+
+    def interrupted(self) -> list[HistoryEntry]:
+        """Operaciones que quedaron a medias por un cierre inesperado (las que no tocaron nada se cierran solas)."""
+        found = []
+        for s in review_folder.interrupted_sessions():
+            if not s.moved():
+                s.status = review_folder.STATUS_UNDONE
+                s.save()
+                continue
+            found.append(HistoryEntry(KIND_REVIEW, _when(s.created_at), "reunión de repetidas", "", "Interrumpida",
+                                      True, len(s.moved()), s, s.destination))
+        for s in converter.interrupted_sessions():
+            pending = converter.pending_items(s)
+            if not pending:
+                s.status = converter.STATUS_UNDONE
+                s.save()
+                continue
+            found.append(HistoryEntry(KIND_CONVERSION, _when(s.created_at), "conversión a MP3", "", "Interrumpida",
+                                      True, len(pending), s, s.originals_root))
+        return found
+
+    def undo(self, entry: HistoryEntry) -> UndoOutcome:
+        """Deshace una reunión de repetidas o una conversión. (El volumen se revierte con su ventana,
+        porque reescribir los MP3 lleva tiempo y va en su propio hilo.)"""
+        if entry.kind == KIND_REVIEW:
+            return self._undo_review(entry.session)
+        if entry.kind == KIND_CONVERSION:
+            return self._undo_conversion(entry.session)
+        raise ValueError(f"No se puede deshacer aquí: {entry.kind}")
+
+    def _undo_review(self, session: review_folder.Session) -> UndoOutcome:
+        self._release({m.track_id for m in session.moved()})
+        # La biblioteca se actualiza archivo por archivo, en cuanto cada uno vuelve a su lugar.
+        restored, problems = review_folder.undo(
+            session, on_restored=lambda m: self.db.update_track_paths([(m.track_id, m.source)])
+        )
+        self._on_changed()
+        texts = [f"{os.path.basename(p.path)}: {p.reason}" for p in problems]
+        message = f"Se devolvieron {plural(len(restored), 'archivo')} a su carpeta original."
+        if texts:
+            message += f"\n\nNo se pudieron devolver {len(texts)}:\n" + "\n".join(f"• {t}" for t in texts[:20])
+        return UndoOutcome(len(restored), texts, message)
+
+    def _undo_conversion(self, session: converter.ConversionSession) -> UndoOutcome:
+        self._release({i.track_id for i in converter.pending_items(session)})
+        def back_to_original(item: converter.Conversion) -> None:
+            self.db.update_track_paths([(item.track_id, item.original)])
+            self.db.save_loudness([(item.track_id, None, None)])
+            self.db.set_norm_gains([(item.track_id, 0.0)])
+
+        restored, problems = converter.undo(session, on_restored=back_to_original)
+        self._on_changed()
+        message = (
+            f"Se {'deshizo' if len(restored) == 1 else 'deshicieron'} {plural(len(restored), 'conversión', 'conversiones')}: "
+            "los originales volvieron a su sitio y los MP3 creados fueron a la Papelera."
+        )
+        if problems:
+            message += "\n\nProblemas:\n" + "\n".join(f"• {p}" for p in problems[:15])
+        return UndoOutcome(len(restored), list(problems), message)

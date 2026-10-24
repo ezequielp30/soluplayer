@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+build/
+packaging/extensiones.iss
+.ruff_cache/
+tests/salidas/
+*.tmp

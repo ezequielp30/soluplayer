@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MenusPrincipales</class>
+ <widget class="QMainWindow" name="MenusPrincipales">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>160</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Menús del Reproductor de Música (abre cada menú para editarlo)</string>
+  </property>
+  <widget class="QWidget" name="centralwidget"/>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>900</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu_archivo">
+    <property name="title">
+     <string>&amp;Archivo</string>
+    </property>
+    <widget class="QMenu" name="menu_respaldos">
+     <property name="title">
+      <string>&amp;Respaldos de la biblioteca</string>
+     </property>
+     <addaction name="act_backup_now"/>
+     <addaction name="act_backup_folder"/>
+    </widget>
+    <addaction name="act_import_files"/>
+    <addaction name="act_import_folder"/>
+    <addaction name="separator"/>
+    <addaction name="act_search"/>
+    <addaction name="separator"/>
+    <addaction name="menu_respaldos"/>
+    <addaction name="act_preferences"/>
+    <addaction name="separator"/>
+    <addaction name="act_quit"/>
+   </widget>
+   <widget class="QMenu" name="menu_reproduccion">
+    <property name="title">
+     <string>&amp;Reproducción</string>
+    </property>
+    <addaction name="act_play"/>
+    <addaction name="act_stop"/>
+    <addaction name="act_prev"/>
+    <addaction name="act_next"/>
+    <addaction name="separator"/>
+    <addaction name="act_shuffle"/>
+    <addaction name="act_repeat"/>
+    <addaction name="separator"/>
+    <addaction name="act_volume_up"/>
+    <addaction name="act_volume_down"/>
+    <addaction name="separator"/>
+    <addaction name="act_test_sound"/>
+   </widget>
+   <widget class="QMenu" name="menu_playlists">
+    <property name="title">
+     <string>&amp;Playlists</string>
+    </property>
+    <addaction name="act_new_playlist"/>
+    <addaction name="act_rename_playlist"/>
+    <addaction name="act_delete_playlist"/>
+   </widget>
+   <widget class="QMenu" name="menu_herramientas">
+    <property name="title">
+     <string>&amp;Herramientas</string>
+    </property>
+    <addaction name="act_online"/>
+    <addaction name="act_duplicates"/>
+    <addaction name="act_loudness"/>
+    <addaction name="act_convert"/>
+    <addaction name="separator"/>
+    <addaction name="act_history"/>
+   </widget>
+   <widget class="QMenu" name="menu_ayuda">
+    <property name="title">
+     <string>A&amp;yuda</string>
+    </property>
+    <addaction name="act_error_log"/>
+    <addaction name="separator"/>
+    <addaction name="act_about"/>
+   </widget>
+   <addaction name="menu_archivo"/>
+   <addaction name="menu_reproduccion"/>
+   <addaction name="menu_playlists"/>
+   <addaction name="menu_herramientas"/>
+   <addaction name="menu_ayuda"/>
+  </widget>
+  <action name="act_import_files">
+   <property name="text">
+    <string>Importar &amp;archivos…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="act_import_folder">
+   <property name="text">
+    <string>Importar &amp;carpeta…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+O</string>
+   </property>
+  </action>
+  <action name="act_search">
+   <property name="text">
+    <string>&amp;Buscar</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
+   </property>
+  </action>
+  <action name="act_backup_now">
+   <property name="text">
+    <string>Crear un respaldo ahora</string>
+   </property>
+  </action>
+  <action name="act_backup_folder">
+   <property name="text">
+    <string>Abrir la carpeta de respaldos</string>
+   </property>
+  </action>
+  <action name="act_preferences">
+   <property name="text">
+    <string>&amp;Preferencias…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+,</string>
+   </property>
+  </action>
+  <action name="act_quit">
+   <property name="text">
+    <string>&amp;Salir</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="act_play">
+   <property name="text">
+    <string>Reproducir / Pausar</string>
+   </property>
+   <property name="shortcut">
+    <string>Space</string>
+   </property>
+  </action>
+  <action name="act_stop">
+   <property name="text">
+    <string>Detener</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+.</string>
+   </property>
+  </action>
+  <action name="act_prev">
+   <property name="text">
+    <string>Anterior</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Left</string>
+   </property>
+  </action>
+  <action name="act_next">
+   <property name="text">
+    <string>Siguiente</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Right</string>
+   </property>
+  </action>
+  <action name="act_shuffle">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Orden aleatorio</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+H</string>
+   </property>
+  </action>
+  <action name="act_repeat">
+   <property name="text">
+    <string>Cambiar repetición</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="act_volume_up">
+   <property name="text">
+    <string>Subir volumen</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Up</string>
+   </property>
+  </action>
+  <action name="act_volume_down">
+   <property name="text">
+    <string>Bajar volumen</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Down</string>
+   </property>
+  </action>
+  <action name="act_test_sound">
+   <property name="text">
+    <string>Probar sonido…</string>
+   </property>
+  </action>
+  <action name="act_new_playlist">
+   <property name="text">
+    <string>&amp;Nueva playlist…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="act_rename_playlist">
+   <property name="text">
+    <string>&amp;Renombrar playlist…</string>
+   </property>
+  </action>
+  <action name="act_delete_playlist">
+   <property name="text">
+    <string>&amp;Eliminar playlist…</string>
+   </property>
+  </action>
+  <action name="act_online">
+   <property name="text">
+    <string>Buscar datos en &amp;internet…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+I</string>
+   </property>
+  </action>
+  <action name="act_duplicates">
+   <property name="text">
+    <string>Buscar canciones &amp;repetidas…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+D</string>
+   </property>
+  </action>
+  <action name="act_loudness">
+   <property name="text">
+    <string>Analizar y ajustar &amp;volumen…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+V</string>
+   </property>
+  </action>
+  <action name="act_convert">
+   <property name="text">
+    <string>Convertir a &amp;MP3…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+M</string>
+   </property>
+  </action>
+  <action name="act_history">
+   <property name="text">
+    <string>&amp;Historial de cambios en archivos…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+H</string>
+   </property>
+  </action>
+  <action name="act_error_log">
+   <property name="text">
+    <string>Abrir registro de errores</string>
+   </property>
+  </action>
+  <action name="act_about">
+   <property name="text">
+    <string>Acerca de…</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

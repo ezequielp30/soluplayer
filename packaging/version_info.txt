@@ -1,0 +1,38 @@
+# Datos de versión del ejecutable (Propiedades → Detalles en el Explorador).
+# crear-instalador.ps1 sustituye 1.0.0 por la versión de app/__init__.py.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 5, 1, 0),
+    prodvers=(1, 5, 1, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable('0C0A04B0', [
+        StringStruct('CompanyName', 'Reproductor de Música'),
+        StringStruct('FileDescription', 'Reproductor de Música'),
+        StringStruct('FileVersion', '1.5.1'),
+        StringStruct('InternalName', 'ReproductorMusica'),
+        StringStruct('OriginalFilename', 'ReproductorMusica.exe'),
+        StringStruct('ProductName', 'Reproductor de Música'),
+        StringStruct('ProductVersion', '1.5.1')
+      ])
+    ]),
+    VarFileInfo([VarStruct('Translation', [0x0C0A, 1200])])
+  ]
+)
+
+
+
+
+
+
+
+
+
+
