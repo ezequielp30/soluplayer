@@ -151,10 +151,11 @@ QLineEdit {{
 }}
 QLineEdit:focus {{ border: 1px solid {p.accent}; }}
 QLineEdit#SearchField {{
-    border-radius: 17px;
-    padding: 7px 12px 7px 6px;
-    min-width: 120px;
-    min-height: 20px;
+    border-radius: 20px;
+    padding: 8px 14px 8px 8px;
+    min-width: 140px;
+    min-height: 24px;
+    font-size: 11.5pt;
 }}
 
 QSlider {{ min-height: 18px; }}
@@ -221,7 +222,9 @@ QSlider#EqSlider::handle:vertical:disabled {{ background: {p.faint}; }}
     margin: 1px 0;
     color: {p.text};
 }}
-#Sidebar QListWidget::item:hover, #Sidebar QTreeWidget::item:hover {{ background: {p.hover}; }}
+#Sidebar QListWidget::item:hover {{ background: {p.hover}; }}
+/* En Carpetas el hover resalta el texto: un fondo se partiría en dos bloques (Qt pinta aparte la sangría). */
+#Sidebar QTreeWidget::item:hover {{ background: transparent; color: {p.accent_text}; }}
 #Sidebar QListWidget::item:selected, #Sidebar QTreeWidget::item:selected {{
     background: {p.accent_soft};
     color: {p.text};
@@ -230,7 +233,7 @@ QSlider#EqSlider::handle:vertical:disabled {{ background: {p.faint}; }}
 #Sidebar QTreeWidget {{ show-decoration-selected: 0; }}
 /* La sangría de la fila seleccionada con el fondo de la barra: se resalta la fila como un solo bloque
    (con «transparent» Qt la pinta igual con el color de selección). */
-#Sidebar QTreeWidget::branch:selected {{ background: {p.sidebar}; }}
+#Sidebar QTreeWidget::branch:selected, #Sidebar QTreeWidget::branch:hover {{ background: {p.sidebar}; }}
 #Sidebar QSplitter::handle {{ background: transparent; }}
 
 /* ---------- panel principal ---------- */

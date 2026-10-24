@@ -6,7 +6,7 @@ import html
 from dataclasses import dataclass
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -242,6 +242,10 @@ class ContentPanel(QFrame):
         self.group_list.setObjectName("GroupList")
         self.group_list.setIconSize(QSize(32, 32))
         self.group_list.setMinimumWidth(170)
+        # Nombres largos se recortan con «…» en vez de mostrar una barra horizontal.
+        self.group_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.group_list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.group_list.setWordWrap(False)
         self.group_list.currentRowChanged.connect(self._on_group_changed)
         self.splitter.addWidget(self.group_list)
 
@@ -383,6 +387,10 @@ class ContentPanel(QFrame):
                 self._on_group_changed(row)
             else:
                 self.group_list.setCurrentRow(row)
+            # Que el artista o álbum elegido se vea en la lista (si no, queda fuera de la vista).
+            QTimer.singleShot(0, lambda r=row: self.group_list.scrollToItem(
+                self.group_list.item(r), QAbstractItemView.ScrollHint.PositionAtCenter
+            ) if self.group_list.item(r) is not None else None)
         else:
             self.subtitle.setText(f"0 {noun[1]}")
             self._set_table([])
