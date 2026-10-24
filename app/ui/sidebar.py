@@ -50,6 +50,9 @@ class Sidebar(QFrame):
     folder_add_to_playlist_requested = Signal(str, QPoint)
     folder_show_in_explorer_requested = Signal(str)
     folder_rescan_requested = Signal(str)
+    folder_rename_requested = Signal(str)
+    folder_create_requested = Signal(str)  # carpeta donde crear una subcarpeta
+    folder_trash_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -392,6 +395,10 @@ class Sidebar(QFrame):
             menu.addSeparator()
             menu.addAction(icon("folder", TEXT, 16), "Mostrar en el Explorador", lambda: self.folder_show_in_explorer_requested.emit(path))
             menu.addAction("Buscar música nueva en esta carpeta", lambda: self.folder_rescan_requested.emit(path))
+            menu.addSeparator()
+            menu.addAction(icon("edit", TEXT, 16), "Renombrar carpeta…", lambda: self.folder_rename_requested.emit(path))
+            menu.addAction(icon("folder_plus", TEXT, 16), "Nueva subcarpeta…", lambda: self.folder_create_requested.emit(path))
+            menu.addAction(icon("trash", "danger", 16), "Enviar carpeta a la Papelera…", lambda: self.folder_trash_requested.emit(path))
             if item.childCount():
                 menu.addSeparator()
                 menu.addAction("Expandir todo", lambda: self._expand_all(item, True))

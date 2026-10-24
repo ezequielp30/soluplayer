@@ -18,12 +18,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, mp3gain, review_folder
+from . import backup, converter, file_manager, mp3gain, review_folder
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
 from .models import Track
-from .utils import plural
+from .utils import path_key, plural
 
 log = logging.getLogger(__name__)
 
@@ -288,6 +288,87 @@ class FileOperations:
             ))
         entries.sort(key=lambda e: (e.when is not None, e.when or datetime.min), reverse=True)
         return entries
+
+    # ------------------------------------------------------------------ gestión de archivos y carpetas
+
+    @staticmethod
+    def tracks_in(folder: str, library: list[Track]) -> list[Track]:
+        """Canciones de la biblioteca dentro de una carpeta (incluye subcarpetas)."""
+        prefix = path_key(folder).rstrip("\\/") + os.sep
+        return [t for t in library if path_key(t.path).startswith(prefix)]
+
+    def rename_track_file(self, track: Track, new_name: str) -> str:
+        """Renombra el archivo de una canción. Devuelve la ruta nueva (lanza FileManagerError)."""
+        if not self._prepare("antes-de-renombrar", {track.id}):
+            raise file_manager.FileManagerError("Operación cancelada.")
+        new_path = file_manager.rename_file(track.path, new_name)
+        try:
+            self.db.update_track_paths([(track.id, new_path)])
+        except sqlite3.Error as exc:
+            os.rename(new_path, track.path)  # la biblioteca no lo aceptó: todo como estaba
+            raise file_manager.FileManagerError(f"No se pudo actualizar la biblioteca ({exc}); no se cambió nada.") from exc
+        self._on_changed()
+        return new_path
+
+    def rename_folder(self, folder: str, new_name: str, library: list[Track]) -> str:
+        """Renombra una carpeta; las canciones de dentro (y sus playlists) pasan a la ruta nueva."""
+        inside = self.tracks_in(folder, library)
+        if not self._prepare("antes-de-renombrar-carpeta", {t.id for t in inside}):
+            raise file_manager.FileManagerError("Operación cancelada.")
+        new_folder = file_manager.rename_folder(folder, new_name)
+        changes = [(t.id, os.path.join(new_folder, os.path.relpath(t.path, folder))) for t in inside]
+        try:
+            self.db.update_track_paths(changes)
+        except sqlite3.Error as exc:
+            os.rename(new_folder, folder)
+            raise file_manager.FileManagerError(f"No se pudo actualizar la biblioteca ({exc}); no se cambió nada.") from exc
+        self._on_changed()
+        return new_folder
+
+    def move_tracks(self, tracks: list[Track], destination: str) -> file_manager.MoveResult:
+        """Mueve los archivos de varias canciones a otra carpeta (las playlists se conservan)."""
+        result = file_manager.MoveResult()
+        if not self._prepare("antes-de-mover", {t.id for t in tracks}):
+            return result
+        by_path = {t.path: t for t in tracks}
+        result = file_manager.move_files(list(by_path), destination)
+        for source, target in result.moved:
+            try:
+                self.db.update_track_paths([(by_path[source].id, target)])
+            except sqlite3.Error as exc:
+                log.error("No se pudo actualizar la biblioteca tras mover %s: %s", source, exc)
+                try:
+                    os.rename(target, source)
+                except OSError:
+                    pass
+                result.failed.append((source, f"No se pudo actualizar la biblioteca ({exc}); se dejó donde estaba."))
+        result.moved = [(s, t) for s, t in result.moved if not any(f == s for f, _r in result.failed)]
+        self._on_changed()
+        return result
+
+    def trash_tracks(self, tracks: list[Track]) -> tuple[int, list[tuple[str, str]]]:
+        """Envía los archivos de las canciones a la Papelera y las quita de la biblioteca y de las playlists.
+        Las que no se pudieron enviar se quedan como estaban. Devuelve (enviadas, [(ruta, motivo)])."""
+        if not self._prepare("antes-de-borrar", set()):
+            return 0, []
+        ids = {t.id for t in tracks}
+        self._forget(ids)  # suelta el archivo si está sonando y lo saca de la cola
+        moved, failed = move_to_trash([t.path for t in tracks])
+        sent = set(moved)
+        self.db.remove_tracks([t.id for t in tracks if t.path in sent])
+        self._on_changed()
+        return len(moved), failed
+
+    def trash_folder(self, folder: str, library: list[Track]) -> int:
+        """Envía una carpeta entera a la Papelera y quita de la biblioteca las canciones de dentro."""
+        inside = self.tracks_in(folder, library)
+        if not self._prepare("antes-de-borrar-carpeta", set()):
+            raise file_manager.FileManagerError("Operación cancelada.")
+        self._forget({t.id for t in inside})
+        file_manager.trash_folder(folder)
+        removed = self.db.remove_tracks([t.id for t in inside])
+        self._on_changed()
+        return removed
 
     def undoable_track_ids(self) -> set[int]:
         """Canciones que, aunque falte su archivo, deshacer una operación del Historial recuperaría: las de

@@ -16,6 +16,8 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QInputDialog,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -27,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from ..config import APP_NAME, AUDIO_FILE_FILTER, ORG_NAME
 from ..database import Database, DuplicatePathError
-from .. import backup, error_log, library_cleanup, review_folder, win_audio
+from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
 from ..config import data_dir
 from ..artwork import cover_hash
 from ..file_operations import FileOperations
@@ -244,6 +246,9 @@ class MainWindow(QMainWindow):
         sb.folder_add_to_playlist_requested.connect(self._add_folder_to_playlist)
         sb.folder_show_in_explorer_requested.connect(self._open_folder_in_explorer)
         sb.folder_rescan_requested.connect(self._rescan_folder)
+        sb.folder_rename_requested.connect(self._rename_folder)
+        sb.folder_create_requested.connect(self._create_subfolder)
+        sb.folder_trash_requested.connect(self._trash_folder)
 
         c = self.content
         c.play_requested.connect(self._on_play_requested)
@@ -258,6 +263,9 @@ class MainWindow(QMainWindow):
         c.missing_review_requested.connect(self._review_first_missing)
         c.folder_requested.connect(self.sidebar.select_folder)
         c.online_lookup_requested.connect(self._open_online)
+        c.rename_file_requested.connect(self._rename_track_file)
+        c.move_files_requested.connect(self._move_track_files)
+        c.trash_files_requested.connect(self._trash_track_files)
 
     # ================================================================== ajustes
 
@@ -842,6 +850,154 @@ class MainWindow(QMainWindow):
         revertirlas aunque la biblioteca se restaure o se reimporten. No cambia el audio."""
         current = self.player.current_track
         self.ops.sync_volume_annotations(self.library, current.id if current is not None else None)
+
+    # ------------------------------------------------------------------ gestión de archivos y carpetas
+
+    def _ask_name(self, title: str, label: str, current: str) -> str | None:
+        """Pide un nombre. El texto aparece seleccionado sin la extensión, para escribir encima."""
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setTextValue(current)
+        dialog.setOkButtonText("Aceptar")
+        dialog.setCancelButtonText("Cancelar")
+        dialog.resize(460, dialog.sizeHint().height())
+
+        def select_stem() -> None:
+            edit = dialog.findChild(QLineEdit)
+            if edit is not None:
+                stem = os.path.splitext(current)[0] if "." in current else current
+                edit.setSelection(0, len(stem))
+
+        QTimer.singleShot(0, select_stem)
+        ok = self._run_dialog(dialog)
+        value = dialog.textValue() if ok else None
+        return value
+
+    def _file_error(self, title: str, exc: Exception) -> None:
+        QMessageBox.warning(self, title, str(exc))
+
+    def _resume_after(self, action):
+        """Renombrar o mover la canción que suena obliga a soltarla (Windows no deja tocar un archivo
+        abierto). Después, si sonaba, vuelve a sonar desde el mismo punto con el archivo nuevo."""
+        current = self.player.current_track
+        was_playing = self.player.is_playing
+        position = self.player.position()
+        try:
+            return action()
+        finally:
+            now = self.player.current_track
+            if was_playing and current is not None and now is not None and now.id == current.id and not self.player.is_playing:
+                self.player.play()
+                QTimer.singleShot(150, lambda: self.player.seek(position))
+
+    def _rename_track_file(self, track: Track) -> None:
+        name = self._ask_name("Renombrar archivo", "Nombre nuevo del archivo:", os.path.basename(track.path))
+        if name is None:
+            return
+        try:
+            new_path = self._resume_after(lambda: self.ops.rename_track_file(track, name))
+        except file_manager.FileManagerError as exc:
+            self._file_error("Renombrar archivo", exc)
+            return
+        self.statusBar().showMessage(f"Archivo renombrado: «{os.path.basename(new_path)}».", 6000)
+
+    def _move_track_files(self, tracks: list[Track]) -> None:
+        start = os.path.dirname(os.path.dirname(tracks[0].path))
+        destination = QFileDialog.getExistingDirectory(
+            self, f"Mover {plural(len(tracks), 'archivo')} a… (puedes crear una carpeta nueva aquí)", start
+        )
+        if not destination:
+            return
+        result = self._resume_after(lambda: self.ops.move_tracks(tracks, destination))
+        text = f"Se movieron {plural(len(result.moved), 'archivo')} a «{destination}»."
+        if result.failed:
+            details = "\n".join(f"• {os.path.basename(p)}: {r}" for p, r in result.failed[:15])
+            QMessageBox.warning(self, "Mover archivos", f"{text}\n\nNo se movieron {len(result.failed)}:\n{details}")
+        self.statusBar().showMessage(text, 8000)
+
+    def _trash_track_files(self, tracks: list[Track]) -> None:
+        folders = sorted({os.path.dirname(t.path) for t in tracks})
+        names = "\n".join(f"• {os.path.basename(t.path)}" for t in tracks[:12])
+        if len(tracks) > 12:
+            names += f"\n… y {len(tracks) - 12} más"
+        where = folders[0] if len(folders) == 1 else f"{len(folders)} carpetas"
+        if ask(
+            self,
+            "Enviar a la Papelera",
+            f"¿Enviar {plural(len(tracks), 'archivo')} a la Papelera de reciclaje?",
+            [("Enviar a la Papelera", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Warning,
+            f"{names}\n\nUbicación: {where}\n\nSe quitan también de la biblioteca y de las playlists. "
+            "Se pueden recuperar desde la Papelera de Windows.",
+        ) != 0:
+            return
+        sent, failed = self.ops.trash_tracks(tracks)
+        text = f"Se {'envió' if sent == 1 else 'enviaron'} {plural(sent, 'archivo')} a la Papelera."
+        if failed:
+            details = "\n".join(f"• {os.path.basename(p)}: {r}" for p, r in failed[:15])
+            QMessageBox.warning(self, "Enviar a la Papelera", f"{text}\n\nNo se enviaron {len(failed)} (siguen en la biblioteca):\n{details}")
+        self.statusBar().showMessage(text, 8000)
+
+    def _rename_folder(self, folder: str) -> None:
+        name = self._ask_name("Renombrar carpeta", "Nombre nuevo de la carpeta:", os.path.basename(os.path.normpath(folder)))
+        if name is None:
+            return
+        try:
+            new_folder = self._resume_after(lambda: self.ops.rename_folder(folder, name, self.library))
+        except file_manager.FileManagerError as exc:
+            self._file_error("Renombrar carpeta", exc)
+            return
+        self.sidebar.select_folder(new_folder)
+        self.statusBar().showMessage(f"Carpeta renombrada: «{os.path.basename(new_folder)}».", 6000)
+
+    def _create_subfolder(self, parent: str) -> None:
+        name = self._ask_name("Nueva subcarpeta", f"Nombre de la carpeta nueva dentro de «{os.path.basename(parent)}»:", "Nueva carpeta")
+        if name is None:
+            return
+        try:
+            created = file_manager.create_folder(parent, name)
+        except file_manager.FileManagerError as exc:
+            self._file_error("Nueva subcarpeta", exc)
+            return
+        QMessageBox.information(
+            self, "Nueva subcarpeta",
+            f"Se creó «{created}».\n\nAparecerá en «Carpetas» cuando tenga canciones: usa clic derecho sobre "
+            "las canciones → «Mover a otra carpeta…».",
+        )
+
+    def _trash_folder(self, folder: str) -> None:
+        name = os.path.basename(os.path.normpath(folder))
+        contents = file_manager.folder_contents(folder) if os.path.isdir(folder) else None
+        in_library = len(self.ops.tracks_in(folder, self.library))
+        if contents is None:
+            QMessageBox.warning(self, "Enviar carpeta a la Papelera", f"La carpeta «{name}» ya no existe.")
+            return
+        detail = f"Contiene {plural(contents.files, 'archivo')}"
+        if contents.audio != contents.files:
+            detail += f" ({contents.audio} de música)"
+        if contents.folders:
+            detail += f" y {plural(contents.folders, 'subcarpeta')}"
+        if ask(
+            self,
+            "Enviar carpeta a la Papelera",
+            f"¿Enviar la carpeta «{name}» completa a la Papelera de reciclaje?",
+            [("Enviar a la Papelera", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Warning,
+            f"Ubicación: {os.path.dirname(os.path.normpath(folder))}\n{detail}. "
+            f"Se borrarán {plural(contents.files, 'archivo')}.\n\n"
+            f"{plural(in_library, 'canción', 'canciones')} de la biblioteca se quitan también de las playlists. "
+            "Se puede recuperar desde la Papelera de Windows.",
+        ) != 0:
+            return
+        try:
+            removed = self.ops.trash_folder(folder, self.library)
+        except file_manager.FileManagerError as exc:
+            self._file_error("Enviar carpeta a la Papelera", exc)
+            return
+        self.statusBar().showMessage(
+            f"Carpeta «{name}» enviada a la Papelera ({plural(removed, 'canción quitada', 'canciones quitadas')} de la biblioteca).", 8000
+        )
 
     def startup_checks(self) -> None:
         """Al abrir, en este orden: ofrecer deshacer lo interrumpido y después limpiar lo que falta

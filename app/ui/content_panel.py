@@ -137,6 +137,9 @@ class ContentPanel(QFrame):
     missing_review_requested = Signal()
     folder_requested = Signal(str)
     online_lookup_requested = Signal(object)  # canciones a buscar en internet
+    rename_file_requested = Signal(object)  # Track
+    move_files_requested = Signal(object)  # list[Track]
+    trash_files_requested = Signal(object)  # list[Track]
 
     def __init__(self, covers: CoverProvider, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -575,11 +578,19 @@ class ContentPanel(QFrame):
                     "Mostrar en el Explorador",
                     lambda: self.show_in_folder_requested.emit(first),
                 )
+                menu.addAction(icon("edit", TEXT, 16), "Renombrar archivo…", lambda: self.rename_file_requested.emit(first))
+        available = [t for t in tracks if t.available]
+        if available:
+            count = "" if len(available) == 1 else f" ({len(available)})"
+            menu.addAction(icon("move", TEXT, 16), f"Mover a otra carpeta{count}…", lambda: self.move_files_requested.emit(available))
         if self._mode == MODE_PLAYLIST:
             label = "Quitar de la playlist" if len(tracks) == 1 else f"Quitar {len(tracks)} canciones de la playlist"
             menu.addAction(label, lambda: self.remove_from_playlist_requested.emit(tracks))
         else:
             label = "Quitar de la biblioteca…" if len(tracks) == 1 else f"Quitar {len(tracks)} canciones de la biblioteca…"
             menu.addAction(label, lambda: self.remove_from_library_requested.emit(tracks))
+        if available:
+            label = "Enviar archivo a la Papelera…" if len(available) == 1 else f"Enviar {len(available)} archivos a la Papelera…"
+            menu.addAction(icon("trash", "danger", 16), label, lambda: self.trash_files_requested.emit(available))
         menu.exec(global_pos)
         menu.deleteLater()  # si no, cada clic derecho deja un menú en memoria
