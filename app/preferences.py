@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from PySide6.QtCore import QSettings
 
 
@@ -78,3 +80,26 @@ class Preferences:
     @remove_missing_on_start.setter
     def remove_missing_on_start(self, value: bool) -> None:
         self._s.setValue(self.REMOVE_MISSING, bool(value))
+
+    # ------------------------------------------------------------------ ecualizador
+
+    EQ = "equalizer/state"
+
+    def equalizer(self) -> dict:
+        """{'enabled', 'preset', 'gains', 'preamp', 'prevent_clipping', 'custom': {nombre: {gains, preamp}}}"""
+        default = {"enabled": False, "preset": "Normal", "gains": [0.0] * 10, "preamp": 0.0,
+                   "prevent_clipping": True, "custom": {}}
+        try:
+            data = json.loads(str(self._s.value(self.EQ, "")) or "{}")
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        state = {**default, **{k: v for k, v in data.items() if k in default}}
+        gains = state["gains"] if isinstance(state["gains"], list) else []
+        state["gains"] = [float(g) for g in gains[:10]] + [0.0] * (10 - len(gains[:10]))
+        state["custom"] = state["custom"] if isinstance(state["custom"], dict) else {}
+        return state
+
+    def set_equalizer(self, state: dict) -> None:
+        self._s.setValue(self.EQ, json.dumps(state, ensure_ascii=False))

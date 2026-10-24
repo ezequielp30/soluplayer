@@ -32,6 +32,7 @@ from ..database import Database, DuplicatePathError
 from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
 from ..config import data_dir
 from ..artwork import cover_hash
+from ..equalizer import EqSettings
 from ..file_operations import FileOperations
 from ..folders import breadcrumb as folder_breadcrumb
 from ..folders import build_folder_tree, display_name, tracks_in_folder
@@ -62,6 +63,7 @@ from .dialogs import (
 )
 from . import menu_loader, theme, worker_runner
 from .duplicates_dialog import DuplicatesDialog
+from .equalizer_dialog import EqualizerDialog
 from .convert_dialog import ConvertDialog
 from .history_dialog import HistoryDialog
 from .loudness_dialog import FILTER_DONE, FILTER_NEED, LoudnessDialog
@@ -127,6 +129,7 @@ class MainWindow(QMainWindow):
         self._build_menus()
         self._connect()
         self._restore_settings()
+        self._restore_equalizer()
         theme.on_change(self._on_theme_changed)
         QApplication.styleHints().colorSchemeChanged.connect(self._on_system_scheme_changed)
         if os.environ.get("MUSICPLAYER_SILENCIO") == "1":
@@ -157,6 +160,7 @@ class MainWindow(QMainWindow):
             "act_next": self.player.next,
             "act_shuffle": None,  # casilla: se conecta abajo con «toggled»
             "act_repeat": self.player.cycle_repeat,
+            "act_equalizer": self._open_equalizer,
             "act_volume_up": lambda: self._nudge_volume(5),
             "act_volume_down": lambda: self._nudge_volume(-5),
             "act_test_sound": self._test_sound,
@@ -218,11 +222,13 @@ class MainWindow(QMainWindow):
         bar.mute_toggled.connect(self.player.set_muted)
         bar.shuffle_toggled.connect(self.player.set_shuffle)
         bar.repeat_clicked.connect(self.player.cycle_repeat)
+        bar.equalizer_clicked.connect(self._open_equalizer)
         bar.search_changed.connect(self._on_search_changed)
 
         p = self.player
         p.current_track_changed.connect(self._on_track_changed)
         p.track_started.connect(self._on_track_started)
+        p.eq_unavailable.connect(lambda _t, reason: self.statusBar().showMessage(reason, 10000))
         p.playing_changed.connect(bar.set_playing)
         p.playing_changed.connect(self._check_system_volume)
         p.output_changed.connect(
@@ -1590,6 +1596,27 @@ class MainWindow(QMainWindow):
                 f"Atención: el sonido de Windows está {reason}: súbelo con el icono del altavoz de la barra de tareas.", 15000
             )
             log.warning("Reproduciendo con el sonido de Windows %s", reason)
+
+    # ================================================================== ecualizador
+
+    def _restore_equalizer(self) -> None:
+        state = self.prefs.equalizer()
+        settings = EqSettings(tuple(state["gains"]), state["preamp"], state["prevent_clipping"])
+        self._apply_equalizer(bool(state["enabled"]), settings)
+
+    def _apply_equalizer(self, enabled: bool, settings: EqSettings) -> None:
+        self.player.set_equalizer(enabled, settings)
+        self.player_bar.set_equalizer_on(enabled)
+
+    def _open_equalizer(self) -> None:
+        """Ventana del ecualizador (no bloquea: se puede dejar abierta mientras suena la música)."""
+        dialog = getattr(self, "_eq_dialog", None)
+        if dialog is None:
+            dialog = EqualizerDialog(self.prefs, self._apply_equalizer, self)
+            self._eq_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _test_sound(self) -> None:
         """Toca un tono corto por el mismo camino que las canciones y muestra el diagnóstico."""

@@ -178,6 +178,27 @@ QSlider::handle:horizontal:hover {{ background: {p.accent_hover}; }}
 QSlider::sub-page:horizontal:disabled {{ background: {p.border}; }}
 QSlider::handle:horizontal:disabled {{ background: {p.border}; }}
 
+/* ---------- ecualizador ---------- */
+#EqBoard {{ background: {p.elevated}; border: 1px solid {p.border}; border-radius: 12px; padding: 10px; }}
+#EqValue {{ color: {p.accent_text}; font-size: 8.5pt; font-weight: 600; min-width: 34px; }}
+#EqBandLabel {{ color: {p.muted}; font-size: 8.5pt; }}
+#EqDivider {{ color: {p.border}; }}
+QSlider#EqSlider {{ min-width: 26px; background: transparent; }}
+QSlider#EqSlider::groove:vertical {{ background: transparent; border: none; width: 26px; }}
+QSlider#EqSlider::add-page:vertical {{ background: {p.accent}; border-radius: 2px; margin: 0 11px; }}
+QSlider#EqSlider::sub-page:vertical {{ background: {p.border}; border-radius: 2px; margin: 0 11px; }}
+QSlider#EqSlider::handle:vertical {{
+    background: {p.text};
+    height: 14px;
+    width: 14px;
+    margin: 0 6px;
+    border-radius: 7px;
+}}
+QSlider#EqSlider::handle:vertical:hover {{ background: {p.accent_hover}; }}
+QSlider#EqSlider::add-page:vertical:disabled {{ background: {p.faint}; }}
+QSlider#EqSlider::handle:vertical:disabled {{ background: {p.faint}; }}
+#EqSwitch {{ font-weight: 600; }}
+
 /* ---------- barra lateral ---------- */
 #Sidebar {{
     background: {p.sidebar};

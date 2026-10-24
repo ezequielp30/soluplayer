@@ -59,10 +59,17 @@ def measure(path):
 
 con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
 from app.review_folder import audio_quality
-wmas = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.wma'")]
+def _real_originals(ext):
+    """Archivos reales de ese formato: de la biblioteca o, si ya se convirtieron, de «_Originales convertidos»."""
+    import glob as _glob
+    found = [r[0] for r in con.execute("select path from tracks where lower(path) like ?", ("%" + ext,)) if os.path.isfile(r[0])]
+    for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
+        found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
+    return found
+wmas = _real_originals(".wma")
 w20 = next(p for p in wmas if audio_quality(p).kbps == 20)
 w128 = next(p for p in wmas if audio_quality(p).kbps == 128)
-m4a = con.execute("select path from tracks where lower(path) like '%.m4a' limit 1").fetchone()[0]
+m4a = _real_originals(".m4a")[0]
 real = {"wma20": w20, "wma128": w128, "m4a": m4a}
 real_hashes = {k: sha(p) for k, p in real.items()}
 lib = os.path.join(work, "Musica");

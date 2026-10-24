@@ -38,6 +38,7 @@ class PlaybackController(QObject):
     error_occurred = Signal(object, str)  # Track | None, mensaje
     track_skipped = Signal(object)  # Track omitida porque el archivo no existe
     track_started = Signal(object)  # Track que empezó a sonar (una vez por carga)
+    eq_unavailable = Signal(object, str)  # Track, motivo: suena sin ecualizador
     shuffle_changed = Signal(bool)
     repeat_changed = Signal(int)
     output_changed = Signal(str)  # nombre del dispositivo de salida nuevo
@@ -45,8 +46,13 @@ class PlaybackController(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._audio = QAudioOutput(QMediaDevices.defaultAudioOutput(), self)
-        self._player = QMediaPlayer(self)
-        self._player.setAudioOutput(self._audio)
+        self._qt_player = QMediaPlayer(self)
+        self._qt_player.setAudioOutput(self._audio)
+        self._player = self._qt_player  # motor activo: QMediaPlayer, o EqPlayer con el ecualizador
+        self._eq_player = None
+        self._eq_enabled = False
+        self._eq_settings = None
+        self._pending_seek = 0
         # Si en Windows cambia la salida predeterminada (auriculares, Bluetooth, HDMI…),
         # Qt seguiría enviando el audio al dispositivo anterior: hay que seguirla a mano.
         self._devices = QMediaDevices(self)
@@ -60,11 +66,68 @@ class PlaybackController(QObject):
         self._repeat = RepeatMode.OFF
         self._started_pending = False
 
-        self._player.positionChanged.connect(lambda p: self.position_changed.emit(int(p)))
-        self._player.durationChanged.connect(lambda d: self.duration_changed.emit(int(d)))
-        self._player.playbackStateChanged.connect(self._on_state_changed)
-        self._player.mediaStatusChanged.connect(self._on_media_status)
-        self._player.errorOccurred.connect(self._on_error)
+        self._wire(self._qt_player)
+
+    def _wire(self, engine) -> None:
+        """Conecta un motor. Solo cuenta lo que dice el motor activo (el otro queda vacío y callado)."""
+        active = lambda: engine is self._player  # noqa: E731
+        engine.positionChanged.connect(lambda p: active() and self.position_changed.emit(int(p)))
+        engine.durationChanged.connect(lambda d: active() and self.duration_changed.emit(int(d)))
+        engine.playbackStateChanged.connect(lambda s: active() and self._on_state_changed(s))
+        engine.mediaStatusChanged.connect(lambda s: active() and self._on_media_status(s))
+        engine.errorOccurred.connect(lambda e, t="": active() and self._on_error(e, t))
+
+    # ------------------------------------------------------------------ ecualizador
+
+    @property
+    def eq_active(self) -> bool:
+        """True si la canción actual suena por el ecualizador."""
+        return self._player is not self._qt_player
+
+    def set_equalizer(self, enabled: bool, settings) -> None:
+        """Activa, desactiva o cambia el ecualizador. Si cambia el motor, la canción sigue en el mismo
+        punto (y sonando, si sonaba)."""
+        self._eq_enabled = enabled
+        self._eq_settings = settings
+        if self._eq_player is not None and settings is not None:
+            self._eq_player.set_settings(settings)
+        self._use_engine(self._wanted_engine(self.current_track), keep_position=True)
+
+    def _wanted_engine(self, track: Track | None):
+        if not self._eq_enabled or track is None:
+            return self._qt_player
+        from .eq_player import MAX_MINUTES, EqPlayer
+
+        if track.duration_ms > MAX_MINUTES * 60_000:
+            self.eq_unavailable.emit(
+                track, f"«{track.title}» dura más de {MAX_MINUTES} minutos: suena sin ecualizador para no llenar la memoria."
+            )
+            return self._qt_player
+        if self._eq_player is None:
+            self._eq_player = EqPlayer(self._audio, self._eq_settings, self)
+            self._wire(self._eq_player)
+        return self._eq_player
+
+    def _use_engine(self, engine, keep_position: bool) -> None:
+        if engine is self._player:
+            return
+        old = self._player
+        source = old.source()
+        position = old.position()
+        was_playing = old.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        self._player = engine
+        old.stop()
+        old.setSource(QUrl())
+        if keep_position and not source.isEmpty():
+            engine.setSource(source)
+            if position:
+                if engine is self._qt_player:
+                    # QMediaPlayer ignora el salto si el archivo aún no terminó de cargar: se hace al cargar.
+                    self._pending_seek = position
+                else:
+                    engine.setPosition(position)
+            if was_playing:
+                engine.play()
 
     # ------------------------------------------------------------------ estado
 
@@ -285,6 +348,7 @@ class PlaybackController(QObject):
             if track is None:
                 break
             if track.check_available():
+                self._use_engine(self._wanted_engine(track), keep_position=False)
                 self._player.setSource(QUrl.fromLocalFile(track.path))
                 log.info("Reproduciendo: %s", track.path)
                 self._started_pending = True  # se cuenta como reproducida cuando realmente empiece a sonar
@@ -338,6 +402,9 @@ class PlaybackController(QObject):
         self.playing_changed.emit(playing)
 
     def _on_media_status(self, status) -> None:
+        if self._pending_seek and status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia):
+            position, self._pending_seek = self._pending_seek, 0
+            self._player.setPosition(position)
         if status in (QMediaPlayer.MediaStatus.InvalidMedia, QMediaPlayer.MediaStatus.StalledMedia):
             track = self.current_track
             log.warning("Estado de reproducción %s en %s", status.name, track.path if track else "-")

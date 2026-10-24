@@ -26,7 +26,7 @@ p4.wait(30)
 print(f"4.ª copia terminó en {time.time() - t:.1f} s con código {p4.returncode}")
 time.sleep(1)
 log = open(os.path.join(data, "registro.log"), encoding="utf-8").read()
-print("registro de colas:", [l.split("INFO")[1].strip() for l in open(os.path.join(data, "registro.log"), encoding="utf-8").read().splitlines() if "Reproduciendo" in l]); print("aperturas registradas:", [l.split("INFO")[1].strip() for l in log.splitlines() if "Abrir" in l])
+print("registro de colas:", [l.split("INFO", 1)[1].strip() for l in log.splitlines() if "INFO" in l and "Reproduciendo:" in l]); print("aperturas registradas:", [l.split("INFO", 1)[1].strip() for l in log.splitlines() if "INFO" in l and "Abrir" in l])
 for p in alive:
     p.kill()  # procesos de esta prueba (carpeta de datos temporal)
 print("cerradas las copias de prueba")

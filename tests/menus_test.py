@@ -35,7 +35,7 @@ BEFORE = [
    ("&Buscar", "Ctrl+F", True), "—", ("&Respaldos de la biblioteca", [("Crear un respaldo ahora", "", True),
    ("Abrir la carpeta de respaldos", "", True)]), ("&Preferencias…", "Ctrl+,", True), "—", ("&Salir", "Ctrl+Q", True)]),
  ("&Reproducción", [("Reproducir / Pausar", "Space", True), ("Detener", "Ctrl+.", True), ("Anterior", "Ctrl+Left", True),
-   ("Siguiente", "Ctrl+Right", True), "—", ("Orden aleatorio", "Ctrl+H", True), ("Cambiar repetición", "Ctrl+R", True), "—",
+   ("Siguiente", "Ctrl+Right", True), "—", ("Orden aleatorio", "Ctrl+H", True), ("Cambiar repetición", "Ctrl+R", True), ("&Ecualizador…", "Ctrl+E", True), "—",
    ("Subir volumen", "Ctrl+Up", True), ("Bajar volumen", "Ctrl+Down", True), "—", ("Probar sonido…", "", True)]),
  ("&Playlists", [("&Nueva playlist…", "Ctrl+N", True), ("&Renombrar playlist…", "", True), ("&Eliminar playlist…", "", True)]),
  ("&Herramientas", [("Buscar datos en &internet…", "Ctrl+Shift+I", True), ("Buscar canciones &repetidas…", "Ctrl+Shift+D", True),
@@ -56,7 +56,7 @@ win.act_shuffle.setChecked(True); spin(50)
 check("  activa el orden aleatorio del reproductor", win.player.shuffle if hasattr(win.player, "shuffle") else True)
 win.act_shuffle.setChecked(False)
 names = {a.objectName() for a in win.findChildren(mw.QAction) if a.objectName().startswith("act_")}
-check("las 26 opciones tienen su nombre de objeto", len(names) == 26, len(names))
+check("las 27 opciones tienen su nombre de objeto", len(names) == 27, len(names))
 win.close()
 
 print("[2. Cambios hechos en el editor]")

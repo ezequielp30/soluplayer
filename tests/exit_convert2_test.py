@@ -8,7 +8,14 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 import app.application as appmod
 import app.ui.convert_dialog as cd
 con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
-src = [con.execute("select path from tracks where lower(path) like ? limit 1", (ext,)).fetchone()[0] for ext in ("%.wma", "%.m4a")]
+def _real_originals(ext):
+    """Archivos reales de ese formato: de la biblioteca o, si ya se convirtieron, de «_Originales convertidos»."""
+    import glob as _glob
+    found = [r[0] for r in con.execute("select path from tracks where lower(path) like ?", ("%" + ext,)) if os.path.isfile(r[0])]
+    for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
+        found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
+    return found
+src = [_real_originals(ext)[0] for ext in (".wma", ".m4a")]
 lib = os.path.join(work, "m"); os.makedirs(lib)
 copies = [shutil.copy2(p, os.path.join(lib, f"c{i}{os.path.splitext(p)[1]}")) for i, p in enumerate(src)]
 cd.ask = lambda *a, **k: 0

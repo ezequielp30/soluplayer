@@ -76,7 +76,8 @@ for name, ff, codec, ext in targets:
         print(f"  ··  {name:32s} no se pudo generar ({enc_err})"); continue
     scanned, failure = scan_file(path)
     state, pos, dur, errs, has_audio = play(path)
-    ok = scanned is not None and state == "PlayingState" and pos > 800 and not errs and has_audio
+    played_to_end = state == "StoppedState" and dur > 0 and pos >= dur - 150  # archivo corto: sonó entero
+    ok = scanned is not None and (state == "PlayingState" and pos > 800 or played_to_end) and not errs and has_audio
     results.append(ok)
     print(f"  {'OK' if ok else 'FALLA':5s} {name:32s} {os.path.splitext(path)[1]:6s} importa={'sí' if scanned else 'NO: ' + failure.reason} "
           f"duración={(scanned.metadata.duration_ms if scanned else 0)/1000:.1f}s  suena={state} pos={pos}ms  {errs or ''}")

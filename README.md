@@ -4,10 +4,11 @@ Reproductor de archivos de audio locales para Windows, hecho con **Python**, **P
 La biblioteca y las playlists se guardan en **SQLite** y se conservan al cerrar el programa.
 
 > El programa no incluye ni descarga música: solo reproduce los archivos que tú eliges. Por sí solo **no mueve,
-> renombra, modifica ni elimina** tus archivos. Solo lo hace cuando tú lo pides y lo confirmas, en cuatro
-> funciones: *Reunir repetidas* (mueve, se puede deshacer), *Ajustar volumen* (modifica MP3 sin pérdida, se puede
-> revertir), *Convertir a MP3* (guarda los originales aparte, se puede deshacer) y *Enviar a la Papelera* (se
-> recupera desde la Papelera). Nunca se borra nada de forma definitiva.
+> renombra, modifica ni elimina** tus archivos. Solo lo hace cuando tú lo pides y lo confirmas: *Reunir
+> repetidas* (mueve, se puede deshacer), *Ajustar volumen* (modifica MP3 sin pérdida, se puede revertir),
+> *Convertir a MP3* (guarda los originales aparte, se puede deshacer), *Renombrar / Mover / Nueva carpeta*
+> (gestión de archivos) y *Enviar a la Papelera* (se recupera desde la Papelera). Nunca se borra nada de
+> forma definitiva. El ecualizador cambia el sonido al reproducir, no los archivos.
 
 ## Requisitos
 
@@ -95,6 +96,9 @@ reproductor-musica/
     ├── converter.py         Conversión a MP3 con LAME y deshacer
     ├── journal.py           Registro común (intención → hecho) de las operaciones sobre archivos
     ├── file_operations.py   Coordinador de todo lo que modifica archivos, e Historial
+    ├── file_manager.py      Renombrar, crear carpeta, mover y enviar a la Papelera
+    ├── equalizer.py         Ecualizador de 10 bandas (filtro FIR de fase lineal con numpy)
+    ├── eq_player.py         Motor de reproducción con ecualizador (decodifica, filtra, envía al audio)
     ├── file_ops.py          Envío a la Papelera de reciclaje (comprueba que la Papelera esté activa)
     ├── library_cleanup.py   Quitar o reubicar canciones y carpetas que ya no existen
     ├── online_lookup.py     MusicBrainz, Deezer e iTunes
@@ -118,6 +122,8 @@ reproductor-musica/
         ├── loudness_dialog.py    Analizar y ajustar volumen
         ├── convert_dialog.py     Convertir a MP3
         ├── history_dialog.py     Historial de cambios en archivos
+        ├── equalizer_dialog.py   Ventana del ecualizador
+        ├── theme_picker.py       Selector de temas con vista previa
         ├── covers.py        Caché de carátulas y carátula de reemplazo
         ├── icons.py         Iconos vectoriales (SVG) que siguen al tema
         ├── theme.py         Temas claro/oscuro y modo automático
@@ -234,10 +240,50 @@ la ruta de arriba del título es clicable para subir de nivel. Doble clic reprod
 Clic derecho: reproducir (normal o aleatorio), agregar la carpeta a una playlist, mostrarla en el Explorador,
 buscar música nueva en ella, expandir/contraer. El botón de la sección importa otra carpeta.
 
-### Apariencia
+### Temas
 
-**Archivo → Preferencias… → Apariencia**: *Automático* (sigue el modo claro/oscuro de Windows, también si lo
-cambias con el programa abierto), *Claro* u *Oscuro*. La barra de título de la ventana sigue el tema.
+**Archivo → Preferencias… → pestaña Tema**: 11 temas con una miniatura de la ventana en sus colores —
+*Grafito*, *Aluminio*, *Medianoche*, *Aurora*, *Vino*, *Neón*, *Vúmetro verde*, *Alto contraste*, *Océano*,
+*Arena* y *Lavanda* — más *Automático* (Grafito o Aluminio según el modo claro/oscuro de Windows). Al
+elegir uno se aplica al instante, sin reiniciar; *Guardar* lo deja para las próximas veces y *Cancelar*
+vuelve al anterior. La disposición de la ventana es la misma en todos: solo cambian los colores. Todos
+cumplen el contraste recomendado (WCAG) para texto; lo comprueba `tests\theme_contrast_test.py`.
+
+### Ecualizador
+
+**Reproducción → Ecualizador…** (`Ctrl+E`) o el botón de barras junto a *Repetir*. La ventana se puede dejar
+abierta mientras suena la música y cada cambio se oye en el acto.
+
+- **10 bandas** (31 Hz a 16 kHz, ±12 dB) y **nivel general**.
+- **Presets:** Normal, Pop, Rock, Clásica, Jazz, Electrónica, Hip-Hop, Vocal, Más graves y Más agudos.
+- **Presets propios:** *Guardar como preset…* y *Eliminar preset*. *Restablecer* vuelve todo a 0 dB.
+- **Evitar saturación** (activado): baja el nivel general lo que sube la banda más alta; además un
+  limitador suave evita la distorsión por picos.
+- **Activar/desactivar** sin cortar la canción: sigue en el mismo segundo. El estado y los presets se
+  recuerdan al volver a abrir el programa; el botón de la barra se ve en color mientras está activado.
+
+Cómo funciona y límites: el reproductor de Qt no permite procesar el audio, así que con el ecualizador
+activado el programa usa un motor propio (decodifica con el mismo FFmpeg de Qt, aplica un filtro de fase
+lineal de 8192 coeficientes y envía el audio a la tarjeta de sonido). Con el ecualizador desactivado se usa
+el motor de siempre. El audio de la canción se guarda en memoria (unos 11 MB por minuto), por eso **los
+archivos de más de 30 minutos** (por ejemplo un CD completo en un solo archivo) suenan sin ecualizador y el
+programa lo avisa en la barra de estado.
+
+### Gestión de archivos y carpetas
+
+Desde el programa se pueden administrar los archivos de música (clic derecho):
+
+- **Canciones:** *Renombrar archivo…* (si no escribes la extensión, se conserva), *Mover a otra carpeta…*
+  (en el diálogo puedes crear una carpeta nueva) y *Enviar a la Papelera…*.
+- **Carpetas** (barra lateral → Carpetas): *Renombrar carpeta…*, *Nueva subcarpeta…* y *Enviar carpeta a la
+  Papelera…*.
+- Antes de borrar se muestra el nombre y la ubicación; si es una carpeta, cuántos archivos contiene y cuántos
+  se borrarán. **Borrar = enviar a la Papelera de reciclaje**: se puede recuperar desde allí.
+- La biblioteca, las playlists y la canción que suena se actualizan solas. Si renombras o mueves la que está
+  sonando, sigue sonando en el mismo punto.
+- Nombres repetidos, caracteres no válidos o reservados de Windows, archivos abiertos en otro programa,
+  falta de permisos o rutas que ya no existen se explican con un mensaje; nunca se sobrescribe ni se borra
+  nada sin avisar. Antes de cada cambio se hace un respaldo de la biblioteca.
 
 ### Archivos dañados
 
@@ -359,6 +405,7 @@ respaldo antes y la lista queda en el registro). Las carpetas que se quedan sin 
 | Detener | `Ctrl+.` |
 | Orden aleatorio | `Ctrl+H` |
 | Cambiar repetición (no / todo / una) | `Ctrl+R` |
+| Ecualizador | `Ctrl+E` |
 | Volumen | `Ctrl+↑` / `Ctrl+↓` |
 | Buscar | `Ctrl+F` |
 | Reproducir la canción seleccionada | `Enter` o doble clic |

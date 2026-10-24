@@ -55,6 +55,7 @@
     <addaction name="separator"/>
     <addaction name="act_shuffle"/>
     <addaction name="act_repeat"/>
+    <addaction name="act_equalizer"/>
     <addaction name="separator"/>
     <addaction name="act_volume_up"/>
     <addaction name="act_volume_down"/>
@@ -193,6 +194,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="act_equalizer">
+   <property name="text">
+    <string>&amp;Ecualizador…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
    </property>
   </action>
   <action name="act_volume_up">

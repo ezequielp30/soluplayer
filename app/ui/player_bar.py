@@ -118,6 +118,7 @@ class PlayerBar(QFrame):
     mute_toggled = Signal(bool)
     shuffle_toggled = Signal(bool)
     repeat_clicked = Signal()
+    equalizer_clicked = Signal()
     search_changed = Signal(str)
 
     def __init__(self, covers: CoverProvider, parent: QWidget | None = None) -> None:
@@ -196,6 +197,7 @@ class PlayerBar(QFrame):
         # Modos y volumen
         self.btn_shuffle = _tool_button("shuffle", "Orden aleatorio", 18, checkable=True)
         self.btn_repeat = _tool_button("repeat", "Repetición: desactivada", 18)
+        self.btn_eq = _tool_button("equalizer", "Ecualizador (Ctrl+E)", 18)
         self.btn_mute = _tool_button("volume", "Silenciar", 18, checkable=True)
         self.volume = JumpSlider()
         self.volume.setRange(0, 100)
@@ -204,6 +206,7 @@ class PlayerBar(QFrame):
         layout.addSpacing(10)
         layout.addWidget(self.btn_shuffle)
         layout.addWidget(self.btn_repeat)
+        layout.addWidget(self.btn_eq)
         layout.addSpacing(8)
         layout.addWidget(self.btn_mute)
         layout.addWidget(self.volume)
@@ -230,6 +233,7 @@ class PlayerBar(QFrame):
         self.btn_next.clicked.connect(self.next_clicked)
         self.btn_shuffle.toggled.connect(self._on_shuffle)
         self.btn_repeat.clicked.connect(self.repeat_clicked)
+        self.btn_eq.clicked.connect(self.equalizer_clicked)
         self.btn_mute.toggled.connect(self._on_mute)
         self.volume.valueChanged.connect(self.volume_changed)
         self.progress.valueChanged.connect(self._on_progress_value)
@@ -238,6 +242,7 @@ class PlayerBar(QFrame):
         self._track: Track | None = None
         self._playing = False
         self._repeat_mode = RepeatMode.OFF
+        self._eq_on = False
         self.set_track(None)
         self.refresh_icons()
 
@@ -253,8 +258,15 @@ class PlayerBar(QFrame):
         self._update_shuffle_icon(self.btn_shuffle.isChecked())
         self.set_repeat(self._repeat_mode)
         self._on_mute_icon(self.btn_mute.isChecked())
+        self.set_equalizer_on(self._eq_on)
         self.cover.setPixmap(self._covers.pixmap(self._track.cover_hash if self._track else None, COVER_SIZE))
         self.meter.update()
+
+    def set_equalizer_on(self, on: bool) -> None:
+        """El icono del ecualizador va en color de acento mientras está activado."""
+        self._eq_on = on
+        self.btn_eq.setIcon(icon("equalizer", "accent_text" if on else TEXT, 18))
+        self.btn_eq.setToolTip("Ecualizador: activado (Ctrl+E)" if on else "Ecualizador: desactivado (Ctrl+E)")
 
     def set_track(self, track: Track | None) -> None:
         self._track = track
