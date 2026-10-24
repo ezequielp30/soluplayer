@@ -70,10 +70,8 @@ check("  el botón de la barra lo muestra apagado", "desactivado" in win.player_
 print("[Archivo muy largo]")
 d.enabled.setChecked(True); spin(300)
 long_track = next(t for t in win.library if t.path == b).copy(duration_ms=45 * 60_000)
-msgs = []
-win.player.eq_unavailable.connect(lambda t, r: msgs.append(r))
 win.player.play_queue([long_track], 0); spin(400)
-check("un archivo de más de 30 min suena sin ecualizador y se avisa", not win.player.eq_active and msgs and "30 minutos" in msgs[0], msgs[:1])
+check("un archivo de más de 30 min también suena ecualizado (sin límite)", win.player.eq_active and win.player.is_playing)
 win.player.stop(); d.close(); win.close(); spin(200)
 
 print("[Se recuerda al volver a abrir]")

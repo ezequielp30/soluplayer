@@ -8,19 +8,22 @@ Tiene los mismos métodos y señales que QMediaPlayer que usa PlaybackController
 motor sin tocar el resto del programa. Solo se usa con el ecualizador activado; desactivado, se reproduce
 con QMediaPlayer como siempre.
 
-Límite: el audio decodificado se guarda en memoria (16 bits, ~11 MB por minuto). Por eso no se usa con
-archivos de más de MAX_MINUTES minutos (p. ej. un CD completo en un solo archivo): esos suenan sin
-ecualizador y se avisa.
+El audio decodificado (16 bits, ~11 MB por minuto) se guarda en memoria hasta RAM_MINUTES minutos; si la
+canción es más larga (p. ej. un CD completo en un solo archivo) pasa a un archivo temporal en disco, que se
+borra al cambiar de canción. Así no hay límite de duración y la memoria no crece con ella.
 """
 
 from __future__ import annotations
 
+import glob
 import logging
+import os
+import tempfile
 import time
 
 import numpy as np
 import shiboken6
-from PySide6.QtCore import QIODevice, QObject, QTimer, QUrl, Signal
+from PySide6.QtCore import QCoreApplication, QIODevice, QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import (
     QAudioDecoder,
     QAudioFormat,
@@ -34,12 +37,82 @@ from .equalizer import EqProcessor, EqSettings
 
 log = logging.getLogger(__name__)
 
-MAX_MINUTES = 30
+RAM_MINUTES = 30
+_TEMP_PREFIX = "reproductor-eq-"
 _BUFFER_MS = 250  # audio que tiene la salida por delante: poco, para que pausa y saltos respondan rápido
 _STALL_SECONDS = 20.0
 
 State = QMediaPlayer.PlaybackState
 Status = QMediaPlayer.MediaStatus
+
+
+class _PcmStore:
+    """Audio decodificado de la canción actual: en memoria hasta RAM_MINUTES; más largo, en un archivo
+    temporal (la memoria deja de crecer). Todo se usa desde el hilo principal."""
+
+    def __init__(self, rate: int, channels: int) -> None:
+        self._channels = channels
+        self._limit = rate * 60 * RAM_MINUTES
+        self._ram = np.zeros((0, channels), dtype=np.int16)
+        self._file = None
+        self._path = ""
+        self.frames = 0
+
+    @property
+    def on_disk(self) -> bool:
+        return self._file is not None
+
+    def append(self, data: np.ndarray) -> None:
+        """Agrega frames (forma: frames × canales). Puede lanzar OSError si el disco se llena."""
+        need = self.frames + len(data)
+        if self._file is None and need > self._limit:
+            self._spill()
+        if self._file is not None:
+            self._file.seek(0, os.SEEK_END)
+            self._file.write(data.tobytes())
+        else:
+            if need > len(self._ram):
+                grown = np.zeros((min(self._limit, max(need, len(self._ram) * 2, self._limit // RAM_MINUTES)), self._channels), dtype=np.int16)
+                grown[: self.frames] = self._ram[: self.frames]
+                self._ram = grown
+            self._ram[self.frames:need] = data
+        self.frames = need
+
+    def read(self, start: int, count: int) -> np.ndarray:
+        count = max(0, min(count, self.frames - start))
+        if self._file is None:
+            return self._ram[start:start + count]
+        bpf = 2 * self._channels
+        self._file.seek(start * bpf)
+        raw = self._file.read(count * bpf)
+        return np.frombuffer(raw, dtype=np.int16).reshape(-1, self._channels)
+
+    def _spill(self) -> None:
+        fd, self._path = tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=".pcm")
+        self._file = os.fdopen(fd, "w+b")
+        self._file.write(self._ram[: self.frames].tobytes())
+        self._ram = np.zeros((0, self._channels), dtype=np.int16)
+        log.info("Ecualizador: canción de más de %d minutos, el audio pasa a %s", RAM_MINUTES, self._path)
+
+    def close(self) -> None:
+        file, self._file = self._file, None
+        if file is not None:
+            file.close()
+            try:
+                os.remove(self._path)
+            except OSError:
+                pass
+        self._ram = np.zeros((0, self._channels), dtype=np.int16)
+        self.frames = 0
+
+    @staticmethod
+    def remove_leftovers() -> None:
+        """Borra temporales de una sesión que terminó de golpe (corte de luz, cierre forzado)."""
+        for path in glob.glob(os.path.join(tempfile.gettempdir(), _TEMP_PREFIX + "*.pcm")):
+            try:
+                os.remove(path)
+            except OSError:
+                pass  # en uso o sin permiso: se intenta la próxima vez
 
 
 class _Pull(QIODevice):
@@ -83,6 +156,11 @@ class EqPlayer(QObject):
         self._rate = self._format.sampleRate()
         self._channels = 2
         self._eq = EqProcessor(self._rate, self._channels, self._settings)
+        _PcmStore.remove_leftovers()
+        self._store = _PcmStore(self._rate, self._channels)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._store.close)  # no dejar el temporal de una canción larga
         self._reset_data()
         self._timer = QTimer(self)
         self._timer.setInterval(100)
@@ -105,8 +183,7 @@ class EqPlayer(QObject):
         return fmt
 
     def _reset_data(self) -> None:
-        self._pcm = np.zeros((0, self._channels), dtype=np.int16)  # audio decodificado (crece)
-        self._decoded = 0
+        self._store.close()  # audio decodificado de la canción anterior (y su temporal, si había)
         self._decode_done = False
         self._duration_ms = 0
         self._cursor = 0  # próximo frame decodificado que entra al ecualizador
@@ -243,13 +320,13 @@ class EqPlayer(QObject):
         if not frames:
             return
         self._last_data = time.monotonic()
-        need = self._decoded + frames
-        if need > len(self._pcm):
-            grown = np.zeros((max(need, len(self._pcm) * 2, self._rate * 60), self._channels), dtype=np.int16)
-            grown[: self._decoded] = self._pcm[: self._decoded]
-            self._pcm = grown
-        self._pcm[self._decoded:need] = data[: frames * self._channels].reshape(frames, self._channels)
-        self._decoded = need
+        try:
+            self._store.append(data[: frames * self._channels].reshape(frames, self._channels))
+        except OSError as exc:  # disco lleno: suena hasta donde se llegó a guardar
+            log.warning("Ecualizador: no se pudo guardar el audio de %s: %s", self._source.toLocalFile(), exc)
+            self._teardown_decoder()
+            self._decode_done = True
+            return
         if self._status == Status.LoadingMedia:
             self._set_status(Status.LoadedMedia)
             self._set_status(Status.BufferedMedia)
@@ -261,21 +338,21 @@ class EqPlayer(QObject):
 
     def _on_decoded(self) -> None:
         self._decode_done = True
-        exact = int(self._decoded * 1000 / self._rate)
+        exact = int(self._store.frames * 1000 / self._rate)
         if exact and abs(exact - self._duration_ms) > 50:
             self._duration_ms = exact
             self.durationChanged.emit(exact)
         if self._status == Status.LoadingMedia:  # archivo sin audio
             self._set_status(Status.InvalidMedia)
             self.errorOccurred.emit(QMediaPlayer.Error.FormatError, "el archivo no tiene audio")
-        self._teardown_decoder()  # todo en memoria: el archivo queda libre
+        self._teardown_decoder()  # todo decodificado: el archivo original queda libre
 
     def _on_decode_error(self, _code) -> None:
         text = self._decoder.errorString() if self._decoder is not None else ""
         log.warning("Ecualizador: no se pudo decodificar %s: %s", self._source.toLocalFile(), text)
         self._teardown_decoder()
         self._decode_done = True
-        if self._decoded == 0:
+        if self._store.frames == 0:
             self._set_status(Status.InvalidMedia)
             self.errorOccurred.emit(QMediaPlayer.Error.FormatError, text or "error de decodificación")
 
@@ -317,7 +394,7 @@ class EqPlayer(QObject):
             self._start_sink()
 
     def _seek_frames(self, frame: int) -> None:
-        self._cursor = min(frame, max(self._decoded, frame))
+        self._cursor = frame
         self._origin = self._cursor
         self._delivered = 0
         self._fifo = np.zeros((0, self._channels), dtype=np.float32)
@@ -337,11 +414,10 @@ class EqPlayer(QObject):
         bpf = self._format.bytesPerFrame()
         want = max(1, maxlen // bpf)
         while len(self._fifo) < want and not self._flushed:
-            available = self._decoded - self._cursor
+            available = self._store.frames - self._cursor
             if available > 0:
-                take = min(available, 8192)
-                chunk = self._pcm[self._cursor:self._cursor + take].astype(np.float32) / 32768.0
-                self._cursor += take
+                chunk = self._store.read(self._cursor, 8192).astype(np.float32) / 32768.0
+                self._cursor += len(chunk)
                 out = self._eq.process(chunk)
             elif self._decode_done:
                 out = self._eq.flush()
@@ -373,7 +449,7 @@ class EqPlayer(QObject):
             log.warning("Ecualizador: el archivo no responde: %s", self._source.toLocalFile())
             self._teardown_decoder()
             self._decode_done = True
-            if self._decoded == 0:
+            if self._store.frames == 0:
                 self._set_status(Status.InvalidMedia)
                 self.errorOccurred.emit(QMediaPlayer.Error.ResourceError, "el archivo no responde")
         if self._state == State.PlayingState:

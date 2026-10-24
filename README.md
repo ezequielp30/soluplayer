@@ -265,9 +265,11 @@ abierta mientras suena la música y cada cambio se oye en el acto.
 Cómo funciona y límites: el reproductor de Qt no permite procesar el audio, así que con el ecualizador
 activado el programa usa un motor propio (decodifica con el mismo FFmpeg de Qt, aplica un filtro de fase
 lineal de 8192 coeficientes y envía el audio a la tarjeta de sonido). Con el ecualizador desactivado se usa
-el motor de siempre. El audio de la canción se guarda en memoria (unos 11 MB por minuto), por eso **los
-archivos de más de 30 minutos** (por ejemplo un CD completo en un solo archivo) suenan sin ecualizador y el
-programa lo avisa en la barra de estado.
+el motor de siempre. El audio de la canción se guarda en memoria (unos 11 MB por minuto); **no hay límite de
+duración**: si un archivo dura más de 30 minutos (por ejemplo un CD completo en un solo archivo), el audio
+pasa a un archivo temporal en disco, que se borra al cambiar de canción o al cerrar el programa (y, si el
+programa se cerró de golpe, la próxima vez que se usa el ecualizador). Un archivo de 2 horas ocupa
+temporalmente unos 1,3 GB.
 
 ### Gestión de archivos y carpetas
 

@@ -38,7 +38,6 @@ class PlaybackController(QObject):
     error_occurred = Signal(object, str)  # Track | None, mensaje
     track_skipped = Signal(object)  # Track omitida porque el archivo no existe
     track_started = Signal(object)  # Track que empezó a sonar (una vez por carga)
-    eq_unavailable = Signal(object, str)  # Track, motivo: suena sin ecualizador
     shuffle_changed = Signal(bool)
     repeat_changed = Signal(int)
     output_changed = Signal(str)  # nombre del dispositivo de salida nuevo
@@ -96,13 +95,8 @@ class PlaybackController(QObject):
     def _wanted_engine(self, track: Track | None):
         if not self._eq_enabled or track is None:
             return self._qt_player
-        from .eq_player import MAX_MINUTES, EqPlayer
+        from .eq_player import EqPlayer
 
-        if track.duration_ms > MAX_MINUTES * 60_000:
-            self.eq_unavailable.emit(
-                track, f"«{track.title}» dura más de {MAX_MINUTES} minutos: suena sin ecualizador para no llenar la memoria."
-            )
-            return self._qt_player
         if self._eq_player is None:
             self._eq_player = EqPlayer(self._audio, self._eq_settings, self)
             self._wire(self._eq_player)

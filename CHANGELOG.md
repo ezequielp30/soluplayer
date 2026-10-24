@@ -2,6 +2,11 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.7.1 — 2026-10-24
+
+- **Ecualizador sin límite de duración:** los archivos de más de 30 minutos ya no suenan sin ecualizar. Su
+  audio pasa a un archivo temporal en disco (la memoria no crece) que se borra al cambiar de canción.
+
 ## 1.7.0 — 2026-10-24 (versión para producción)
 
 - **Diseño:** la barra lateral ocupa toda la altura de la ventana y la barra del reproductor queda solo

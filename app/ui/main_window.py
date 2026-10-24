@@ -231,7 +231,6 @@ class MainWindow(QMainWindow):
         p = self.player
         p.current_track_changed.connect(self._on_track_changed)
         p.track_started.connect(self._on_track_started)
-        p.eq_unavailable.connect(lambda _t, reason: self.statusBar().showMessage(reason, 10000))
         p.playing_changed.connect(bar.set_playing)
         p.playing_changed.connect(self._check_system_volume)
         p.output_changed.connect(
