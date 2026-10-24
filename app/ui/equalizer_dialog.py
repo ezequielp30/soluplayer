@@ -162,7 +162,7 @@ class EqualizerDialog(QDialog):
         self._update_enabled()
 
     def _set_sliders(self, values: list[float]) -> None:
-        for slider, value in zip(self.sliders, values):
+        for slider, value in zip(self.sliders, values, strict=False):  # valores que falten: quedan como estaban
             slider.blockSignals(True)
             slider.setValue(int(round(float(value) * _STEPS)))
             slider.blockSignals(False)

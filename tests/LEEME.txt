@@ -12,7 +12,13 @@ Excepción: loudness_ui_test.py y convert_test.py COPIAN algunas canciones reale
 carpeta temporal para probar con audio real (las originales no se modifican; la prueba lo comprueba).
 
 Principales:
-  menu_test        todas las opciones de menú (90 comprobaciones)
+  menu_all_test    activa CADA opción de la barra de menús (prueba de producción)
+  menu_test        recorrido de uso por los menús (90 comprobaciones)
+  filemgr_test     renombrar, mover, crear carpeta y enviar a la Papelera
+  eq_dsp_test      mide el ecualizador con señales de prueba
+  eq_player_test   motor de reproducción con ecualizador (salida de audio real, en silencio)
+  eq_ui_test       ecualizador dentro del programa
+  theme_contrast_test  contraste de los 11 temas
   menus_test       menús leídos de assets\menus.ui (editor gráfico)
   fixes_test       cada fallo encontrado por la revisión de los agentes, reproducido y corregido
   cleanup_test     quitar automáticamente canciones y carpetas que ya no existen
@@ -26,5 +32,9 @@ Principales:
   theme_test, folders_test, titles_test, repair_test, mp3gain_test
   exit_*_test      cerrar el programa con tareas en marcha
   si_real          una sola copia del programa con varios procesos reales
+
+Para correr TODAS de una vez, con resumen (código 0 solo si todas pasan):
+
+    powershell -ExecutionPolicy Bypass -File tests\correr-todas.ps1
 
 Un «Segmentation fault» después de «RESULTADO» es del cierre forzado de la prueba, no del programa.
