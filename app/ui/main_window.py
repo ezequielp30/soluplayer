@@ -32,7 +32,7 @@ from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, ORG_NAME
 from ..database import Database, DuplicatePathError
 from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
-from ..config import data_dir
+from ..config import data_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
 from ..file_operations import FileOperations
@@ -1054,7 +1054,25 @@ class MainWindow(QMainWindow):
         if not self.prefs.remove_missing_on_start or not self.library:
             return
         plan = library_cleanup.plan_missing(self.library, self.ops.undoable_track_ids())
-        to_remove = list(plan.remove)
+        to_remove: list[Track] = []
+        if plan.remove:
+            # Siempre se pregunta (antes las pocas se quitaban solas): quitar también las saca de las
+            # playlists, y una carpeta renombrada por fuera del programa no debe costar las playlists.
+            shown = "\n".join(f"• {t.title} — {t.artist}" for t in plan.remove[:10])
+            if len(plan.remove) > 10:
+                shown += f"\n… y {len(plan.remove) - 10} más"
+            if ask(
+                self,
+                "Canciones que no se encuentran",
+                f"{plural(len(plan.remove), 'canción de tu biblioteca ya no se encuentra', 'canciones de tu biblioteca ya no se encuentran')} en el disco.",
+                [("Conservarlas", QMessageBox.ButtonRole.RejectRole),
+                 ("Quitarlas de la lista", QMessageBox.ButtonRole.DestructiveRole)],
+                QMessageBox.Icon.Question,
+                f"{shown}\n\nQuitarlas no borra ningún archivo: solo las saca de la biblioteca y de las playlists (se "
+                "hace un respaldo antes). Si las moviste, consérvalas y usa clic derecho → «Localizar archivo…». "
+                "Esta revisión se puede desactivar en Preferencias.",
+            ) == 1:
+                to_remove = list(plan.remove)
         for root, tracks in plan.suspicious.items():
             on_root = sum(1 for t in self.library if library_cleanup.location_root(t.path) == root)
             if ask(
@@ -1764,5 +1782,9 @@ class MainWindow(QMainWindow):
             f"<b>{APP_NAME}</b> — versión {__version__}<br>Reproductor de archivos de audio locales hecho con Python, "
             "PySide6 y Qt Multimedia.<br><br>La biblioteca y las playlists se guardan en:<br>"
             f"<code>{self.db.path}</code><br><br>El programa no incluye ni descarga música: "
-            "solo reproduce los archivos que tú eliges.",
+            "solo reproduce los archivos que tú eliges.<br><br>"
+            "Software libre bajo la licencia <b>GNU GPL versión 3 o posterior</b>: puedes usarlo, copiarlo, "
+            "modificarlo y compartirlo, siempre que entregues también su código fuente bajo la misma licencia. "
+            "Se distribuye sin ninguna garantía. El código fuente se entrega junto con el instalador. Licencias "
+            f"de los componentes de terceros:<br><code>{resource_path('licencias')}</code>",
         )

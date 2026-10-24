@@ -2,6 +2,14 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.11.1 — 2026-10-24
+
+- **Licencia:** el programa es software libre bajo la GNU GPL versión 3 o posterior (`LICENSE`); «Acerca
+  de…» lo indica. `crear-instalador.ps1` deja también `ReproductorMusica-<versión>-codigo-fuente.zip` para
+  entregar junto con el instalador, como exige la GPL.
+- **Canciones que faltan al abrir:** ahora siempre se pregunta antes de quitarlas de la lista y de las
+  playlists (muestra cuáles); antes las pocas se quitaban solas.
+
 ## 1.11.0 — 2026-10-24 (revisión de producción)
 
 Correcciones de la revisión de control de calidad (QA, código, seguridad, integridad de datos y

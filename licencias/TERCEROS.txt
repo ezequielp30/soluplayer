@@ -1,7 +1,12 @@
 Reproductor de Música — componentes de terceros
 ================================================
 
-Este programa incluye los siguientes componentes. Cada uno conserva su propia licencia; los textos
+El Reproductor de Música es software libre: se distribuye bajo la GNU General Public License, versión 3
+o (a tu elección) cualquier versión posterior (texto completo en GPL-3.0.txt), SIN NINGUNA GARANTÍA.
+Quien lo reciba puede usarlo, copiarlo, modificarlo y redistribuirlo, entregando también su código fuente
+(el archivo «ReproductorMusica-<versión>-codigo-fuente.zip» que acompaña al instalador).
+
+Además incluye los siguientes componentes. Cada uno conserva su propia licencia; los textos
 completos están en esta misma carpeta.
 
 Componente            Uso en el programa                          Licencia              Código fuente

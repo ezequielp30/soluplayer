@@ -72,6 +72,8 @@ db.conn.commit()
 print("[1. Al abrir: carpeta movida → «Buscar dónde está…»]")
 answers = [new_place]
 QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: answers.pop(0) if answers else "")
+# Ahora siempre se pregunta antes de quitar canciones sueltas que faltan (también salen de las playlists).
+expect(msg("ya no se encuentra en el disco"), click("Quitarlas de la lista"))
 expect(msg("ya no existe y tenía 12 canciones"), click("Buscar dónde está…"))
 win = mw.MainWindow(db); win.show(); spin(200)
 before_backups = len(backup.list_backups())
@@ -108,7 +110,11 @@ win.prefs.remove_missing_on_start = True
 conv_track = next(t for t in win.library if t.path == keep[6])
 s = converter.new_session([conv_track]); s.items[0].done = True; s.status = converter.STATUS_DONE; s.save()
 db.update_track_paths([(conv_track.id, s.items[0].mp3)])  # la biblioteca apunta al MP3, que no existe
-win._reload_library(); win.startup_checks(); spin(200)
+expect(msg("ya no se encuentra en el disco"), click("Conservarlas"))
+win._reload_library(); win.startup_checks(); spin(300)
+check("si contestas «Conservarlas», la canción que falta sigue en la lista", any(t.path == keep[5] for t in win.library))
+expect(msg("ya no se encuentra en el disco"), click("Quitarlas de la lista"))
+win._reload_library(); win.startup_checks(); spin(300)
 check("una conversión que se puede deshacer se conserva", any(t.id == conv_track.id for t in win.library))
 check("una canción suelta que falta sí se quita", not any(t.path == keep[5] for t in win.library))
 # Más de la mitad de un disco falta: se pregunta

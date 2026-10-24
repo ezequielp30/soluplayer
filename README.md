@@ -393,10 +393,10 @@ Usa clic derecho → **Localizar archivo…** para elegir la nueva ubicación: l
 Si otras canciones de la misma carpeta también faltan y están en la nueva carpeta, el programa ofrece
 actualizarlas todas de una vez.
 
-**Limpieza automática al abrir** (Archivo → Preferencias → Biblioteca; viene activada): las canciones
-cuyo archivo ya no existe se quitan de la lista y de las playlists (no se borra ningún archivo; se hace un
-respaldo antes y la lista queda en el registro). Las carpetas que se quedan sin canciones desaparecen de
-«Carpetas». Protecciones:
+**Revisión al abrir** (Archivo → Preferencias → Biblioteca; viene activada): si hay canciones cuyo
+archivo ya no existe, el programa **pregunta** si quitarlas de la lista y de las playlists (muestra cuáles;
+no se borra ningún archivo; se hace un respaldo antes y la lista queda en el registro). Las carpetas que
+se quedan sin canciones desaparecen de «Carpetas». Protecciones:
 
 - Si el disco donde estaban (USB, externo o de red) **no está conectado**, se conservan hasta que vuelva.
 - Si falta **una carpeta entera** con 10 canciones o más, pregunta: *Buscar dónde está…* (si la moviste
@@ -475,13 +475,22 @@ Qué hace el instalador:
 - El instalador no está firmado: la primera vez Windows puede mostrar «Windows protegió su PC» →
   *Más información* → *Ejecutar de todas formas*.
 
-### Licencias de terceros
+### Licencia y distribución
 
-El programa incluye Qt/PySide6 y FFmpeg (LGPL), LAME/lameenc (LGPL), mutagen (GPL-2.0 o posterior), NumPy
-(BSD) y Python (PSF). La carpeta `licencias` (copiada al instalar) tiene `TERCEROS.txt` con el detalle y
-los textos completos. Al distribuir el programa hay que incluirla. Como mutagen es GPL, distribuir el
-programa con el código cerrado no es compatible con su licencia: hay que publicarlo bajo GPL o reemplazar
-mutagen por una biblioteca de licencia compatible.
+El Reproductor de Música es **software libre bajo la GNU GPL versión 3 o posterior** (archivo `LICENSE`).
+Quien lo reciba puede usarlo, copiarlo, modificarlo y compartirlo, siempre entregando también el código
+fuente bajo la misma licencia. Se eligió la GPL porque el programa usa mutagen (GPL-2.0 o posterior).
+
+**Para repartirlo**, entrega siempre los dos archivos que deja `crear-instalador.ps1` en `build\instalador`:
+`Instalar-ReproductorMusica-<versión>.exe` y `ReproductorMusica-<versión>-codigo-fuente.zip` (el código de
+esa misma versión, armado desde git).
+
+Componentes de terceros: Qt/PySide6 y FFmpeg (LGPL), LAME/lameenc (LGPL), mutagen (GPL), NumPy (BSD) y
+Python (PSF). La carpeta `licencias` (se instala con el programa) tiene `TERCEROS.txt` con el detalle y los
+textos completos.
+
+El instalador no está firmado digitalmente: la primera vez Windows SmartScreen puede mostrar «Windows
+protegió su PC». Quien lo instale debe pulsar *Más información* → *Ejecutar de todas formas*.
 
 Archivos: `packaging/ReproductorMusica.spec` (PyInstaller), `packaging/instalador.iss` (Inno Setup),
 `packaging/version_info.txt` y `tools/make_icon.py` (genera `assets/icono.ico`).

@@ -63,6 +63,15 @@ Write-Host "Creando el instalador..."
 & $iscc "/DAppVersion=$version" /Q packaging\instalador.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló." }
 
+# 5. Código fuente de esta versión (la licencia GPL exige entregarlo junto con el programa).
+$source = "build\instalador\ReproductorMusica-$version-codigo-fuente.zip"
+if (git status --porcelain 2>$null) {
+    Write-Host "Aviso: el ZIP de código fuente se arma con el último commit; los cambios sin guardar no entran." -ForegroundColor Yellow
+}
+git archive --format=zip --prefix="ReproductorMusica-$version/" -o $source HEAD
+if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el ZIP del código fuente (¿está git instalado?)." }
+
 $setup = Get-Item "build\instalador\Instalar-ReproductorMusica-$version.exe"
 Write-Host ""
 Write-Host ("Listo: {0}  ({1:N0} MB)" -f $setup.FullName, ($setup.Length / 1MB)) -ForegroundColor Green
+Write-Host ("Código fuente: {0}  (entrégalo junto con el instalador)" -f (Get-Item $source).FullName) -ForegroundColor Green

@@ -320,7 +320,7 @@ class PreferencesDialog(QDialog):
         library = QGroupBox("Biblioteca")
         library_layout = QVBoxLayout(library)
         self.remove_missing = QCheckBox(
-            "Al abrir el programa, quitar de la lista las canciones y carpetas que ya no existen en el disco"
+            "Al abrir el programa, revisar si faltan canciones o carpetas en el disco (y preguntar si quitarlas)"
         )
         self.remove_missing.setChecked(prefs.remove_missing_on_start)
         library_layout.addWidget(self.remove_missing)
