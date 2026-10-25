@@ -6,21 +6,45 @@ Uso bajo su propia responsabilidad: el programa se entrega «tal cual», sin gar
 
 El Reproductor de Música es software libre: se distribuye bajo la GNU General Public License, versión 3
 o (a tu elección) cualquier versión posterior (texto completo en GPL-3.0.txt), SIN NINGUNA GARANTÍA.
-Quien lo reciba puede usarlo, copiarlo, modificarlo y redistribuirlo, entregando también su código fuente
-(el archivo «ReproductorMusica-<versión>-codigo-fuente.zip» que acompaña al instalador).
+Quien lo reciba puede usarlo, copiarlo, modificarlo y redistribuirlo, entregando también su código fuente.
+El código fuente de esta versión se instala junto con el programa, en la carpeta «codigo-fuente»
+(ReproductorMusica-<versión>-codigo-fuente.zip), y también se entrega junto al instalador.
 
 Además incluye los siguientes componentes. Cada uno conserva su propia licencia; los textos
 completos están en esta misma carpeta.
 
 Componente            Uso en el programa                          Licencia              Código fuente
 --------------------  ------------------------------------------  --------------------  ------------------------------------------
-Qt 6 / PySide6 6.12   Interfaz, reproducción de audio             LGPL-3.0              https://code.qt.io  ·  https://download.qt.io
-Shiboken6 6.12        Enlace entre Python y Qt                    LGPL-3.0              https://code.qt.io/cgit/pyside/pyside-setup.git
-FFmpeg (de Qt)        Decodificación de los formatos de audio     LGPL-2.1 o posterior  https://ffmpeg.org/download.html
+Qt 6.12 / PySide6     Interfaz, reproducción de audio             LGPL-3.0              https://download.qt.io/official_releases/QtForPython/pyside6/
+  6.12.0                                                                                https://code.qt.io (etiqueta v6.12.0)
+Shiboken6 6.12.0      Enlace entre Python y Qt                    LGPL-3.0              https://code.qt.io/cgit/pyside/pyside-setup.git (v6.12.0)
+FFmpeg 9.0.1          Decodificación de los formatos de audio     LGPL-2.1 o posterior  Incluido: codigo-fuente\ffmpeg-9.0.1.tar.xz
+  (compilado por Qt)                                                                    (https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz)
 mutagen 1.48          Lectura y escritura de etiquetas de audio   GPL-2.0 o posterior   https://github.com/quodlibet/mutagen
 LAME / lameenc 1.9    Codificación a MP3                          LGPL-3.0 o posterior  https://lame.sourceforge.io · https://github.com/chrisstaite/lameenc
 NumPy 2.5             Cálculo del ecualizador y del volumen       BSD-3-Clause y otras  https://github.com/numpy/numpy
 Python 3.12           Lenguaje del programa                       PSF License           https://www.python.org/downloads/source/
+
+FFmpeg: son las bibliotecas avcodec-63, avformat-63, avutil-61, swresample-7 y swscale-10 que trae
+PySide6, en su versión 9.0.1 y SIN las partes GPL (licencia LGPL 2.1 o posterior). Se compilaron con:
+  --disable-programs --disable-doc --disable-debug --enable-network --disable-lzma --enable-pic
+  --disable-vulkan --disable-v4l2-m2m --disable-decoder=truemotion1 --disable-avdevice
+  --disable-avfilter --enable-zlib --toolchain=msvc --enable-shared --disable-static
+(con zlib 1.3.1). El código fuente completo de esa versión, con su firma oficial comprobada, se
+instala en la carpeta «codigo-fuente».
+
+Bibliotecas que Qt lleva dentro de sus archivos (cada una con su aviso de licencia en esta carpeta):
+  libpng            Qt6Gui.dll                       libpng-LICENSE.txt
+  FreeType          Qt6Gui.dll y complementos        FreeType-FTL.txt  — Partes de este programa son
+                                                     copyright © The FreeType Project (www.freetype.org).
+                                                     Todos los derechos reservados.
+  HarfBuzz          Qt6Gui.dll                       HarfBuzz-COPYING.txt
+  PCRE2             Qt6Core.dll                      PCRE2-LICENCE.txt
+  libjpeg-turbo     plugins\imageformats\qjpeg.dll   libjpeg-turbo-LICENSE.txt — Este programa se basa en
+                                                     parte en el trabajo del Independent JPEG Group.
+  libwebp           Qt6Multimedia.dll, FFmpeg        libwebp-COPYING.txt
+  zlib              Qt y FFmpeg                      zlib-LICENSE.txt
+  BLAKE2            Qt6Core.dll                      dominio público (CC0) o Apache-2.0, a elección
 
 Archivos de licencia
 --------------------
@@ -29,7 +53,10 @@ GPL-3.0.txt          GNU General Public License, versión 3 (texto al que remite
 LGPL-3.0.txt         GNU Lesser General Public License, versión 3 (Qt, PySide6, Shiboken6, LAME/lameenc)
 LGPL-2.1.txt         GNU Lesser General Public License, versión 2.1 (FFmpeg)
 numpy-LICENSE.txt    Licencia de NumPy y de los componentes que incluye
-Python-LICENSE.txt   Licencia de Python (PSF)
+Python-LICENSE.txt   Licencia de Python (PSF), con las de OpenSSL, libffi, bzip2 y otras que trae
+libpng-LICENSE.txt, FreeType-FTL.txt, HarfBuzz-COPYING.txt, PCRE2-LICENCE.txt,
+libjpeg-turbo-LICENSE.txt, libwebp-COPYING.txt, zlib-LICENSE.txt
+                     Avisos de las bibliotecas que Qt lleva dentro (ver arriba)
 
 Bibliotecas LGPL: se distribuyen como archivos DLL/PYD separados dentro de la carpeta «_internal» del
 programa instalado, de modo que se pueden reemplazar por otra versión compatible.

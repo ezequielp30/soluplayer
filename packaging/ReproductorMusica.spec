@@ -37,10 +37,11 @@ a = Analysis(
 )
 # Complementos que Qt arrastra pero el programa no usa: teclado virtual (con todo Qml/Quick), el lector de
 # PDF y decodificadores de imagen que nunca hacen falta (las carátulas solo se aceptan en JPEG o PNG):
-# quitarlos ahorra espacio y deja menos código nativo expuesto a imágenes manipuladas.
+# quitarlos ahorra espacio y deja menos código nativo expuesto a imágenes manipuladas. opengl32sw.dll es el
+# OpenGL por software (Mesa) que solo usa Qt Quick: la interfaz de Widgets dibuja sin OpenGL.
 _UNUSED = (
     "qtvirtualkeyboard", "qt6virtualkeyboard", "qt6quick", "qt6qml", "qpdf", "qt6pdf", "qt6opengl.dll",
-    "qtiff.dll", "qwebp.dll", "qicns.dll", "qtga.dll", "qwbmp.dll",
+    "qtiff.dll", "qwebp.dll", "qicns.dll", "qtga.dll", "qwbmp.dll", "opengl32sw.dll",
 )
 a.binaries = [b for b in a.binaries if not any(u in b[0].lower().replace("\\", "/").split("/")[-1] for u in _UNUSED)]
 

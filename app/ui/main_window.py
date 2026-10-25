@@ -1818,6 +1818,7 @@ class MainWindow(QMainWindow):
             "solo reproduce los archivos que tú eliges.<br><br>"
             "Software libre bajo la licencia <b>GNU GPL versión 3 o posterior</b>: puedes usarlo, copiarlo, "
             "modificarlo y compartirlo, siempre que entregues también su código fuente bajo la misma licencia. "
-            "Se distribuye sin ninguna garantía. El código fuente se entrega junto con el instalador. Licencias "
+            "Se distribuye sin ninguna garantía. El código fuente se instala con el programa, en su carpeta "
+            "«codigo-fuente». Licencias "
             f"de los componentes de terceros:<br><code>{resource_path('licencias')}</code>",
         )

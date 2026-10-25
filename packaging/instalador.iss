@@ -58,9 +58,13 @@ Name: "openwith"; Description: "Agregar «{#AppName}» a «Abrir con» para arch
 ; complementos viejos mezclados con los nuevos y el programa podría no abrir. Los datos del usuario
 ; (biblioteca, playlists, ajustes) están en %LOCALAPPDATA% y no se tocan.
 Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\codigo-fuente"
 
 [Files]
 Source: "..\build\dist\ReproductorMusica\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Código fuente del programa (GPL) y de FFmpeg (LGPL): viajan con el instalador (crear-instalador.ps1).
+Source: "{#SourceZip}"; DestDir: "{app}\codigo-fuente"; Flags: ignoreversion
+Source: "{#FFmpegSource}"; DestDir: "{app}\codigo-fuente"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

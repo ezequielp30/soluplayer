@@ -13,4 +13,6 @@ El programa es software libre bajo la GNU General Public License, versión 3 o p
 copiarlo, modificarlo y compartirlo, entregando también su código fuente bajo la misma licencia. Las
 licencias de los componentes de terceros se instalan en la carpeta «licencias» del programa.
 
+El código fuente de esta versión (y el de FFmpeg) se instala en la carpeta «codigo-fuente» del programa.
+
 Si continúa con la instalación, acepta usar el programa bajo estas condiciones.

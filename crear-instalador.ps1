@@ -32,9 +32,6 @@ $version = (& $python -c "import app; print(app.__version__)").Trim()
 Write-Host "Versión: $version"
 & $python tools\version_info.py
 if ($LASTEXITCODE -ne 0) { throw "No se pudo preparar version_info.txt." }
-if (git status --porcelain 2>$null) {
-    Write-Host "Aviso: hay cambios sin guardar en git; para publicar, crea el instalador desde una versión etiquetada." -ForegroundColor Yellow
-}
 
 & $python tools\make_icon.py
 # Extensiones para «Abrir con» (las mismas que acepta el programa)
@@ -47,6 +44,29 @@ for ext in sorted(SUPPORTED_EXTENSIONS):
 open('packaging/extensiones.iss', 'w', encoding='utf-8-sig').write('\n'.join(lines) + '\n')
 "@
 
+# El código fuente que se entrega tiene que ser exactamente el que se empaqueta (GPL): no se arma con
+# cambios sin guardar. Solo se aceptan los archivos que este mismo script acaba de generar (entran al ZIP
+# tal como quedan).
+$generated = @("packaging/version_info.txt", "packaging/extensiones.iss", "assets/")
+$status = @(git status --porcelain)
+if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar git (¿está instalado?)." }
+$dirty = @($status | Where-Object { $path = $_.Substring(3); -not ($generated | Where-Object { $path.StartsWith($_) }) })
+if ($dirty) { throw "Hay cambios sin guardar en git; guárdalos (commit) antes de crear el instalador:`n$($dirty -join "`n")" }
+
+# Código fuente de FFmpeg (LGPL 2.1): se entrega con el programa. Se descarga una vez y se comprueba que
+# sea exactamente el publicado por FFmpeg (huella SHA-256 del archivo firmado por ffmpeg.org).
+$ffmpegVersion = "9.0.1"
+$ffmpegSha256 = "CF38E0E28C7E5605942C4A77755349B0145804A397AF37EB1FB4C77CB237F635"
+$ffmpegSource = Join-Path $PSScriptRoot "build\terceros\ffmpeg-$ffmpegVersion.tar.xz"
+if (-not (Test-Path $ffmpegSource)) {
+    Write-Host "Descargando el código fuente de FFmpeg $ffmpegVersion..."
+    New-Item -ItemType Directory -Force (Split-Path $ffmpegSource) | Out-Null
+    Invoke-WebRequest "https://ffmpeg.org/releases/ffmpeg-$ffmpegVersion.tar.xz" -OutFile $ffmpegSource -UseBasicParsing
+}
+if ((Get-FileHash $ffmpegSource -Algorithm SHA256).Hash -ne $ffmpegSha256) {
+    throw "El código fuente de FFmpeg ($ffmpegSource) no coincide con el publicado; bórralo y vuelve a crear el instalador."
+}
+
 # 3. Empaquetar con PyInstaller
 Write-Host "Empaquetando el programa (1-2 minutos)..."
 & $python -m PyInstaller packaging\ReproductorMusica.spec --noconfirm --clean --distpath build\dist --workpath build\work --log-level WARN
@@ -57,21 +77,27 @@ foreach ($needed in @("_internal\PySide6\avcodec-*.dll", "_internal\PySide6\plug
         throw "Falta $needed en el paquete: el programa no podría reproducir audio."
     }
 }
+# El código de FFmpeg que se entrega tiene que ser el de la versión que trae PySide6.
+$avcodec = Get-ChildItem "build\dist\ReproductorMusica\_internal\PySide6\avcodec-*.dll" | Select-Object -First 1
+& $python -c "import sys; sys.exit(0 if b'FFmpeg version $ffmpegVersion' in open(sys.argv[1], 'rb').read() else 1)" $avcodec.FullName
+if ($LASTEXITCODE -ne 0) { throw "PySide6 trae otra versión de FFmpeg (no la $ffmpegVersion): actualiza la versión y su huella en este script y en licencias\TERCEROS.txt." }
 
-# 4. Crear el instalador con Inno Setup
-Write-Host "Creando el instalador..."
-& $iscc "/DAppVersion=$version" /Q packaging\instalador.iss
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló." }
-
-# 5. Código fuente de esta versión (la licencia GPL exige entregarlo junto con el programa).
-$source = "build\instalador\ReproductorMusica-$version-codigo-fuente.zip"
-if (git status --porcelain 2>$null) {
-    Write-Host "Aviso: el ZIP de código fuente se arma con el último commit; los cambios sin guardar no entran." -ForegroundColor Yellow
-}
-git archive --format=zip --prefix="ReproductorMusica-$version/" -o $source HEAD
+# 4. Código fuente de esta versión (la licencia GPL exige entregarlo junto con el programa): el último commit
+# más los archivos que generó este script, o sea exactamente lo que se empaquetó.
+New-Item -ItemType Directory -Force "build\instalador" | Out-Null
+$source = Join-Path $PSScriptRoot "build\instalador\ReproductorMusica-$version-codigo-fuente.zip"
+$tree = "$(git stash create)".Trim()  # no toca el árbol de trabajo: solo arma un commit con lo generado
+if (-not $tree) { $tree = "HEAD" }
+git archive --format=zip --prefix="ReproductorMusica-$version/" -o $source $tree
 if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el ZIP del código fuente (¿está git instalado?)." }
+
+# 5. Crear el instalador con Inno Setup (lleva también el código fuente: así lo recibe quien reciba solo
+# el instalador).
+Write-Host "Creando el instalador..."
+& $iscc "/DAppVersion=$version" "/DSourceZip=$source" "/DFFmpegSource=$ffmpegSource" /Q packaging\instalador.iss
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló." }
 
 $setup = Get-Item "build\instalador\Instalar-ReproductorMusica-$version.exe"
 Write-Host ""
 Write-Host ("Listo: {0}  ({1:N0} MB)" -f $setup.FullName, ($setup.Length / 1MB)) -ForegroundColor Green
-Write-Host ("Código fuente: {0}  (entrégalo junto con el instalador)" -f (Get-Item $source).FullName) -ForegroundColor Green
+Write-Host ("Código fuente: {0}  (también va dentro del instalador)" -f (Get-Item $source).FullName) -ForegroundColor Green

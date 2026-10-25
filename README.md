@@ -485,7 +485,8 @@ Qué hace el instalador:
 - Al actualizar, borra los archivos internos de la versión anterior (tu biblioteca y tus ajustes se
   conservan).
 - El instalador no está firmado: la primera vez Windows puede mostrar «Windows protegió su PC» →
-  *Más información* → *Ejecutar de todas formas*.
+  *Más información* → *Ejecutar de todas formas*. En Windows 11 con «Control inteligente de aplicaciones»
+  puede no abrirse (ver *Licencia y distribución*).
 
 ### Licencia y distribución
 
@@ -493,16 +494,28 @@ El Reproductor de Música es **software libre bajo la GNU GPL versión 3 o poste
 Quien lo reciba puede usarlo, copiarlo, modificarlo y compartirlo, siempre entregando también el código
 fuente bajo la misma licencia. Se eligió la GPL porque el programa usa mutagen (GPL-2.0 o posterior).
 
-**Para repartirlo**, entrega siempre los dos archivos que deja `crear-instalador.ps1` en `build\instalador`:
-`Instalar-ReproductorMusica-<versión>.exe` y `ReproductorMusica-<versión>-codigo-fuente.zip` (el código de
-esa misma versión, armado desde git).
+**Para repartirlo** alcanza con `Instalar-ReproductorMusica-<versión>.exe` (en `build\instalador`): el
+instalador lleva dentro el código fuente de esa misma versión y el de FFmpeg, que se instalan en la carpeta
+`codigo-fuente` del programa. `crear-instalador.ps1` deja además `ReproductorMusica-<versión>-codigo-fuente.zip`
+junto al instalador, y se niega a armarlo si hay cambios sin guardar en git (así el código entregado es
+exactamente el del programa).
 
-Componentes de terceros: Qt/PySide6 y FFmpeg (LGPL), LAME/lameenc (LGPL), mutagen (GPL), NumPy (BSD) y
-Python (PSF). La carpeta `licencias` (se instala con el programa) tiene `TERCEROS.txt` con el detalle y los
-textos completos.
+Componentes de terceros: Qt/PySide6 y FFmpeg 9.0.1 (LGPL), LAME/lameenc (LGPL), mutagen (GPL), NumPy
+(BSD), Python (PSF) y las bibliotecas que Qt lleva dentro (libpng, FreeType, HarfBuzz, PCRE2,
+libjpeg-turbo, libwebp, zlib). La carpeta `licencias` (se instala con el programa) tiene `TERCEROS.txt` con
+el detalle y los textos completos.
 
-El instalador no está firmado digitalmente: la primera vez Windows SmartScreen puede mostrar «Windows
-protegió su PC». Quien lo instale debe pulsar *Más información* → *Ejecutar de todas formas*.
+El instalador no está firmado digitalmente:
+
+- **Windows 10 y la mayoría de los Windows 11:** la primera vez SmartScreen puede mostrar «Windows protegió
+  su PC». Quien lo instale debe pulsar *Más información* → *Ejecutar de todas formas*.
+- **Windows 11 con «Control inteligente de aplicaciones» activado** (suele estar en equipos con Windows 11
+  recién instalado): bloquea los programas sin firma **sin ofrecer** «Ejecutar de todas formas», así que el
+  instalador no se puede abrir. No es que el programa esté dañado. La única forma de instalarlo es desactivar
+  esa protección en *Seguridad de Windows → Control de aplicaciones y del navegador → Configuración de
+  Control inteligente de aplicaciones*; es decisión de quien lo instala, porque deja el equipo menos
+  protegido (y en algunas versiones de Windows no se puede volver a activar sin reinstalar Windows).
+  La solución definitiva es firmar el instalador con un certificado de firma de código (tiene costo).
 
 Archivos: `packaging/ReproductorMusica.spec` (PyInstaller), `packaging/instalador.iss` (Inno Setup),
 `packaging/version_info.txt` y `tools/make_icon.py` (genera `assets/icono.ico`).

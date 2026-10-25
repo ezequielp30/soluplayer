@@ -2,6 +2,19 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.3 — 2026-10-25 (licencias y Windows 11)
+
+- **Código fuente dentro del instalador:** el del programa (GPL) y el de FFmpeg 9.0.1 (LGPL, con su firma
+  oficial comprobada) se instalan en la carpeta `codigo-fuente`; así lo recibe también quien reciba solo el
+  instalador. `crear-instalador.ps1` se niega a armarlo con cambios sin guardar en git, para que el código
+  entregado sea exactamente el del programa, y comprueba que PySide6 siga trayendo esa versión de FFmpeg.
+- **Licencias completas:** `licencias/TERCEROS.txt` indica la versión exacta de FFmpeg y cómo se compiló, y
+  la carpeta trae los avisos de las bibliotecas que Qt lleva dentro (libpng, FreeType, HarfBuzz, PCRE2,
+  libjpeg-turbo, libwebp, zlib).
+- **Más liviano:** ya no se instala `opengl32sw.dll` (OpenGL por software, que el programa no usa).
+- **Windows 11:** el README explica qué pasa con «Control inteligente de aplicaciones», que bloquea los
+  programas sin firma sin ofrecer «Ejecutar de todas formas».
+
 ## 1.12.2 — 2026-10-25 (revisión completa)
 
 Correcciones de una revisión completa del programa en tres frentes (archivos, reproducción y pruebas).
