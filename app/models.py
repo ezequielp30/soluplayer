@@ -34,6 +34,14 @@ class Track:
         return replace(self, **changes)
 
 
+def unreachable_root(path: str) -> str | None:
+    """La raíz de la ruta (la letra del disco o el recurso de red) en minúsculas si no responde (disco desconectado,
+    servidor apagado). Sirve para no consultar canción por canción un disco caído: en red cada consulta
+    puede esperar varios segundos y la ventana quedaría «No responde»."""
+    root = os.path.splitdrive(path)[0]
+    return root.casefold() if root and not os.path.exists(root + "\\") else None
+
+
 @dataclass
 class Playlist:
     id: int

@@ -23,3 +23,4 @@ x = 0.5 * np.sin(2 * np.pi * (RATE / 4) * t[:RATE] + math.pi / 4)
 L, TP = measure(x, x); sp = 20 * math.log10(np.abs(x).max())
 print(f"pico de muestra {sp:.2f} dBFS → pico real {TP} dBTP (esperado ≈ {20*math.log10(0.5):.2f})"); ok &= abs(TP - 20 * math.log10(0.5)) < 0.3
 print("VALIDACIÓN:", "OK" if ok else "FALLA")
+sys.exit(0 if ok else 1)

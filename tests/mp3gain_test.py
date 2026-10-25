@@ -1,5 +1,5 @@
 """Prueba de mp3gain sobre COPIAS de MP3 reales (los originales no se tocan)."""
-import hashlib, os, shutil, sqlite3, sys, tempfile
+import hashlib, os, shutil, sqlite3, sys, tempfile, time
 sys.path.insert(0, r"D:\reproductor-musica")
 import numpy as np
 from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl
@@ -18,7 +18,11 @@ def measure(path):
     dec.finished.connect(lambda: st.update(done=True))
     dec.error.connect(lambda e: st.update(done=True, err=dec.errorString()))
     dec.setSource(QUrl.fromLocalFile(path)); dec.start()
-    while not st["done"]: app.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+    deadline = time.time() + 120  # un decodificador que nunca termina no cuelga la prueba
+    while not st["done"]:
+        if time.time() > deadline:
+            st.update(done=True, err="el decodificador no terminó en 120 s"); break
+        app.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
     lufs, tp = meter.result()
     dec.stop(); dec.setSource(QUrl()); dec.deleteLater(); app.processEvents()  # suelta el archivo
     return lufs, tp, meter.frames / RATE, st["err"]
@@ -29,6 +33,7 @@ db = os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db")
 con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
 samples = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.mp3' order by random() limit 4")]
 samples.insert(0, r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3")
+originals = {p: sha(p) for p in samples}  # antes de tocar nada: así se ve si algo escribió en el original
 work = tempfile.mkdtemp(prefix="mp_gain_")
 ok_all = True
 for src in samples:
@@ -48,5 +53,8 @@ for src in samples:
     print(f"{'OK ' if ok else 'FALLA'} {os.path.basename(src)[:48]:48s} tramas={info.frames:5d} gain={info.min_gain}-{info.max_gain} | "
           f"{l0} → {l1} LUFS (subió {rise and round(rise,2)} dB, esperado {steps*1.5}) | pico {tp0} → {tp1} dBTP | "
           f"duración igual={abs(d1-d0)<0.05} | etiquetas intactas={tags_ok} | deshacer exacto={back}")
-print("original sin tocar:", sha(samples[0]) == sha(samples[0]))
+untouched = all(sha(p) == h for p, h in originals.items())
+print("originales sin tocar:", untouched)
+ok_all &= untouched
 print("RESULTADO:", "OK" if ok_all else "FALLA")
+sys.exit(0 if ok_all else 1)

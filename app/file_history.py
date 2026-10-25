@@ -86,8 +86,45 @@ def record(kind: str, changes: list[Change]) -> FileSession | None:
     return session
 
 
+def begin(kind: str, planned: list[Change]) -> FileSession | None:
+    """Anota el plan ANTES de empezar («en curso»): si se corta la luz a mitad, al abrir se sabe qué
+    archivos llegaron a moverse (ver FileOperations.reconcile_interrupted_moves)."""
+    if not planned:
+        return None
+    session = FileSession(
+        id=journal.new_id(sessions_dir(), "archivos"),
+        kind=kind,
+        created_at=datetime.now().isoformat(timespec="seconds"),
+        status=journal.STATUS_RUNNING,
+        changes=planned,
+    )
+    try:
+        session.save()
+    except OSError as exc:
+        log.warning("No se pudo anotar el plan de %s: %s", kind, exc)
+        return None
+    return session
+
+
+def finish(session: FileSession, done: list[Change]) -> None:
+    """Termina una sesión empezada con begin(): quedan solo los cambios hechos. Sin ninguno, se borra."""
+    try:
+        if done:
+            session.changes = done
+            session.status = journal.STATUS_DONE
+            session.save()
+        else:
+            session.path.unlink(missing_ok=True)
+    except OSError as exc:
+        log.warning("No se pudo cerrar el registro de %s: %s", session.kind, exc)
+
+
 def list_sessions() -> list[FileSession]:
     return journal.load_all(sessions_dir(), "archivos-*.json", FileSession.load)
+
+
+def interrupted_sessions() -> list[FileSession]:
+    return [s for s in list_sessions() if s.status == journal.STATUS_RUNNING]
 
 
 def undo(session: FileSession, on_restored) -> tuple[list[Change], list[str]]:

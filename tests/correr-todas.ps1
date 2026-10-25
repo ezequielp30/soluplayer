@@ -14,7 +14,7 @@ $tests = @(
     "step2_test", "step3_test", "folders_test", "titles_test", "dup_test", "review_test", "repair_test",
     "convert_test", "loudness_ui_test", "online_test", "mp3gain_test", "codec_test", "breaker_test",
     "exit_test", "exit_loud_test", "exit_convert_test", "exit_convert2_test", "exit_trash_test",
-    "si_real", "loudness_validate", "runner_probe", "robustez_test", "historial_archivos_test"
+    "si_real", "loudness_validate", "runner_probe", "robustez_test", "historial_archivos_test", "revision_1122_test"
 )
 $failed = @()
 foreach ($t in $tests) {
@@ -28,7 +28,8 @@ foreach ($t in $tests) {
     $fallas = @($text | Select-String -Pattern "^\s*FALLA\b" -CaseSensitive).Count  # la marca, no la palabra «falla» en un nombre
     # Estricto: solo vale código 0. Un cierre anómalo (p. ej. 139 o -1073741819, violación de acceso)
     # cuenta como falla aunque se haya impreso el resultado: puede esconder un cierre real del programa.
-    $ok = ($fallas -eq 0) -and $summary -and ($code -eq 0)
+    # Un resumen «RESULTADO: FALLA» o «VALIDACIÓN: FALLA» también es falla, aunque el código de salida sea 0.
+    $ok = ($fallas -eq 0) -and $summary -and ($summary -cnotmatch '\bFALLA\b') -and ($code -eq 0)
     if (-not $ok) { $failed += $t }
     $extra = if ($code -ne 0 -and $summary) { " (código de salida $code)" } else { "" }
     "{0,-22} {1,-6} {2}{3}" -f $t, ($(if ($ok) { "OK" } else { "FALLA" })), $summary, $extra

@@ -2,6 +2,31 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.2 — 2026-10-25 (revisión completa)
+
+Correcciones de una revisión completa del programa en tres frentes (archivos, reproducción y pruebas).
+Cada una tiene su prueba en `tests/revision_1122_test.py`.
+
+- **Corte de luz al mover canciones:** el plan se anota antes de empezar y la biblioteca se actualiza
+  canción por canción; al abrir, las ya movidas apuntan a su lugar nuevo (no se ofrece quitarlas de las
+  playlists) y el movimiento se puede deshacer desde el Historial.
+- **Mover a otro disco:** si la biblioteca no acepta el cambio, el archivo vuelve de verdad a su carpeta
+  (antes podía quedar en el otro disco con un mensaje que decía lo contrario).
+- **Reunir repetidas interrumpida:** sus canciones ya no se ofrecen para quitar al abrir.
+- **Ajuste de volumen:** al abrir ya no se escribe nada en los MP3; si la biblioteca recuerda un ajuste
+  que el archivo no tiene, se corrige la biblioteca (antes «Revertir» podía bajar el volumen de más).
+- **El programa siempre abre:** un tamaño de ventana guardado dañado en el registro ya no lo impide.
+- **Una canción dañada no detiene la música:** si se llega a ella sola, se salta con un aviso en la barra
+  de estado; si la elige el usuario, se le avisa como antes.
+- **Cerrar durante una importación** ya no da un error inesperado.
+- **Disco de red desconectado:** la cola y «Aleatorio» ya no lo consultan canción por canción (la ventana
+  podía quedar «No responde» varios minutos).
+- **Ecualizador:** si se pierde la salida de audio (auriculares USB o Bluetooth, vuelta de la suspensión)
+  pasa a «Pausa» en el mismo punto en vez de figurar sonando sin sonar.
+- **Pruebas más estrictas:** un resumen «FALLA» cuenta como falla aunque el código de salida sea 0; la de
+  ajuste de volumen compara de verdad el original; las que solo imprimían ahora comprueban; las de
+  borrador nunca usan los datos reales.
+
 ## 1.12.1 — 2026-10-24
 
 - **Autor y contacto:** Ezequiel Perez · ezequielp30@gmail.com, en Ayuda → Acerca de…, en el instalador, en los

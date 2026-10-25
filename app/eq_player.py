@@ -27,6 +27,7 @@ import numpy as np
 import shiboken6
 from PySide6.QtCore import QCoreApplication, QIODevice, QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import (
+    QAudio,
     QAudioDecoder,
     QAudioFormat,
     QAudioOutput,
@@ -423,6 +424,8 @@ class EqPlayer(QObject):
         device = self._audio.device() if not self._audio.device().isNull() else QMediaDevices.defaultAudioOutput()
         self._sink = QAudioSink(device, self._format, self)
         self._sink.setBufferSize(int(self._rate * _BUFFER_MS / 1000) * self._format.bytesPerFrame())
+        sink = self._sink
+        sink.stateChanged.connect(lambda state: self._on_sink_state(sink, state))
         self._apply_volume()
         self._device = _Pull(self)
         self._device.open(QIODevice.OpenModeFlag.ReadOnly)
@@ -441,6 +444,20 @@ class EqPlayer(QObject):
     def _apply_volume(self, *_args) -> None:
         if self._sink is not None:
             self._sink.setVolume(0.0 if self._audio.isMuted() else self._audio.volume())
+
+    def _on_sink_state(self, sink: QAudioSink, state) -> None:
+        """La salida se detuvo sola con un error (auriculares USB o Bluetooth desconectados, vuelta de la
+        suspensión): se pasa a «Pausa» en el mismo punto, para que no figure sonando sin sonar. No es un
+        error de la canción; Reproducir abre otra vez la salida que haya."""
+        if sink is not self._sink or state != QAudio.State.StoppedState or sink.error() == QAudio.Error.NoError:
+            return  # una salida que ya se cambió o se detuvo a propósito
+        if self._state != State.PlayingState:
+            return
+        log.warning("La salida de audio se detuvo (%s): el ecualizador queda en pausa", sink.error().name)
+        position = self.position()
+        self._stop_sink()
+        self._seek_frames(int(position * self._rate / 1000))
+        self._set_state(State.PausedState)
 
     def _device_changed(self) -> None:
         """La salida de Windows cambió (auriculares, Bluetooth…): se sigue sonando por la nueva."""

@@ -11,7 +11,7 @@ import sys
 import time
 from functools import partial
 
-from PySide6.QtCore import QPoint, QSettings, Qt, QThread, QTimer, QUrl, Slot
+from PySide6.QtCore import QByteArray, QPoint, QSettings, Qt, QThread, QTimer, QUrl, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
-from ..database import Database, DuplicatePathError
+from ..database import Database, DuplicatePathError, available_paths
 from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
 from ..config import data_dir, resource_path
 from ..artwork import cover_hash
@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
         p.duration_changed.connect(self._on_duration_changed)
         p.error_occurred.connect(self._on_player_error)
         p.track_skipped.connect(self._on_track_skipped)
+        p.track_failed.connect(self._on_track_failed)
         p.shuffle_changed.connect(self._on_shuffle_changed)
         p.repeat_changed.connect(self._on_repeat_changed)
 
@@ -312,13 +313,19 @@ class MainWindow(QMainWindow):
 
     def _restore_settings(self) -> None:
         s = self.settings
+        # Un valor dañado (p. ej. texto que dejó un limpiador de registro) se descarta: si no, el programa
+        # no volvería a abrir nunca.
         geometry = s.value("window/geometry")
-        if geometry is not None:
+        if isinstance(geometry, (QByteArray, bytes, bytearray)):
             self.restoreGeometry(geometry)
+        elif geometry is not None:
+            s.remove("window/geometry")
         self._fit_to_screen()
         splitter = s.value("window/splitter")
-        if splitter is not None:
+        if isinstance(splitter, (QByteArray, bytes, bytearray)):
             self.splitter.restoreState(splitter)
+        elif splitter is not None:
+            s.remove("window/splitter")
         volume = _setting_int(s, "player/volume", 70, 0, 100)  # un valor dañado no impide abrir
         muted = s.value("player/muted", False, type=bool)
         shuffle = s.value("player/shuffle", False, type=bool)
@@ -344,6 +351,13 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         if self._import_worker is not None:
+            # Lo que la importación avise de aquí en más ya no debe llegar: la biblioteca se cierra enseguida
+            # y lo leído hasta ahora no se guarda (se avisaría con la ventana ya cerrada).
+            for signal in (self._import_worker.finished, self._import_worker.progress):
+                try:
+                    signal.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
             self._import_worker.cancel()
         if self._import_thread is not None:
             self._import_thread.quit()
@@ -576,12 +590,16 @@ class MainWindow(QMainWindow):
 
     # ================================================================== importación
 
+    def _import_start_dir(self) -> str:
+        """Carpeta donde abrir el selector: la última usada, si el valor guardado sirve y la carpeta existe."""
+        last = self.settings.value("import/last_dir")
+        return last if isinstance(last, str) and os.path.isdir(last) else os.path.expanduser("~")
+
     def _import_files(self) -> None:
         if self._busy_importing():
             return
-        start = self.settings.value("import/last_dir", os.path.expanduser("~"))
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Importar archivos de audio", start, f"{AUDIO_FILE_FILTER};;Todos los archivos (*.*)"
+            self, "Importar archivos de audio", self._import_start_dir(), f"{AUDIO_FILE_FILTER};;Todos los archivos (*.*)"
         )
         if files:
             self.settings.setValue("import/last_dir", os.path.dirname(files[0]))
@@ -590,8 +608,7 @@ class MainWindow(QMainWindow):
     def _import_folder(self) -> None:
         if self._busy_importing():
             return
-        start = self.settings.value("import/last_dir", os.path.expanduser("~"))
-        folder = QFileDialog.getExistingDirectory(self, "Elegir carpeta de música", start)
+        folder = QFileDialog.getExistingDirectory(self, "Elegir carpeta de música", self._import_start_dir())
         if not folder:
             return
         if not os.path.isdir(folder) or not os.access(folder, os.R_OK):
@@ -890,10 +907,12 @@ class MainWindow(QMainWindow):
         return message
 
     def sync_volume_annotations(self) -> None:
-        """Al arrancar: las canciones ya ajustadas reciben la anotación dentro del propio MP3, para poder
-        revertirlas aunque la biblioteca se restaure o se reimporten. No cambia el audio."""
+        """Al arrancar: si la biblioteca recuerda un ajuste de volumen que el MP3 no tiene anotado, manda el
+        archivo y la biblioteca se corrige. Nunca escribe en los MP3."""
         current = self.player.current_track
-        self.ops.sync_volume_annotations(self.library, current.id if current is not None else None)
+        fixed, _unread = self.ops.sync_volume_annotations(self.library, current.id if current is not None else None)
+        if fixed:
+            self._reload_library()
 
     # ------------------------------------------------------------------ gestión de archivos y carpetas
 
@@ -1045,7 +1064,9 @@ class MainWindow(QMainWindow):
 
     def startup_checks(self) -> None:
         """Al abrir, en este orden: ofrecer deshacer lo interrumpido y después limpiar lo que falta
-        (si fuera al revés, se quitarían canciones que deshacer devolvería a su sitio)."""
+        (si fuera al revés, se quitarían canciones que deshacer devolvería a su sitio). Antes que nada, un
+        «Mover a otra carpeta» cortado a mitad: las canciones ya movidas pasan a su lugar nuevo."""
+        self.ops.reconcile_interrupted_moves()
         self.check_interrupted_review()
         for path in library_cleanup.remove_leftover_temps(self.library):
             log.info("Temporal sobrante borrado (corte o cierre a mitad de una operación): %s", path)
@@ -1451,7 +1472,7 @@ class MainWindow(QMainWindow):
 
     def _locate_track(self, track: Track) -> None:
         old_dir = os.path.dirname(track.path)
-        start = old_dir if os.path.isdir(old_dir) else self.settings.value("import/last_dir", os.path.expanduser("~"))
+        start = old_dir if os.path.isdir(old_dir) else self._import_start_dir()
         path, _ = QFileDialog.getOpenFileName(
             self, f"Localizar «{track.title}»", start, f"{AUDIO_FILE_FILTER};;Todos los archivos (*.*)"
         )
@@ -1534,7 +1555,11 @@ class MainWindow(QMainWindow):
         self.player.play_queue(tracks, index)
 
     def _on_shuffle_play(self, tracks: list[Track]) -> None:
-        available = [i for i, t in enumerate(tracks) if t.check_available()]
+        # Una consulta por carpeta y ninguna más a un disco que no responde (no una por canción).
+        found = available_paths(t.path for t in tracks)
+        for t in tracks:
+            t.available = t.path in found
+        available = [i for i, t in enumerate(tracks) if t.available]
         if not available:
             if tracks:
                 QMessageBox.information(self, "Sin canciones disponibles", "Ninguna canción de esta lista está disponible en el disco.")
@@ -1596,6 +1621,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Se omitió «{track.title}»: no se encuentra el archivo ({track.path}).", 8000
         )
+
+    def _on_track_failed(self, track: Track, message: str) -> None:
+        """Una canción a la que se llegó sola no se pudo reproducir: se avisa sin detener la música."""
+        self.statusBar().showMessage(f"Se saltó «{track.title}»: {message}", 15000)
 
     def _on_shuffle_changed(self, enabled: bool) -> None:
         self.player_bar.set_shuffle(enabled)

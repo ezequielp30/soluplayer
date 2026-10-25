@@ -245,26 +245,30 @@ class FileOperations:
         canción reimportada…): se recupera desde el archivo, así se puede revertir."""
         self.db.set_norm_gains([(track_id, round(annotated_steps * mp3gain.STEP_DB, 2))])
 
-    @staticmethod
-    def sync_volume_annotations(library: list[Track], playing_id: int | None) -> tuple[int, int]:
-        """Las canciones ajustadas (según la biblioteca) reciben la anotación dentro del propio MP3.
-        Solo agrega la que falta; no cambia el audio. Devuelve (escritas, pendientes)."""
-        written = failed = 0
+    def sync_volume_annotations(self, library: list[Track], playing_id: int | None) -> tuple[int, int]:
+        """La biblioteca dice «ajustada» pero el MP3 no tiene la anotación (respaldo viejo restaurado, álbum
+        copiado encima…): manda el archivo, así que la biblioteca vuelve a «sin ajuste». Nunca se escribe en
+        el MP3 sin que el usuario lo pida: una anotación falsa haría que «Revertir» bajara el volumen de más.
+        Todo ajuste del programa escribe su anotación junto con el audio. Devuelve (corregidas, sin leer)."""
+        stale: list[tuple[int, float]] = []
+        failed = 0
         for track in library:
             if track.norm_gain_db <= 0 or not track.path.lower().endswith(".mp3") or not track.available:
                 continue
-            if track.id == playing_id:
-                continue  # está sonando: se hará en el próximo arranque
             try:
                 if mp3gain.read_applied_steps(track.path) == 0:
-                    mp3gain.write_applied_steps(track.path, round(track.norm_gain_db / mp3gain.STEP_DB))
-                    written += 1
+                    stale.append((track.id, 0.0))
             except Exception as exc:
                 failed += 1
-                log.warning("No se pudo anotar el ajuste de volumen en %s: %s", track.path, exc)
-        if written or failed:
-            log.info("Anotaciones de ajuste de volumen: %d escritas, %d pendientes", written, failed)
-        return written, failed
+                log.warning("No se pudo leer el ajuste de volumen de %s: %s", track.path, exc)
+        if stale:
+            # Respaldo antes: si fue un editor de etiquetas el que borró la anotación (el audio sigue
+            # ajustado), el dato se puede recuperar desde Herramientas → Respaldos.
+            backup.create_backup(self.db.conn, "antes-de-corregir-volumen")
+            self.db.set_norm_gains(stale)
+        if stale or failed:
+            log.info("Ajustes de volumen sin anotación en el MP3: %d corregidos en la biblioteca, %d sin leer", len(stale), failed)
+        return len(stale), failed
 
     # ------------------------------------------------------------------ historial y deshacer
 
@@ -360,26 +364,67 @@ class FileOperations:
         return new_folder
 
     def move_tracks(self, tracks: list[Track], destination: str) -> file_manager.MoveResult:
-        """Mueve los archivos de varias canciones a otra carpeta (las playlists se conservan)."""
+        """Mueve los archivos de varias canciones a otra carpeta (las playlists se conservan). El plan se anota
+        antes de empezar y la biblioteca se actualiza archivo por archivo: si se corta la luz a mitad, al abrir
+        reconcile_interrupted_moves() deja cada canción donde quedó su archivo."""
         result = file_manager.MoveResult()
         if not self._prepare("antes-de-mover", {t.id for t in tracks}):
             return result
         by_path = {t.path: t for t in tracks}
-        result = file_manager.move_files(list(by_path), destination)
-        for source, target in result.moved:
-            try:
-                self.db.update_track_paths([(by_path[source].id, target)])
-            except sqlite3.Error as exc:
-                log.error("No se pudo actualizar la biblioteca tras mover %s: %s", source, exc)
+        session = file_history.begin(file_history.KIND_MOVE, [
+            file_history.Change(p, os.path.join(destination, os.path.basename(p)), [t.id]) for p, t in by_path.items()
+        ])
+        for source, track in by_path.items():
+            step = file_manager.move_files([source], destination)
+            result.failed.extend(step.failed)
+            for moved_from, target in step.moved:
                 try:
-                    os.rename(target, source)
-                except OSError:
-                    pass
-                result.failed.append((source, f"No se pudo actualizar la biblioteca ({exc}); se dejó donde estaba."))
-        result.moved = [(s, t) for s, t in result.moved if not any(f == s for f, _r in result.failed)]
-        file_history.record(file_history.KIND_MOVE, [file_history.Change(s, d, [by_path[s].id]) for s, d in result.moved])
+                    self.db.update_track_paths([(track.id, target)])
+                except sqlite3.Error as exc:
+                    log.error("No se pudo actualizar la biblioteca tras mover %s: %s", moved_from, exc)
+                    result.failed.append((moved_from, self._put_back(target, moved_from, exc)))
+                    continue
+                result.moved.append((moved_from, target))
+        done = [file_history.Change(s, d, [by_path[s].id]) for s, d in result.moved]
+        if session is not None:
+            file_history.finish(session, done)
+        else:
+            file_history.record(file_history.KIND_MOVE, done)
         self._on_changed()
         return result
+
+    @staticmethod
+    def _put_back(target: str, source: str, exc: Exception) -> str:
+        """La biblioteca no aceptó la ruta nueva: el archivo vuelve a su carpeta (también desde otro disco,
+        con la copia segura). Devuelve el motivo para el usuario, diciendo dónde quedó de verdad."""
+        back = file_manager.move_files([target], os.path.dirname(source))
+        if back.moved and os.path.exists(source):
+            return f"No se pudo actualizar la biblioteca ({exc}); se devolvió a su carpeta."
+        log.error("Tampoco se pudo devolver %s a %s: %s", target, source, back.failed)
+        return f"No se pudo actualizar la biblioteca ({exc}) ni devolver el archivo: quedó en {target}"
+
+    def reconcile_interrupted_moves(self) -> int:
+        """Al abrir: un «Mover a otra carpeta» que quedó a medias (corte de luz, cierre forzado). Las canciones
+        cuyo archivo ya llegó al destino pasan a apuntar ahí (así no se ofrece quitarlas de las playlists) y el
+        movimiento queda en el Historial para deshacerlo. Devuelve cuántas se reconciliaron."""
+        fixed = 0
+        for session in file_history.interrupted_sessions():
+            done = [c for c in session.changes if journal.was_moved(c.source, c.target)]
+            # Ni en el origen ni en el destino (p. ej. el pendrive de destino no está conectado): todavía
+            # no se sabe dónde quedó, así que el plan se conserva y esas canciones siguen protegidas.
+            unknown = [c for c in session.changes if not os.path.exists(c.source) and not os.path.exists(c.target)]
+            try:
+                self.db.update_track_paths([(track_id, c.target) for c in done for track_id in c.track_ids])
+            except sqlite3.Error as exc:
+                log.error("No se pudo reconciliar el movimiento interrumpido %s: %s", session.id, exc)
+                continue  # se intenta otra vez en el próximo arranque
+            if not unknown:
+                file_history.finish(session, done)
+            fixed += len(done)
+            log.info("Movimiento interrumpido %s: %d archivo(s) ya estaban en el destino", session.id, len(done))
+        if fixed:
+            self._on_changed()
+        return fixed
 
     def trash_tracks(self, tracks: list[Track]) -> tuple[int, list[tuple[str, str]]]:
         """Envía los archivos de las canciones a la Papelera y las quita de la biblioteca y de las playlists.
@@ -407,9 +452,18 @@ class FileOperations:
 
     def undoable_track_ids(self) -> set[int]:
         """Canciones que, aunque falte su archivo, deshacer una operación del Historial recuperaría: las de
-        una conversión cuyo original sigue guardado (deshacer lo devuelve y la biblioteca vuelve a él).
-        (Una reunión de repetidas no puede recuperar un archivo que ya no está en la carpeta de revisión.)"""
+        una reunión de repetidas cuyo archivo sigue en la carpeta de revisión, y las de una conversión cuyo
+        original sigue guardado (deshacer lo devuelve y la biblioteca vuelve a él)."""
         ids: set[int] = set()
+        # Una reunión de repetidas que se puede deshacer (también interrumpida, o «Hecha» sin llegar a
+        # guardar la biblioteca): sus canciones están en la carpeta de revisión y deshacer las devuelve.
+        for s in review_folder.list_sessions():
+            if s.status == review_folder.STATUS_UNDONE:
+                continue
+            ids.update(m.track_id for m in s.moved() if os.path.exists(m.target))
+        # Un «Mover a otra carpeta» interrumpido cuyo destino todavía no se puede ver (disco desconectado).
+        for s in file_history.interrupted_sessions():
+            ids.update(i for c in s.changes if not os.path.exists(c.source) for i in c.track_ids)
         for s in converter.list_sessions():
             if s.status == converter.STATUS_UNDONE:
                 continue

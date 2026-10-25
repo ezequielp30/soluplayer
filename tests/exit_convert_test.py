@@ -23,13 +23,17 @@ def script():
         def wait_done():
             if d.runner.busy: QTimer.singleShot(200, wait_done); return
             print("convertidas:", sum(1 for t in win.library if t.path.endswith(".mp3")), flush=True)
+            reached.append(True)
             d.reject()
             QTimer.singleShot(300, lambda: next(x for t in win.menuBar().actions() for x in t.menu().actions() if x.text().replace("&", "") == "Salir").trigger())
         QTimer.singleShot(500, wait_done)
     QTimer.singleShot(300, drive)
     win._open_convert()
+reached = []  # la conversión terminó y se pidió salir: sin esto la prueba pasaba aunque no se convirtiera nada
 orig = QApplication.exec
 QApplication.exec = lambda self=None: (QTimer.singleShot(800, script), orig())[1]
 code = appmod.run()
+if not reached:
+    print("FALLA la conversión no llegó a terminar antes de salir", flush=True)
 print("run() devolvió", code, flush=True)
-sys.exit(code)
+sys.exit(code if reached else 1)

@@ -15,4 +15,6 @@ w.run()
 print("consultas a MusicBrainz caído:", calls["musicbrainz"], "(debe ser 2) | a Deezer:", calls["deezer"], "(debe ser 6)")
 print("resultados con datos:", sum(1 for r in found if r.candidates), "de 6")
 print("aviso:", [e for r in found for e in r.errors if "se omite" in e])
-print("RESULTADO:", "OK" if calls == {"musicbrainz": 2, "deezer": 6} else "FALLA")
+ok = calls == {"musicbrainz": 2, "deezer": 6}
+print("RESULTADO:", "OK" if ok else "FALLA")
+sys.exit(0 if ok else 1)

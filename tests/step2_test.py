@@ -3,6 +3,7 @@ fallo inesperado del trabajador, respaldo fallido, liberación de diálogos y av
 import math
 import os
 import shutil
+import sqlite3
 import struct
 import sys
 import tempfile
@@ -138,36 +139,31 @@ worker.run()
 check("revertir usa la anotación del archivo", emitted == [(10, -2, 0, "")], emitted)
 check("tras revertir el archivo queda idéntico al original", open(mp3, "rb").read() == untouched)
 
-print("6. Relleno al arrancar: canciones ajustadas según la biblioteca pero sin anotación")
-mp3b = os.path.join(music, "ajustada-antes.mp3")
+print("6. Al arrancar: la biblioteca dice «ajustada» y el MP3 no tiene anotación → manda el archivo")
+mp3b = os.path.join(music, "ajustada-sin-anotar.mp3")
 make_mp3(mp3b)
-mp3gain.apply_steps(mp3b, 3)  # como las 172 canciones ajustadas antes de existir la anotación
-playing = os.path.join(music, "sonando.mp3")
-make_mp3(playing)
-mp3gain.apply_steps(playing, 1)
+mp3gain.apply_steps(mp3b, 3)  # no se sabe cuánto se ajustó: no se inventa una anotación
+noted = os.path.join(music, "anotada.mp3")
+make_mp3(noted)
+mp3gain.apply_steps(noted, 1, annotate_total=1)
 lib = [
     track(20, mp3b, norm_gain_db=4.5),
-    track(21, playing, norm_gain_db=1.5),
+    track(21, noted, norm_gain_db=1.5),
     track(22, mp3, norm_gain_db=0.0),
     track(23, os.path.join(music, "no-esta.mp3"), norm_gain_db=3.0, available=False),
 ]
 from app.file_operations import FileOperations
-fake = SimpleNamespace(library=lib, player=SimpleNamespace(current_track=lib[1]), ops=FileOperations)
-before_audio = open(mp3b, "rb").read()
-MainWindow.sync_volume_annotations(fake)
-check("se anota la ajustada (3 pasos)", mp3gain.read_applied_steps(mp3b) == 3)
-check("la que está sonando se deja para el próximo arranque", mp3gain.read_applied_steps(playing) == 0)
-check("la no ajustada no recibe anotación", mp3gain.read_applied_steps(mp3) == 0)
-frames_before = mp3gain.inspect.__wrapped__ if hasattr(mp3gain.inspect, "__wrapped__") else None
-check("el audio no cambia al anotar", open(mp3b, "rb").read()[:len(before_audio) - 200] == before_audio[:len(before_audio) - 200]
-      and mp3gain.inspect(mp3b).frames == mp3gain.inspect(mp3).frames)
-MainWindow.sync_volume_annotations(fake)
-check("repetirlo no duplica ni cambia la anotación", mp3gain.read_applied_steps(mp3b) == 3)
-worker = AdjustWorker([(track(20, mp3b), -2)])
+saved = []
+fake_ops = SimpleNamespace(db=SimpleNamespace(set_norm_gains=saved.extend, conn=sqlite3.connect(":memory:")))
+before = {p: open(p, "rb").read() for p in (mp3b, noted, mp3)}
+FileOperations.sync_volume_annotations(fake_ops, lib, None)
+check("no se escribe en ningún MP3", all(open(p, "rb").read() == b for p, b in before.items()))
+check("solo la que no tiene anotación vuelve a «sin ajuste» en la biblioteca", saved == [(20, 0.0)], saved)
+worker = AdjustWorker([(track(21, noted), -1)])
 emitted.clear()
 worker.adjusted.connect(lambda *a: emitted.append(a))
 worker.run()
-check("una canción rellenada se revierte completa (3 pasos)", emitted == [(20, -3, 0, "")], emitted)
+check("una canción anotada se revierte según su anotación", emitted == [(21, -1, 0, "")], emitted)
 
 # ---------------------------------------------------------------- fallo inesperado del trabajador
 print("7. Un error inesperado en el trabajador no deja el diálogo colgado")

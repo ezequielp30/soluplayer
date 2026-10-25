@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
 from enum import IntEnum
 
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
-from .models import Track
+from .models import Track, unreachable_root
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class PlaybackController(QObject):
     duration_changed = Signal(int)
     error_occurred = Signal(object, str)  # Track | None, mensaje
     track_skipped = Signal(object)  # Track omitida porque el archivo no existe
+    track_failed = Signal(object, str)  # Track a la que se llegó sola y no se pudo reproducir: se pasó a la siguiente
     track_started = Signal(object)  # Track que empezó a sonar (una vez por carga)
     shuffle_changed = Signal(bool)
     repeat_changed = Signal(int)
@@ -64,6 +66,10 @@ class PlaybackController(QObject):
         self._shuffle = False
         self._repeat = RepeatMode.OFF
         self._started_pending = False
+        # La canción actual llegó sola (fin de la anterior) y cuántas seguidas fallaron así: un error en
+        # una que llegó sola pasa a la siguiente sin detener la música; si fallan todas, se avisa.
+        self._auto_loaded = False
+        self._failed_in_row = 0
 
         self._wire(self._qt_player)
 
@@ -161,6 +167,7 @@ class PlaybackController(QObject):
         self._queue = list(tracks)
         start_index = max(0, min(start_index, len(self._queue) - 1))
         self._build_order(start_index)
+        self._auto_loaded, self._failed_in_row = False, 0
         self._load_current(autoplay=True)
 
     def _build_order(self, current_index: int) -> None:
@@ -266,6 +273,7 @@ class PlaybackController(QObject):
             # El archivo se soltó (para moverlo, convertirlo o ajustarlo): se vuelve a cargar, sin
             # contarla otra vez como reproducida.
             pending = self._started_pending
+            self._auto_loaded = False  # la pidió el usuario: si falla, se le avisa
             self._load_current(autoplay=True)
             self._started_pending = pending
             return
@@ -322,6 +330,9 @@ class PlaybackController(QObject):
     def _advance(self, step: int, user: bool) -> None:
         if not self._order:
             return
+        self._auto_loaded = not user
+        if user:
+            self._failed_in_row = 0
         new_pos = self._pos + step
         if not 0 <= new_pos < len(self._order):
             wrap = self._repeat == RepeatMode.ALL or (user and self._repeat == RepeatMode.ONE)
@@ -337,19 +348,28 @@ class PlaybackController(QObject):
 
     def _load_current(self, autoplay: bool, direction: int = 1) -> None:
         """Carga la pista actual, saltando las que ya no existen en disco."""
+        dead: set[str] = set()  # discos o servidores que no responden: no se consultan canción por canción
         for _ in range(len(self._order)):
             track = self.current_track
             if track is None:
                 break
-            if track.check_available():
+            root = os.path.splitdrive(track.path)[0].casefold()
+            if root not in dead and track.check_available():
                 self._use_engine(self._wanted_engine(track), keep_position=False)
-                self._player.setSource(QUrl.fromLocalFile(track.path))
+                url = QUrl.fromLocalFile(track.path)
+                if self._player.source() == url:
+                    self._player.setSource(QUrl())  # el mismo archivo otra vez (playlist que lo repite): Qt no lo recargaría
+                self._player.setSource(url)
                 log.info("Reproduciendo: %s", track.path)
                 self._started_pending = True  # se cuenta como reproducida cuando realmente empiece a sonar
                 self.current_track_changed.emit(track)
                 if autoplay:
                     self._player.play()
                 return
+            if root in dead:
+                track.available = False
+            elif unreachable_root(track.path):
+                dead.add(root)
             self.track_skipped.emit(track)
             new_pos = self._pos + direction
             if not 0 <= new_pos < len(self._order) and autoplay and self._repeat != RepeatMode.ALL:
@@ -392,6 +412,7 @@ class PlaybackController(QObject):
         playing = state == QMediaPlayer.PlaybackState.PlayingState
         if playing and self._started_pending and self.current_track is not None:
             self._started_pending = False
+            self._failed_in_row = 0
             self.track_started.emit(self.current_track)
         self.playing_changed.emit(playing)
 
@@ -416,4 +437,13 @@ class PlaybackController(QObject):
         message = _ERROR_MESSAGES.get(error) or f"No se pudo reproducir el archivo. {error_string}".strip()
         track = self.current_track
         log.error("Error de reproducción (%s: %s) en %s", error.name, error_string, track.path if track else "-")
-        self.error_occurred.emit(self.current_track, message)
+        if self._auto_loaded and track is not None and self._failed_in_row < len(self._order) - 1:
+            # Llegó sola (la música iba sonando sin nadie delante): se informa y se sigue con la próxima.
+            self._failed_in_row += 1
+            self.track_failed.emit(track, message)
+            pos = self._pos
+            # Después, por si mientras tanto el usuario eligió otra: entonces no se salta nada.
+            QTimer.singleShot(0, lambda: self.current_track is track and self._pos == pos and self._advance(1, user=False))
+            return
+        self._failed_in_row = 0
+        self.error_occurred.emit(track, message)
