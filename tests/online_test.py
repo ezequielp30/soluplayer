@@ -147,8 +147,8 @@ check("  corregir título/artista y repetir búsqueda con iTunes", "iTunes (Appl
 check("  propuesta coherente", "Lamento" in single.get("first", ""), single.get("first"))
 
 # ---------- sin conexión: mensaje claro, sin colgarse
-orig = online_lookup.urllib.request.urlopen
-online_lookup.urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("sin red"))
+orig = online_lookup._opener.open
+online_lookup._opener.open = lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("sin red"))
 off = {}
 def offline(d):
     try:
@@ -158,7 +158,7 @@ def offline(d):
         d.reject(); off["done"] = True
 expect(is_(OnlineLookupDialog), offline)
 win.content.online_lookup_requested.emit([by_file("lamento.wav")]); wait_until(lambda: "done" in off, 60000)
-online_lookup.urllib.request.urlopen = orig
+online_lookup._opener.open = orig
 check("Sin internet: aviso claro", "conexión" in off.get("status", ""), off.get("status"))
 check("  la fila indica el error", "error de conexión" in off.get("cell", ""), off.get("cell"))
 

@@ -41,6 +41,7 @@ lines = ['; Generado por crear-instalador.ps1 a partir de app/config.py']
 for ext in sorted(SUPPORTED_EXTENSIONS):
     lines.append('Root: HKA; Subkey: \"Software\\Classes\\' + ext + '\\OpenWithProgids\"; ValueType: string; ValueName: \"{#ProgId}\"; ValueData: \"\"; Flags: uninsdeletevalue; Tasks: openwith')
     lines.append('Root: HKA; Subkey: \"Software\\Classes\\Applications\\{#AppExe}\\SupportedTypes\"; ValueType: string; ValueName: \"' + ext + '\"; ValueData: \"\"; Tasks: openwith')
+    lines.append('Root: HKA; Subkey: \"Software\\Clients\\Media\\{#ProgId}\\Capabilities\\FileAssociations\"; ValueType: string; ValueName: \"' + ext + '\"; ValueData: \"{#ProgId}\"; Tasks: openwith')
 open('packaging/extensiones.iss', 'w', encoding='utf-8-sig').write('\n'.join(lines) + '\n')
 "@
 

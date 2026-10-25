@@ -24,9 +24,11 @@ VersionInfoVersion={#AppVersion}
 VersionInfoCompany={#AppAuthor}
 ; Página «Antes de instalar»: aviso de uso bajo propia responsabilidad (se lee y se continúa con «Siguiente»).
 InfoBeforeFile=aviso.txt
-; Instalación solo para el usuario actual: no pide permisos de administrador.
+; Instalación solo para el usuario actual: no pide permisos de administrador. Sin el cuadro «para todos
+; los usuarios»: con él, al instalar con la cuenta de un administrador los datos y ajustes que limpia el
+; desinstalador serían los del administrador, no los del usuario (se puede forzar con /ALLUSERS).
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline
 DefaultDirName={autopf}\ReproductorMusica
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -77,6 +79,11 @@ Root: HKA; Subkey: "Software\Classes\{#ProgId}\DefaultIcon"; ValueType: string; 
 Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#AppName}"; Flags: uninsdeletekey; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: openwith
+; En Configuración → Aplicaciones → Aplicaciones predeterminadas (para elegirlo como reproductor de cada tipo).
+Root: HKA; Subkey: "Software\Clients\Media\{#ProgId}"; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Clients\Media\{#ProgId}\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "{#AppName}"; Tasks: openwith
+Root: HKA; Subkey: "Software\Clients\Media\{#ProgId}\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Reproductor de archivos de audio locales"; Tasks: openwith
+Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "{#AppName}"; ValueData: "Software\Clients\Media\{#ProgId}\Capabilities"; Flags: uninsdeletevalue; Tasks: openwith
 #include "extensiones.iss"
 
 [Run]

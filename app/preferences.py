@@ -99,6 +99,17 @@ class Preferences:
     def remove_missing_on_start(self, value: bool) -> None:
         self._s.setValue(self.REMOVE_MISSING, bool(value))
 
+    MEDIA_KEYS = "preferences/global_media_keys"
+
+    @property
+    def global_media_keys(self) -> bool:
+        """Las teclas multimedia del teclado manejan el reproductor aunque la ventana esté minimizada."""
+        return self._s.value(self.MEDIA_KEYS, True, type=bool)
+
+    @global_media_keys.setter
+    def global_media_keys(self, value: bool) -> None:
+        self._s.setValue(self.MEDIA_KEYS, bool(value))
+
     # ------------------------------------------------------------------ ecualizador
 
     EQ = "equalizer/state"

@@ -181,6 +181,16 @@ class PlaybackController(QObject):
             self._order = indices
             self._pos = current_index
 
+    def _reshuffle(self) -> None:
+        """Otro orden aleatorio para una vuelta nueva, sin empezar por la que acaba de sonar."""
+        last = self._order[self._pos] if 0 <= self._pos < len(self._order) else None
+        order = list(range(len(self._queue)))
+        random.shuffle(order)
+        if len(order) > 1 and order[0] == last:
+            swap = random.randrange(1, len(order))
+            order[0], order[swap] = order[swap], order[0]
+        self._order = order
+
     def append_tracks(self, tracks: list[Track]) -> None:
         """Agrega canciones al final de la cola sin interrumpir la que suena (si no hay cola, la crea)."""
         if not self._queue or self.current_track is None:
@@ -219,9 +229,10 @@ class PlaybackController(QObject):
             return
         was_playing = self.is_playing
         position = self.position()
+        self._pending_seek = 0
         self._player.setSource(QUrl.fromLocalFile(track.path) if track.check_available() else QUrl())
         if not self._player.source().isEmpty():
-            self._player.setPosition(position)
+            self.seek(position)
             if was_playing:
                 self._player.play()
 
@@ -286,8 +297,16 @@ class PlaybackController(QObject):
         self._player.stop()
 
     def seek(self, position_ms: int) -> None:
-        if self.current_track is not None:
-            self._player.setPosition(max(0, int(position_ms)))
+        if self.current_track is None:
+            return
+        position = max(0, int(position_ms))
+        loading = self._player.mediaStatus() in (QMediaPlayer.MediaStatus.NoMedia, QMediaPlayer.MediaStatus.LoadingMedia)
+        if self._player is self._qt_player and loading:
+            # QMediaPlayer ignora el salto si el archivo aún no terminó de cargar (disco lento, recién
+            # renombrado o movido): se hace en cuanto cargue.
+            self._pending_seek = position
+        else:
+            self._player.setPosition(position)
 
     def set_volume(self, percent: int) -> None:
         self._audio.setVolume(max(0, min(100, percent)) / 100)
@@ -336,6 +355,9 @@ class PlaybackController(QObject):
         new_pos = self._pos + step
         if not 0 <= new_pos < len(self._order):
             wrap = self._repeat == RepeatMode.ALL or (user and self._repeat == RepeatMode.ONE)
+            if self._shuffle and step > 0:
+                self._reshuffle()  # vuelta nueva: otro orden (si no, se repetiría el mismo)
+                new_pos = 0
             if not wrap:
                 # Fin de la cola: se detiene y queda lista desde el principio.
                 self._player.stop()
@@ -349,6 +371,7 @@ class PlaybackController(QObject):
     def _load_current(self, autoplay: bool, direction: int = 1) -> None:
         """Carga la pista actual, saltando las que ya no existen en disco."""
         dead: set[str] = set()  # discos o servidores que no responden: no se consultan canción por canción
+        self._pending_seek = 0  # un salto que quedó esperando era para la canción anterior
         for _ in range(len(self._order)):
             track = self.current_track
             if track is None:
@@ -387,6 +410,7 @@ class PlaybackController(QObject):
 
     def release_source(self) -> None:
         """Detiene y suelta el archivo actual (para que Windows deje moverlo o modificarlo)."""
+        self._pending_seek = 0
         self._player.stop()
         self._player.setSource(QUrl())
 

@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError, available_paths
-from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
+from .. import backup, error_log, file_manager, library_cleanup, media_keys, review_folder, win_audio
 from ..config import data_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
@@ -226,8 +226,20 @@ class MainWindow(QMainWindow):
         for menu in menus.values():
             if self.act_rename in menu.actions() or self.act_delete in menu.actions():
                 menu.aboutToShow.connect(self._update_playlist_actions)
+        # Las mismas teclas con la ventana minimizada o detrás de otra (registradas en Windows).
+        keys = media_keys.MediaKeys
+        wanted = {keys.PLAY_PAUSE_ID: "act_play", keys.NEXT_ID: "act_next", keys.PREVIOUS_ID: "act_prev", keys.STOP_ID: "act_stop"}
+        self._media_keys = keys(int(self.winId()), {i: actions[n].trigger for i, n in wanted.items() if n in actions})
+        QApplication.instance().installNativeEventFilter(self._media_keys)
+        self._apply_media_keys()
         if self._menu_warning:
             QTimer.singleShot(800, lambda: QMessageBox.warning(self, "Menús", self._menu_warning))
+
+    def _apply_media_keys(self) -> None:
+        if self.prefs.global_media_keys:
+            self._media_keys.enable()
+        else:
+            self._media_keys.disable()
 
     def _connect(self) -> None:
         bar = self.player_bar
@@ -373,6 +385,8 @@ class MainWindow(QMainWindow):
         except (RuntimeError, TypeError):
             pass
         self.player.stop()
+        self._media_keys.disable()
+        QApplication.instance().removeNativeEventFilter(self._media_keys)
         self.db.close()
         super().closeEvent(event)
 
@@ -952,7 +966,7 @@ class MainWindow(QMainWindow):
             now = self.player.current_track
             if was_playing and current is not None and now is not None and now.id == current.id and not self.player.is_playing:
                 self.player.play()
-                QTimer.singleShot(150, lambda: self.player.seek(position))
+                self.player.seek(position)  # si el archivo nuevo aún está cargando, salta en cuanto cargue
 
     def _rename_track_file(self, track: Track) -> None:
         name = self._ask_name("Renombrar archivo", "Nombre nuevo del archivo:", os.path.basename(track.path))
@@ -1205,6 +1219,7 @@ class MainWindow(QMainWindow):
 
     def _open_preferences(self) -> None:
         if self._run_dialog(PreferencesDialog(self.prefs, self)):
+            self._apply_media_keys()
             if self.prefs.theme != theme.mode():
                 theme.apply(QApplication.instance(), self.prefs.theme)
             state = "activada" if self.prefs.ask_titles_on_import else "desactivada"

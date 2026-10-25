@@ -17,6 +17,7 @@ from PySide6.QtCore import QFile
 
 from .config import SUPPORTED_EXTENSIONS
 from .file_ops import trash_block_reason
+from .utils import temp_beside
 
 log = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ def _move_across_drives(path: str, target: str) -> None:
     en su sitio) y se puede borrar sin riesgo al abrir el programa."""
     if not os.access(path, os.W_OK):
         raise PermissionError(errno.EACCES, "el archivo es de solo lectura", path)
-    temp = target + _MOVING_SUFFIX
+    temp = moving_temp(target)
     try:
         with open(path, "rb") as src, open(temp, "xb") as dst:  # «x»: falla si ya existe, no sobrescribe
             shutil.copyfileobj(src, dst, 1024 * 1024)
@@ -167,6 +168,11 @@ def _move_across_drives(path: str, target: str) -> None:
     except OSError:
         _remove_quietly(target)  # el original sigue en su sitio: no queda ninguna copia de más
         raise
+
+
+def moving_temp(target: str) -> str:
+    """El temporal de una copia a otro disco hacia `target`."""
+    return temp_beside(target, _MOVING_SUFFIX)
 
 
 def _remove_quietly(path: str) -> None:

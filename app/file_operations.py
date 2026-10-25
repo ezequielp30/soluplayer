@@ -23,7 +23,7 @@ from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
 from .models import Track
-from .utils import path_key, plural
+from .utils import long_path, path_key, plural
 
 log = logging.getLogger(__name__)
 
@@ -304,12 +304,19 @@ class FileOperations:
         for s in file_history.list_sessions():
             pending = s.pending()
             undone = s.status == journal.STATUS_UNDONE
+            running = s.status == journal.STATUS_RUNNING  # cortada a mitad: el plan, no lo hecho
             first = s.changes[0] if s.changes else None
             if s.kind == file_history.KIND_MOVE:
-                detail = f"{plural(len(s.changes), 'archivo')} → {os.path.dirname(first.target) if first else ''}"
+                moved = len(pending) if running else len(s.changes)
+                detail = f"{plural(moved, 'archivo')} → {os.path.dirname(first.target) if first else ''}"
             else:
                 detail = f"{os.path.basename(first.source.rstrip(chr(92) + '/'))} → {os.path.basename(first.target.rstrip(chr(92) + '/'))}" if first else ""
-            state = "Deshecha" if undone else ("Hecha" if pending else "Ya no se puede deshacer")
+            if undone:
+                state = "Deshecha"
+            elif running:
+                state = "Interrumpida"
+            else:
+                state = "Hecha" if pending else "Ya no se puede deshacer"
             entries.append(HistoryEntry(
                 KIND_FILES, _when(s.created_at), file_history.TITLES.get(s.kind, s.kind), detail, state,
                 can_undo=not undone and bool(pending), count=len(pending), session=s,
@@ -352,8 +359,12 @@ class FileOperations:
         inside = self.tracks_in(folder, library)
         if not self._prepare("antes-de-renombrar-carpeta", {t.id for t in inside}):
             raise file_manager.FileManagerError("Operación cancelada.")
+        # Lo que queda de cada ruta dentro de la carpeta, con nombres largos: una canción guardada como
+        # «C:\MUSICA~1\…» también está dentro de «C:\Música larga». Se calcula antes, mientras existen.
+        base = long_path(folder)
+        relative = {t.id: os.path.relpath(long_path(t.path), base) for t in inside}
         new_folder = file_manager.rename_folder(folder, new_name)
-        changes = [(t.id, os.path.join(new_folder, os.path.relpath(t.path, folder))) for t in inside]
+        changes = [(t.id, os.path.join(new_folder, relative[t.id])) for t in inside]
         try:
             self.db.update_track_paths(changes)
         except sqlite3.Error as exc:
@@ -371,12 +382,23 @@ class FileOperations:
         if not self._prepare("antes-de-mover", {t.id for t in tracks}):
             return result
         by_path = {t.path: t for t in tracks}
+        # En el plan solo entra lo que de verdad se puede mover (el archivo está y el destino está libre): si
+        # no, tras un corte, otro archivo con el mismo nombre en el destino pasaría por movido.
         session = file_history.begin(file_history.KIND_MOVE, [
-            file_history.Change(p, os.path.join(destination, os.path.basename(p)), [t.id]) for p, t in by_path.items()
+            file_history.Change(p, target, [t.id]) for p, t in by_path.items()
+            if os.path.isfile(p) and not os.path.exists(target := os.path.join(destination, os.path.basename(p)))
         ])
         for source, track in by_path.items():
             step = file_manager.move_files([source], destination)
             result.failed.extend(step.failed)
+            if step.failed and session is not None:
+                # No se movió: sale del plan ya, para que un corte después no lo confunda con un archivo
+                # que ya estaba en el destino con el mismo nombre.
+                session.changes = [c for c in session.changes if c.source != source]
+                try:
+                    session.save()
+                except OSError as exc:
+                    log.warning("No se pudo actualizar el plan del movimiento: %s", exc)
             for moved_from, target in step.moved:
                 try:
                     self.db.update_track_paths([(track.id, target)])
@@ -409,6 +431,14 @@ class FileOperations:
         movimiento queda en el Historial para deshacerlo. Devuelve cuántas se reconciliaron."""
         fixed = 0
         for session in file_history.interrupted_sessions():
+            for c in session.changes:
+                temp = file_manager.moving_temp(c.target)
+                if os.path.exists(temp) and os.path.exists(c.source):
+                    try:
+                        os.remove(temp)  # copia a medias: el original sigue entero en su sitio
+                        log.info("Temporal sobrante borrado (movimiento cortado): %s", temp)
+                    except OSError:
+                        pass
             done = [c for c in session.changes if journal.was_moved(c.source, c.target)]
             # Ni en el origen ni en el destino (p. ej. el pendrive de destino no está conectado): todavía
             # no se sabe dónde quedó, así que el plan se conserva y esas canciones siguen protegidas.

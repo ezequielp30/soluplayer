@@ -73,6 +73,13 @@ class JumpSlider(QSlider):
             return
         super().mouseReleaseEvent(event)
 
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (nombre de Qt)
+        # Con el teclado (flechas, Re Pág/Av Pág, Inicio/Fin) también se salta, no solo se mueve la barra.
+        before = self.value()
+        super().keyPressEvent(event)
+        if self.value() != before:
+            self.released_at.emit(self.value())
+
     def _cancel_drag(self) -> None:
         # Si aparece un diálogo mientras se arrastra, el «soltar» nunca llega: sin esto la barra
         # quedaría congelada (ya no seguiría la canción).
@@ -183,6 +190,8 @@ class PlayerBar(QFrame):
         self.progress = JumpSlider()
         self.progress.setRange(0, 0)
         self.progress.setEnabled(False)
+        self.progress.setSingleStep(5000)  # flechas: 5 s
+        self.progress.setPageStep(30000)  # Re Pág / Av Pág: 30 s
         self.remaining = QLabel("0:00")
         self.remaining.setObjectName("TimeLabel")
         self.remaining.setToolTip("Clic para alternar entre tiempo restante y duración total")

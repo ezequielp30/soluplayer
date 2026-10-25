@@ -54,6 +54,33 @@ def _long_path(path: str) -> str:
     return buffer.value if 0 < length < len(buffer) else path
 
 
+def long_path(path: str) -> str:
+    """La ruta con los nombres largos de Windows (si existe) y sin el prefijo «\\\\?\\»: así un
+    «C:\\PROGRA~1\\…» y un «C:\\Program Files\\…» se pueden comparar y combinar."""
+    if path.startswith("\\\\?\\UNC\\"):
+        path = "\\\\" + path[8:]
+    elif path.startswith("\\\\?\\"):
+        path = path[4:]
+    return _long_path(os.path.abspath(path))
+
+
+_MAX_PATH = 259  # sin «rutas largas» activadas, Windows no admite rutas de 260 caracteres o más
+
+
+def temp_beside(path: str, suffix: str) -> str:
+    """Temporal junto a `path` («canción.mp3.convirtiendo.tmp»). Si con la terminación la ruta no cabría
+    en Windows, un nombre corto en la misma carpeta (sigue terminando en `suffix`, así la limpieza al abrir
+    lo reconoce). Siempre el mismo para la misma ruta."""
+    temp = path + suffix
+    if len(temp.encode("utf-16-le")) // 2 <= _MAX_PATH:
+        return temp
+    import hashlib
+
+    digest = hashlib.sha1(os.path.basename(path).encode("utf-8")).hexdigest()[:8]
+    short = os.path.join(os.path.dirname(path), f"~{digest}{suffix}")
+    return short if len(short) < len(temp) else temp  # con un nombre ya corto no hay nada que ganar
+
+
 def path_key(path: str) -> str:
     """Clave única de una ruta en Windows (mayúsculas/minúsculas, separadores, prefijo «\\\\?\\» y
     nombres cortos 8.3), para no importar dos veces el mismo archivo escrito de otra forma."""

@@ -101,12 +101,24 @@ def _wait_turn(source: Source) -> None:
         _last_call[source.key] = time.monotonic()
 
 
+class _HttpsOnlyRedirect(urllib.request.HTTPRedirectHandler):
+    """Sigue redirecciones solo a https: a http (texto plano) u otro esquema ni siquiera se hace la petición."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.lower().startswith("https://"):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_opener = urllib.request.build_opener(_HttpsOnlyRedirect)
+
+
 def _get_json(source: Source, url: str) -> dict:
     for attempt in range(2):
         _wait_turn(source)
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
         try:
-            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+            with _opener.open(request, timeout=TIMEOUT_S) as response:
                 data = json.load(response)
             if not isinstance(data, dict):
                 raise ValueError("la respuesta no es un objeto JSON")
@@ -308,7 +320,7 @@ def download(url: str, limit_bytes: int = 8 * 1024 * 1024) -> bytes | None:
         return None  # nunca leer archivos locales (file://) ni otros esquemas
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+        with _opener.open(request, timeout=TIMEOUT_S) as response:
             if not response.geturl().lower().startswith("https://"):
                 return None  # una redirección a http (o a otro esquema) no se sigue
             data = response.read(limit_bytes + 1)

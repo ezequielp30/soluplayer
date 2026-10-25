@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 KEEP_RECENT = 10
 KEEP_WEEKS = 4
+KEEP_OPERATION_DAYS = 7  # los de antes de una operación (quitar faltantes, mover…) duran al menos esto
 DAILY_INTERVAL = timedelta(hours=24)
 _PREFIX = "biblioteca-"
 _STAMP = "%Y%m%d-%H%M%S"
@@ -107,10 +108,18 @@ def prune(now: datetime | None = None) -> list[Path]:
     backups = list_backups()
     keep = set(backups[:KEEP_RECENT])
     weeks_kept: set[int] = set()
+    reasons_kept = {p.stem[len(_PREFIX) + 16:] for p in backups[:KEEP_RECENT]}
     for path in backups[KEEP_RECENT:]:
         taken = _taken_at(path)
         if taken is None:
             keep.add(path)  # nombre inesperado: no se toca
+            continue
+        reason = path.stem[len(_PREFIX) + 16:]
+        if reason != "diario" and reason not in reasons_kept and now - taken < timedelta(days=KEEP_OPERATION_DAYS):
+            # El más reciente de cada tipo de operación dura una semana: una tarde de renombrar no se lleva
+            # el de antes de quitar faltantes (y tampoco deja cientos de copias guardadas).
+            reasons_kept.add(reason)
+            keep.add(path)
             continue
         week = (now - taken).days // 7
         if week < KEEP_WEEKS + 1 and week not in weeks_kept:

@@ -329,6 +329,17 @@ class PreferencesDialog(QDialog):
             "previo. Las de un disco externo o de red desconectado se conservan hasta que vuelva a estar."
         ))
         layout.addWidget(library)
+
+        keyboard = QGroupBox("Teclado")
+        keyboard_layout = QVBoxLayout(keyboard)
+        self.media_keys = QCheckBox("Las teclas multimedia (Reproducir/Pausa, Siguiente…) funcionan aunque la ventana esté minimizada")
+        self.media_keys.setChecked(prefs.global_media_keys)
+        keyboard_layout.addWidget(self.media_keys)
+        keyboard_layout.addWidget(note_label(
+            "Desactívalo si prefieres que esas teclas manejen otro programa (por ejemplo, el navegador) cuando "
+            "el reproductor no es la ventana activa."
+        ))
+        layout.addWidget(keyboard)
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -349,6 +360,7 @@ class PreferencesDialog(QDialog):
         self._prefs.ask_titles_on_import = self.ask_titles.isChecked()
         self._prefs.detect_artist_in_filename = self.detect_artist.isChecked()
         self._prefs.remove_missing_on_start = self.remove_missing.isChecked()
+        self._prefs.global_media_keys = self.media_keys.isChecked()
         self._prefs.theme = self.theme_picker.selected()
         self._prefs.online_sources = chosen
         self._prefs.online_covers = self.online_covers.isChecked()

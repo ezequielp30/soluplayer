@@ -168,6 +168,7 @@ def run() -> int:
         server.enqueue(paths)  # se juntan con los de otras copias abiertas a la vez
     server.set_handler(window.open_files)
     code = app.exec()
+    server.close()  # la ventana ya se cerró: los archivos que lleguen ahora los abre la copia nueva
     if not worker_runner.wait_pending():
         # Una tarea sigue atascada (red, archivo bloqueado). La biblioteca y los ajustes ya se guardaron
         # al cerrar la ventana; salir así evita que Qt aborte al destruir un hilo en marcha.

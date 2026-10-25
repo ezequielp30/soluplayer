@@ -2,6 +2,37 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.4 — 2026-10-25 (detalles)
+
+Detalles menores de la revisión completa. Cada uno tiene su prueba en `tests/menores_1124_test.py`.
+
+- **Teclas multimedia con la ventana minimizada** (Reproducir/Pausa, Siguiente, Anterior, Detener); se
+  puede apagar en Preferencias → Teclado si se prefiere que manejen otro programa (con el reproductor
+  abierto, el navegador u otro reproductor ya no las reciben). No hacen nada mientras hay una ventana de
+  herramientas trabajando.
+- **Barra de avance con el teclado:** las flechas saltan 5 s y Re Pág / Av Pág 30 s.
+- **Aleatorio:** al dar la vuelta a la lista se vuelve a mezclar (y no empieza por la última que sonó).
+- **Seguir desde el mismo punto** tras renombrar o mover la canción que suena, aunque el disco sea lento.
+- **Historial:**
+  - se puede deshacer un renombre que solo cambia mayúsculas;
+  - se puede deshacer un movimiento a otro disco aunque se haya borrado la carpeta original;
+  - un movimiento interrumpido figura «Interrumpida» con lo que de verdad se movió.
+- **Mover entre discos con rutas largas:** el temporal de la copia ya no hace fallar el movimiento.
+- **Corte de luz al mover:** se borra el temporal a medias del destino, y nunca se confunde un archivo
+  ajeno del destino con uno movido.
+- **Renombrar una carpeta** con canciones guardadas con su nombre corto de Windows (8.3).
+- **Respaldos:** el más reciente de cada tipo de operación dura al menos una semana (antes, unas pocas
+  operaciones seguidas se llevaban el de antes de quitar faltantes).
+- **Archivos abiertos mientras el programa se cierra:** ya no se pierden (los abre la copia nueva).
+- **Registro de errores:** un error se anota una sola vez; el archivo de cierres inesperados ya no crece
+  sin límite.
+- **Seguridad:**
+  - una redirección de internet a http ya no se sigue;
+  - un mensaje enorme de otra copia del programa se descarta.
+- **Instalador:**
+  - aparece en Configuración → Aplicaciones predeterminadas;
+  - se instala siempre para el usuario actual (sin el cuadro «para todos los usuarios»).
+
 ## 1.12.3 — 2026-10-25 (licencias y Windows 11)
 
 - **Código fuente dentro del instalador:** el del programa (GPL) y el de FFmpeg 9.0.1 (LGPL, con su firma

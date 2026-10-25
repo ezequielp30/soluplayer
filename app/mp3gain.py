@@ -21,6 +21,8 @@ from mutagen import MutagenError
 from mutagen.apev2 import APENoHeaderError, APEv2
 from mutagen.apev2 import delete as apev2_delete
 
+from .utils import temp_beside
+
 STEP_DB = 1.5
 
 _BITRATES = {  # kbps por índice: (MPEG-1 Layer III, MPEG-2/2.5 Layer III)
@@ -205,7 +207,7 @@ def apply_steps(path: str, steps: int, annotate_total: int | None = None) -> Mp3
             buf[frame.offset + 4:frame.offset + 6] = crc.to_bytes(2, "big")
     if not os.access(path, os.W_OK):
         raise Mp3GainError("El archivo es de solo lectura.")
-    temp = f"{path}.ajuste-volumen.tmp"
+    temp = temp_beside(path, ".ajuste-volumen.tmp")
     try:
         with open(temp, "wb") as handle:
             handle.write(buf)

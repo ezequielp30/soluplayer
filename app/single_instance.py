@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT_MS = 1500
 _END = "\x04"  # fin del mensaje: así no depende de cuándo se desconecta la otra copia
+_MAX_MESSAGE = 4 * 1024 * 1024  # miles de rutas caben de sobra; más que esto no es otra copia del programa
 _SHOW = "\x00mostrar"
 _BATCH_MS = 350  # archivos que llegan casi a la vez (un proceso por archivo) se juntan en una sola cola
 _MODAL_RETRY_MS = 500
@@ -89,6 +90,12 @@ class InstanceServer(QObject):
             log.warning("No se pudo escuchar a otras copias: %s", self._server.errorString())
         self._server.newConnection.connect(self._accept)
 
+    def close(self) -> None:
+        """Deja de recibir archivos (al cerrar el programa): una copia nueva espera a que este termine
+        y los abre ella, en vez de entregárselos a una ventana que ya se cerró."""
+        self._server.close()
+        self._timer.stop()
+
     def set_handler(self, on_paths: Callable[[list[str]], None]) -> None:
         self._on_paths = on_paths
         if self._pending or self._show_requested:
@@ -111,6 +118,12 @@ class InstanceServer(QObject):
                 if st["done"]:
                     return
                 st["buffer"].extend(bytes(s.readAll()))
+                if len(st["buffer"]) > _MAX_MESSAGE:
+                    st["done"] = True
+                    log.warning("Mensaje de otra copia demasiado grande: se descarta")
+                    s.abort()
+                    s.deleteLater()
+                    return
                 if st["buffer"].endswith(_END.encode()) or s.state() == QLocalSocket.LocalSocketState.UnconnectedState:
                     st["done"] = True
                     self._finish(s, bytes(st["buffer"]))

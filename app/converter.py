@@ -32,7 +32,7 @@ from .audio_decode import decode_file
 from . import journal, mp3gain
 from .metadata import MetadataError, read_metadata
 from .models import Track
-from .utils import path_key
+from .utils import path_key, temp_beside
 from .metadata import Quality, audio_quality
 
 log = logging.getLogger(__name__)
@@ -441,7 +441,7 @@ class ConvertWorker(QObject):
         scale = 1.0 if peak[0] <= 0.999 else 0.999 / peak[0]
 
         # Paso 2: codificar con LAME.
-        temp = item.mp3 + ".convirtiendo.tmp"
+        temp = temp_beside(item.mp3, ".convirtiendo.tmp")
         writer = Mp3Writer(temp, bitrate, rate, channels)
 
         def on_buffer(buffer) -> None:

@@ -59,7 +59,7 @@ class FileSession:
 
     def pending(self) -> list[Change]:
         """Cambios que todavía se pueden deshacer (el resultado sigue ahí y el lugar original está libre)."""
-        return [c for c in self.changes if not c.undone and os.path.exists(c.target) and not os.path.exists(c.source)]
+        return [c for c in self.changes if not c.undone and os.path.exists(c.target) and not _taken(c)]
 
 
 def sessions_dir() -> Path:
@@ -139,12 +139,12 @@ def undo(session: FileSession, on_restored) -> tuple[list[Change], list[str]]:
         if not os.path.exists(change.target):
             problems.append(f"{name}: ya no está donde lo dejó el programa.")
             continue
-        if os.path.exists(change.source) and os.path.normcase(change.source) != os.path.normcase(change.target):
+        if _taken(change):
             problems.append(f"{name}: ya hay otro elemento en su lugar original; no se tocó nada.")
             continue
         try:
+            os.makedirs(os.path.dirname(change.source.rstrip("\\/")), exist_ok=True)  # la carpeta original pudo borrarse
             if os.path.isdir(change.target) or _same_drive(change.source, change.target):
-                os.makedirs(os.path.dirname(change.source.rstrip("\\/")), exist_ok=True)
                 os.rename(change.target, change.source)
             else:
                 result = file_manager.move_files([change.target], os.path.dirname(change.source))
@@ -172,6 +172,12 @@ def undo(session: FileSession, on_restored) -> tuple[list[Change], list[str]]:
     session.status = journal.STATUS_UNDONE if all(c.undone for c in session.changes) else journal.STATUS_DONE
     session.save()
     return restored, problems
+
+
+def _taken(change: Change) -> bool:
+    """El lugar original está ocupado por OTRO elemento. Un renombre que solo cambió mayúsculas no cuenta:
+    en Windows origen y destino son el mismo archivo."""
+    return os.path.exists(change.source) and os.path.normcase(change.source) != os.path.normcase(change.target)
 
 
 def _same_drive(a: str, b: str) -> bool:
