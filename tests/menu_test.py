@@ -244,7 +244,10 @@ def t_shuffle_repeat():
     check("  repetir una canción al terminar", win.player.current_track.title == cur and win.player.is_playing, win.player.current_track.title)
     # Repetir todo: tras la última pasa a la primera
     win.player.set_repeat(1); tracks = c.visible_tracks()
-    win.player.play_queue(tracks, len(tracks) - 1); spin(300); win.player.seek(5700); spin(1200)
+    win.player.play_queue(tracks, len(tracks) - 1)
+    # Esperas por condición: con la batería completa la máquina va cargada y 300 ms fijos no alcanzaban.
+    wait_until(lambda: win.player.is_playing and win.player.duration() > 0, 5000); win.player.seek(5700)
+    wait_until(lambda: win.player.current_track.title == tracks[0].title, 6000)
     check("  repetir toda la lista: tras la última → la primera", win.player.current_track.title == tracks[0].title, win.player.current_track.title)
     win.player.set_repeat(0)
     win.player.play_queue(tracks, len(tracks) - 1); spin(300); win.player.seek(5700); spin(1200)

@@ -6,7 +6,15 @@ import os
 from pathlib import Path
 
 APP_NAME = "Reproductor de Música"
-ORG_NAME = "ReproductorMusica"
+ORG_NAME = "ReproductorMusica"  # ubica los ajustes y la biblioteca en el disco: no cambiarlo
+AUTHOR_NAME = "Ezequiel Perez"
+CONTACT_EMAIL = "ezequielp30@gmail.com"
+DISCLAIMER = (
+    "Uso bajo su propia responsabilidad. Este programa se entrega «tal cual», sin garantías de ningún tipo. "
+    "El autor no se hace responsable por pérdidas de datos, daños en archivos o cualquier otro perjuicio "
+    "derivado de su uso. Antes de usar las funciones que modifican archivos (convertir, ajustar volumen, "
+    "mover, renombrar o enviar a la Papelera), haga una copia de seguridad de su música."
+)
 
 # La reproducción la hace el FFmpeg que trae PySide6 (no depende de los códecs instalados
 # en Windows 10/11): MP3, AAC, ALAC, FLAC, Vorbis, Opus, WMA (1/2/Pro/Lossless/Voice),

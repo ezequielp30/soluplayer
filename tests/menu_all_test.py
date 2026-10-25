@@ -121,7 +121,8 @@ def expectation(label, before, after, dialogs, urls):
         "Convertir a MP3…": ConvertDialog.__name__ in names,
         "Historial de cambios en archivos…": HistoryDialog.__name__ in names,
         "Abrir registro de errores": bool(urls) or "registro" in texts.lower(),
-        "Acerca de…": "Reproductor" in texts or "Acerca" in texts,
+        "Acerca de…": "Reproductor" in texts and "Ezequiel Perez" in texts and "ezequielp30@gmail.com" in texts
+                      and "propia responsabilidad" in texts,
     }
     return rules.get(label)
 

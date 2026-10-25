@@ -1,0 +1,16 @@
+﻿Reproductor de Música
+Autor: Ezequiel Perez · Contacto: ezequielp30@gmail.com
+
+AVISO — USO BAJO SU PROPIA RESPONSABILIDAD
+
+Este programa se entrega «tal cual», sin garantías de ningún tipo. El autor no se hace responsable por
+pérdidas de datos, daños en archivos o cualquier otro perjuicio derivado de su uso.
+
+Antes de usar las funciones que modifican archivos (convertir a MP3, ajustar volumen, mover, renombrar o
+enviar a la Papelera), haga una copia de seguridad de su música.
+
+El programa es software libre bajo la GNU General Public License, versión 3 o posterior: puede usarlo,
+copiarlo, modificarlo y compartirlo, entregando también su código fuente bajo la misma licencia. Las
+licencias de los componentes de terceros se instalan en la carpeta «licencias» del programa.
+
+Si continúa con la instalación, acepta usar el programa bajo estas condiciones.

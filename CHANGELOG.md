@@ -2,6 +2,12 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.1 — 2026-10-24
+
+- **Autor y contacto:** Ezequiel Perez · ezequielp30@gmail.com, en Ayuda → Acerca de…, en el instalador, en los
+  datos del `.exe` (Compañía y Copyright) y en `licencias/TERCEROS.txt`.
+- **Aviso de uso bajo su propia responsabilidad:** en Acerca de… y en una página del instalador antes de instalar.
+
 ## 1.12.0 — 2026-10-24
 
 - **Historial de renombres y movimientos:** renombrar un archivo o una carpeta y mover canciones (también a

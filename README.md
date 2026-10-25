@@ -3,6 +3,13 @@
 Reproductor de archivos de audio locales para Windows, hecho con **Python**, **PySide6** y **Qt Multimedia**.
 La biblioteca y las playlists se guardan en **SQLite** y se conservan al cerrar el programa.
 
+**Autor:** Ezequiel Perez · **Contacto:** [ezequielp30@gmail.com](mailto:ezequielp30@gmail.com)
+
+> **Uso bajo su propia responsabilidad.** Este programa se entrega «tal cual», sin garantías de ningún tipo.
+> El autor no se hace responsable por pérdidas de datos, daños en archivos o cualquier otro perjuicio
+> derivado de su uso. Antes de usar las funciones que modifican archivos (convertir, ajustar volumen, mover,
+> renombrar o enviar a la Papelera), haga una copia de seguridad de su música.
+
 > El programa no incluye ni descarga música: solo reproduce los archivos que tú eliges. Por sí solo **no mueve,
 > renombra, modifica ni elimina** tus archivos. Solo lo hace cuando tú lo pides y lo confirmas: *Reunir
 > repetidas* (mueve, se puede deshacer), *Ajustar volumen* (modifica MP3 sin pérdida, se puede revertir),

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
-from ..config import APP_NAME, AUDIO_FILE_FILTER, ORG_NAME
+from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError
 from .. import backup, error_log, file_manager, library_cleanup, review_folder, win_audio
 from ..config import data_dir, resource_path
@@ -1782,7 +1782,9 @@ class MainWindow(QMainWindow):
             self,
             f"Acerca de {APP_NAME}",
             f"<b>{APP_NAME}</b> — versión {__version__}<br>Reproductor de archivos de audio locales hecho con Python, "
-            "PySide6 y Qt Multimedia.<br><br>La biblioteca y las playlists se guardan en:<br>"
+            f"PySide6 y Qt Multimedia.<br><br>Autor: <b>{AUTHOR_NAME}</b><br>"
+            f"Contacto: <a href=\"mailto:{CONTACT_EMAIL}\">{CONTACT_EMAIL}</a><br><br>"
+            f"<b>Aviso:</b> {DISCLAIMER}<br><br>La biblioteca y las playlists se guardan en:<br>"
             f"<code>{self.db.path}</code><br><br>El programa no incluye ni descarga música: "
             "solo reproduce los archivos que tú eliges.<br><br>"
             "Software libre bajo la licencia <b>GNU GPL versión 3 o posterior</b>: puedes usarlo, copiarlo, "

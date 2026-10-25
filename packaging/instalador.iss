@@ -7,14 +7,23 @@
 #define AppName "Reproductor de Música"
 #define AppExe "ReproductorMusica.exe"
 #define ProgId "ReproductorMusica.Audio"
+#define AppAuthor "Ezequiel Perez"
+#define AppEmail "ezequielp30@gmail.com"
 
 [Setup]
 AppId={{6F3A2C1E-9B4D-4E7A-8C2F-5D1B7A9E3C40}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
-AppPublisher={#AppName}
+AppPublisher={#AppAuthor}
+AppContact={#AppEmail}
+AppPublisherURL=mailto:{#AppEmail}
+AppSupportURL=mailto:{#AppEmail}
+AppCopyright=© 2026 {#AppAuthor} · GNU GPL versión 3 o posterior
 VersionInfoVersion={#AppVersion}
+VersionInfoCompany={#AppAuthor}
+; Página «Antes de instalar»: aviso de uso bajo propia responsabilidad (se lee y se continúa con «Siguiente»).
+InfoBeforeFile=aviso.txt
 ; Instalación solo para el usuario actual: no pide permisos de administrador.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

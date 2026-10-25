@@ -1,6 +1,9 @@
 Reproductor de Música — componentes de terceros
 ================================================
 
+Autor: Ezequiel Perez · Contacto: ezequielp30@gmail.com
+Uso bajo su propia responsabilidad: el programa se entrega «tal cual», sin garantías de ningún tipo.
+
 El Reproductor de Música es software libre: se distribuye bajo la GNU General Public License, versión 3
 o (a tu elección) cualquier versión posterior (texto completo en GPL-3.0.txt), SIN NINGUNA GARANTÍA.
 Quien lo reciba puede usarlo, copiarlo, modificarlo y redistribuirlo, entregando también su código fuente
