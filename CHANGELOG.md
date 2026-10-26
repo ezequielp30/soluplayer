@@ -2,6 +2,19 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.6 — 2026-10-26
+
+- **Desinstalar ya no borra la biblioteca para siempre:** si se elige borrarla, va a la Papelera de
+  reciclaje (se puede recuperar); si algo no cabe en la Papelera, Windows pregunta antes de borrarlo para
+  siempre. La pregunta es más clara y recuerda que la copia de las playlists en Documentos se conserva.
+  (Vale para lo que se instale desde esta versión: un programa instalado con una versión anterior
+  conserva el desinstalador de entonces hasta que se actualice.)
+- **Si queda otra copia del programa instalada** (p. ej. una «para todos los usuarios» y otra «solo para
+  mí»), el desinstalador ni pregunta: esa otra copia usa la misma biblioteca, así que se conserva.
+- **Nombres de playlist de 30 caracteres como máximo** al crear o renombrar (el cuadro no deja escribir
+  más). Las que ya tenían un nombre más largo no se recortan (al renombrarlas se ven completas); al
+  restaurar una copia de otra playlist con nombre largo, el nombre se acorta.
+
 ## 1.12.5 — 2026-10-25 (copia de las playlists)
 
 - **Copia automática de las playlists** en `Documentos\Reproductor de Música\Playlists` (fuera de la carpeta

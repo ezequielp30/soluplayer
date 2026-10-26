@@ -242,15 +242,18 @@ def apply_restore(db: Database, plans: list[RestorePlan]) -> RestoreOutcome:
                 outcome.missing += 1
             else:
                 ids.append(track.id)
-        base = " ".join(plan.name.split())[:MAX_PLAYLIST_NAME] or "Playlist restaurada"  # como la guarda la biblioteca
-        # La misma, o una copia ya restaurada antes («Nombre (restaurada…)»), con las mismas canciones: nada que hacer.
+        full = " ".join(plan.name.split()) or "Playlist restaurada"
+        base = full[:MAX_PLAYLIST_NAME]  # el límite de nombres; las de antes podían ser más largas
+        # La misma (también con su nombre largo de antes), o una copia ya restaurada («Nombre (restaurada…)»)
+        # con las mismas canciones: nada que hacer.
         short = normalize_text(base[:MAX_PLAYLIST_NAME - len(" (restaurada 999)")].rstrip())  # como queda acortada
-        twins = [p for key, p in existing.items() if key == normalize_text(base) or (key.startswith(short) and "(restaurada" in key)]
+        same_keys = {normalize_text(full), normalize_text(base)}
+        twins = [p for key, p in existing.items() if key in same_keys or (key.startswith(short) and "(restaurada" in key)]
         if any([t.id for t in db.playlist_tracks(p.id)] == ids for p in twins):
             outcome.unchanged.append(plan.name)
             continue
         name = base
-        if normalize_text(base) in existing:
+        if same_keys & existing.keys():
             n = 1
             while True:
                 suffix = " (restaurada)" if n == 1 else f" (restaurada {n})"

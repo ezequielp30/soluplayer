@@ -44,11 +44,16 @@ for ext in sorted(SUPPORTED_EXTENSIONS):
     lines.append('Root: HKA; Subkey: \"Software\\Clients\\Media\\{#ProgId}\\Capabilities\\FileAssociations\"; ValueType: string; ValueName: \"' + ext + '\"; ValueData: \"{#ProgId}\"; Tasks: openwith')
 open('packaging/extensiones.iss', 'w', encoding='utf-8-sig').write('\n'.join(lines) + '\n')
 "@
+# El script que manda la biblioteca a la Papelera al desinstalar, incrustado (codificado) en el desinstalador.
+$papelera = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes((Get-Content packaging\papelera.ps1 -Raw -Encoding UTF8)))
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "packaging\papelera.iss"),
+    "; Generado por crear-instalador.ps1 a partir de packaging\papelera.ps1`n#define PapeleraCmd `"$papelera`"`n",
+    (New-Object Text.UTF8Encoding $true))
 
 # El código fuente que se entrega tiene que ser exactamente el que se empaqueta (GPL): no se arma con
 # cambios sin guardar. Solo se aceptan los archivos que este mismo script acaba de generar (entran al ZIP
 # tal como quedan).
-$generated = @("packaging/version_info.txt", "packaging/extensiones.iss", "assets/")
+$generated = @("packaging/version_info.txt", "packaging/extensiones.iss", "packaging/papelera.iss", "assets/")
 $status = @(git status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar git (¿está instalado?)." }
 $dirty = @($status | Where-Object { $path = $_.Substring(3); -not ($generated | Where-Object { $path.StartsWith($_) }) })

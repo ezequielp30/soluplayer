@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import backup
+from ..database import MAX_PLAYLIST_NAME
 from ..file_ops import move_to_trash
 from ..importer import ImportFailure
 from ..online_lookup import SOURCES
@@ -228,8 +229,11 @@ class PlaylistNameDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(label))
         self.edit = QLineEdit(initial)
+        # Una playlist de antes con un nombre más largo se muestra completa (no se recorta sin avisar):
+        # si se cambia, el nombre nuevo tiene que entrar en el límite (lo avisa la validación).
+        self.edit.setMaxLength(max(MAX_PLAYLIST_NAME, len(initial)))
         self.edit.selectAll()
-        self.edit.setMaxLength(120)
+        self.edit.setPlaceholderText(f"Hasta {MAX_PLAYLIST_NAME} caracteres")
         layout.addWidget(self.edit)
         self.error = QLabel()
         self.error.setStyleSheet(f"color: {theme.color('danger')};")

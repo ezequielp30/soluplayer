@@ -71,7 +71,7 @@ _TRACK_COLUMNS = (
     "t.added_at, t.last_played_at, t.cover_hash, t.loudness_lufs, t.true_peak_db, t.norm_gain_db"
 )
 
-MAX_PLAYLIST_NAME = 80
+MAX_PLAYLIST_NAME = 30  # para crear o renombrar; las que ya tenían un nombre más largo no se recortan
 
 
 class PlaylistNameError(ValueError):
