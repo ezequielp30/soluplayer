@@ -1,5 +1,6 @@
 """Prueba de las reparaciones de integridad (todo en carpetas temporales; nunca toca la biblioteca real)."""
 import logging, os, shutil, sqlite3, sys, tempfile, time, traceback, wave
+from contextlib import closing
 from datetime import datetime, timedelta
 sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_repair_")
@@ -37,8 +38,9 @@ m = os.path.join(work, "m")
 db.add_tracks([scan_file(wav(os.path.join(m, f"t{i}.wav")))[0] for i in range(3)])
 p = backup.create_backup(db.conn, "manual")
 check("Crear respaldo", p is not None and p.exists(), p)
-check("  el respaldo pasa la verificación y tiene los datos", backup.check_database(p) is None
-      and sqlite3.connect(p).execute("select count(*) from tracks").fetchone()[0] == 3)
+with closing(sqlite3.connect(p)) as probe:  # cerrada en el acto: si no, Windows no deja borrar el respaldo después
+    count = probe.execute("select count(*) from tracks").fetchone()[0]
+check("  el respaldo pasa la verificación y tiene los datos", backup.check_database(p) is None and count == 3)
 check("  respaldo diario no se repite antes de 24 h", backup.backup_if_due(db.conn) is None)
 for f in backup.list_backups(): f.unlink()
 check("  sin respaldos previos → se crea el diario", backup.backup_if_due(db.conn) is not None)

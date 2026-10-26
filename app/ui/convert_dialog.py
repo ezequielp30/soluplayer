@@ -229,7 +229,8 @@ class ConvertDialog(QDialog):
         self._rows = [row for row, _ in checked]
         self._ok = self._failed = 0
         self._done_rows: list[int] = []
-        worker = converter.ConvertWorker(list(zip(session.items, tracks, strict=True)))
+        # Las etiquetas del MP3 nuevo llevan el texto original (no el «‹ ›» de pantalla).
+        worker = converter.ConvertWorker(list(zip(session.items, self._ops.db.with_raw_text(tracks), strict=True)))
         worker.converted.connect(self._on_converted)  # método @Slot: se ejecuta en el hilo principal
         self.runner.start(worker, len(tracks), "Convirtiendo…", self._on_finished, label="Convirtiendo", modifies_files=True)
 

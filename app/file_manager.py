@@ -17,7 +17,7 @@ from PySide6.QtCore import QFile
 
 from .config import SUPPORTED_EXTENSIONS
 from .file_ops import trash_block_reason
-from .utils import temp_beside
+from .utils import long_path, temp_beside
 
 log = logging.getLogger(__name__)
 
@@ -94,9 +94,61 @@ def rename_file(path: str, new_name: str) -> str:
     return _rename(path, target)
 
 
+_KNOWN_FOLDERS = (  # FOLDERID_* de Windows: Escritorio, Documentos, Descargas, Música, Imágenes, Videos, OneDrive
+    "{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}", "{FDD39AD0-238F-46AF-ADB4-6C85480369C7}",
+    "{374DE290-123F-4565-9164-39C4925E467B}", "{4BD8D571-6D19-48D3-BE97-422220080E43}",
+    "{33E28130-4E1E-4676-835A-98395C3BC3BB}", "{18989B1D-99B5-455B-841C-AB7C74E4DDFC}",
+    "{A52BBA46-E9E1-435F-B3D9-28DAA648C0F6}",
+)
+
+
+def _known_folder(guid: str) -> str | None:
+    import ctypes
+    import uuid
+
+    raw = (ctypes.c_byte * 16).from_buffer_copy(uuid.UUID(guid).bytes_le)
+    out = ctypes.c_wchar_p()
+    if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(raw), 0, None, ctypes.byref(out)) != 0:
+        return None
+    try:
+        return out.value
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(out)
+
+
+def _protected_folders() -> list[str]:
+    """Carpetas que el programa nunca envía a la Papelera ni renombra: el perfil del usuario, la carpeta de
+    usuarios, la de Windows y las carpetas conocidas (Escritorio, Documentos, Descargas, Música…)."""
+    home = os.path.expanduser("~")
+    public = os.environ.get("PUBLIC", "")
+    folders = [home, os.path.dirname(home), os.environ.get("SystemRoot", r"C:\Windows"),
+               os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("ProgramFiles(x86)", ""), public]
+    if public:
+        folders += [os.path.join(public, name) for name in ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos")]
+    if os.name == "nt":
+        folders += [f for f in (_known_folder(g) for g in _KNOWN_FOLDERS) if f]
+    return [f for f in folders if f]
+
+
+def protected_reason(folder: str) -> str:
+    """Por qué una carpeta no se puede enviar a la Papelera ni renombrar desde el programa («» si se puede).
+    Una carpeta de música puede estar dentro de Documentos o de Música, pero no ser una de ellas."""
+    key = os.path.normcase(long_path(folder)).rstrip("\\/")  # también «C:\USERS\EZEQUI~1»
+    if os.path.splitdrive(key)[1] in ("", "\\", "/"):
+        return "Es la raíz de un disco: el programa no la toca."
+    for protected in _protected_folders():
+        if key == os.path.normcase(long_path(protected)).rstrip("\\/"):
+            name = os.path.basename(long_path(folder).rstrip("\\/"))
+            return f"«{name}» es una carpeta protegida de Windows o de tu usuario: el programa no la toca."
+    return ""
+
+
 def rename_folder(folder: str, new_name: str) -> str:
     if not os.path.isdir(folder):
         raise FileManagerError(f"La carpeta «{os.path.basename(folder)}» ya no existe.")
+    reason = protected_reason(folder)
+    if reason:
+        raise FileManagerError(reason)
     clean = check_name(new_name, is_folder=True)
     target = os.path.join(os.path.dirname(os.path.normpath(folder)), clean)
     return _rename(folder, target)
@@ -241,7 +293,7 @@ def trash_folder(folder: str) -> None:
     name = os.path.basename(os.path.normpath(folder))
     if not os.path.isdir(folder):
         raise FileManagerError(f"La carpeta «{name}» ya no existe.")
-    blocked = trash_block_reason(folder)
+    blocked = protected_reason(folder) or trash_block_reason(folder)
     if blocked:
         raise FileManagerError(blocked)
     if not QFile.moveToTrash(folder):

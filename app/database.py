@@ -12,7 +12,7 @@ from .config import RECENT_LIMIT
 from .importer import ScannedTrack
 from .metadata import AudioMetadata
 from .models import Playlist, Track
-from .utils import normalize_text, path_key
+from .utils import no_markup, normalize_text, path_key
 
 SCHEMA_VERSION = 2
 
@@ -114,10 +114,10 @@ def _row_to_track(row: sqlite3.Row, check: bool = True) -> Track:
     track = Track(
         id=row["id"],
         path=row["path"],
-        title=row["title"],
-        artist=row["artist"],
-        album=row["album"],
-        genre=row["genre"],
+        title=no_markup(row["title"]),  # vienen de las etiquetas del archivo: nunca como HTML
+        artist=no_markup(row["artist"]),
+        album=no_markup(row["album"]),
+        genre=no_markup(row["genre"]),
         duration_ms=row["duration_ms"],
         added_at=row["added_at"],
         last_played_at=row["last_played_at"],
@@ -310,6 +310,19 @@ class Database:
                 )
         return len(changes)
 
+    def with_raw_text(self, tracks: list[Track]) -> list[Track]:
+        """Las mismas canciones con título, artista, álbum y género tal como están guardados (sin el ‹ ›
+        de pantalla): para lo que se ESCRIBE (etiquetas de un MP3 convertido, la biblioteca)."""
+        ids = [t.id for t in tracks]
+        raw: dict[int, sqlite3.Row] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            for row in self.conn.execute(f"SELECT id, title, artist, album, genre FROM tracks WHERE id IN ({marks})", chunk):
+                raw[row["id"]] = row
+        return [t.copy(title=raw[t.id]["title"], artist=raw[t.id]["artist"], album=raw[t.id]["album"], genre=raw[t.id]["genre"])
+                if t.id in raw else t for t in tracks]
+
     def update_track_info(
         self,
         track_id: int,
@@ -402,7 +415,7 @@ class Database:
             "LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id "
             "GROUP BY p.id ORDER BY p.name COLLATE NOCASE"
         ).fetchall()
-        return [Playlist(r["id"], r["name"], r["n"]) for r in rows]
+        return [Playlist(r["id"], no_markup(r["name"]), r["n"]) for r in rows]  # de antes, o restauradas
 
     def playlist(self, playlist_id: int) -> Playlist | None:
         return next((p for p in self.playlists() if p.id == playlist_id), None)

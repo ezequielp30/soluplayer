@@ -54,6 +54,15 @@ def _long_path(path: str) -> str:
     return buffer.value if 0 < length < len(buffer) else path
 
 
+def no_markup(text: str) -> str:
+    """Texto de etiquetas o de archivos ajenos que no puede parecer HTML: Qt dibuja como HTML cualquier
+    texto que lo parezca (títulos, avisos, tooltips), y una etiqueta preparada podría hacer que Windows se
+    conecte a otro equipo (p. ej. con una imagen «file://servidor/…»). Se ve casi igual: ‹ › en vez de < >."""
+    if not text or ("<" not in text and ">" not in text):
+        return text
+    return text.replace("<", "‹").replace(">", "›")
+
+
 def long_path(path: str) -> str:
     """La ruta con los nombres largos de Windows (si existe) y sin el prefijo «\\\\?\\»: así un
     «C:\\PROGRA~1\\…» y un «C:\\Program Files\\…» se pueden comparar y combinar."""

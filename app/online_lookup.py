@@ -26,7 +26,7 @@ from . import __version__
 from .metadata import UNKNOWN_ALBUM, UNKNOWN_ARTIST
 from .models import Track
 from .titles import suggest_from_filename
-from .utils import normalize_text
+from .utils import no_markup, normalize_text
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +63,10 @@ class Candidate:
     duration_ms: int
     cover_url: str | None = None
     score: float = 0.0  # 0..1, parecido con la canción buscada
+
+    def __post_init__(self) -> None:
+        # Vienen de internet (MusicBrainz lo edita cualquiera): nunca deben poder dibujarse como HTML.
+        self.title, self.artist, self.album = no_markup(self.title), no_markup(self.artist), no_markup(self.album)
 
     @property
     def source_name(self) -> str:

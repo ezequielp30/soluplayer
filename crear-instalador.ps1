@@ -104,6 +104,10 @@ Write-Host "Creando el instalador..."
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup falló." }
 
 $setup = Get-Item "build\instalador\Instalar-ReproductorMusica-$version.exe"
+# Huella para comprobar que el instalador que recibe otra persona es exactamente este.
+$hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
+Set-Content -Path "$($setup.FullName).sha256" -Value "$hash  $($setup.Name)" -Encoding ASCII
 Write-Host ""
 Write-Host ("Listo: {0}  ({1:N0} MB)" -f $setup.FullName, ($setup.Length / 1MB)) -ForegroundColor Green
 Write-Host ("Código fuente: {0}  (también va dentro del instalador)" -f (Get-Item $source).FullName) -ForegroundColor Green
+Write-Host ("Huella SHA-256 (mándala por otro medio para que se pueda comprobar): {0}" -f $hash) -ForegroundColor Green

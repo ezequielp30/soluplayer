@@ -2,6 +2,33 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.7 — 2026-10-26 (auditoría de seguridad y privacidad)
+
+Correcciones de una auditoría de seguridad y privacidad. Cada una tiene su prueba en
+`tests/seguridad_1127_test.py`.
+
+- **Etiquetas preparadas:** el texto de las etiquetas (título, artista, álbum) y de las playlists ajenas
+  nunca se dibuja como HTML. Antes, un MP3 con una etiqueta preparada podía hacer que Windows se
+  conectara a otro equipo; ahora `<` y `>` se muestran como ‹ ›.
+- **Playlists ajenas:** al revisarlas o restaurarlas no se consulta ninguna ruta de red (`\\servidor\…`)
+  que no esté ya en la biblioteca, y un archivo de más de 5 MB no se toma como playlist.
+- **Carpetas protegidas:** el perfil del usuario, Escritorio, Documentos, Descargas, Música, Imágenes,
+  Videos, OneDrive, Windows, Archivos de programa y las raíces de los discos no se pueden enviar a la
+  Papelera ni renombrar desde el programa.
+- **Avisos que borran:** el botón marcado (Enter) es «Cancelar».
+- **Respaldos fuera de la carpeta del programa:** el diario y el manual se copian también a
+  `Documentos\Reproductor de Música\Respaldos`, en una subcarpeta de cada PC (los 3 más recientes). Si al
+  abrir no está la biblioteca (carpeta del programa borrada), se ofrece recuperarla desde allí, con la
+  fecha del respaldo. Si Documentos se sincroniza con OneDrive, esa copia (como la de las playlists) queda
+  también en tu nube; cada PC usa su propia subcarpeta.
+- **El texto original se respeta al escribir:** convertir a MP3 y aplicar datos de internet guardan los
+  títulos tal cual (un «<3» sigue siendo «<3»); solo la pantalla muestra ‹ ›. Los datos que llegan de
+  internet y los nombres de playlist guardados antes tampoco pueden dibujarse como HTML.
+- **Teclas multimedia globales apagadas de fábrica** (se activan en Preferencias → Teclado).
+- **Privacidad:** el registro del programa ya no guarda qué canciones se escuchan.
+- **Instalador:** `crear-instalador.ps1` deja la huella SHA-256 en un archivo `.sha256` junto al
+  instalador; el README explica cómo comprobarla y ya no aconseja desactivar la protección de Windows 11.
+
 ## 1.12.6 — 2026-10-26
 
 - **Desinstalar ya no borra la biblioteca para siempre:** si se elige borrarla, va a la Papelera de

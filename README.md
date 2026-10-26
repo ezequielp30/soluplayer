@@ -511,11 +511,13 @@ El instalador no está firmado digitalmente:
   su PC». Quien lo instale debe pulsar *Más información* → *Ejecutar de todas formas*.
 - **Windows 11 con «Control inteligente de aplicaciones» activado** (suele estar en equipos con Windows 11
   recién instalado): bloquea los programas sin firma **sin ofrecer** «Ejecutar de todas formas», así que el
-  instalador no se puede abrir. No es que el programa esté dañado. La única forma de instalarlo es desactivar
-  esa protección en *Seguridad de Windows → Control de aplicaciones y del navegador → Configuración de
-  Control inteligente de aplicaciones*; es decisión de quien lo instala, porque deja el equipo menos
-  protegido (y en algunas versiones de Windows no se puede volver a activar sin reinstalar Windows).
-  La solución definitiva es firmar el instalador con un certificado de firma de código (tiene costo).
+  instalador no se puede abrir. No es que el programa esté dañado. **No desactives esa protección para
+  instalarlo**: deja el equipo menos protegido. La solución es firmar el instalador con un certificado de
+  firma de código; mientras no lo esté, en esos equipos no se puede instalar.
+
+**Comprobar que el instalador es auténtico:** `crear-instalador.ps1` deja junto al instalador un archivo
+`.sha256` con su huella. Mándala por otro medio (un mensaje aparte) y quien lo reciba la compara con:
+`Get-FileHash Instalar-ReproductorMusica-<versión>.exe` en PowerShell. Si no coinciden, no lo instales.
 
 Archivos: `packaging/ReproductorMusica.spec` (PyInstaller), `packaging/instalador.iss` (Inno Setup),
 `packaging/version_info.txt` y `tools/make_icon.py` (genera `assets/icono.ico`).

@@ -383,7 +383,7 @@ class PlaybackController(QObject):
                 if self._player.source() == url:
                     self._player.setSource(QUrl())  # el mismo archivo otra vez (playlist que lo repite): Qt no lo recargaría
                 self._player.setSource(url)
-                log.info("Reproduciendo: %s", track.path)
+                log.debug("Reproduciendo: %s", track.path)  # privacidad: el registro no guarda qué se escucha
                 self._started_pending = True  # se cuenta como reproducida cuando realmente empiece a sonar
                 self.current_track_changed.emit(track)
                 if autoplay:

@@ -506,7 +506,10 @@ def ask(parent: QWidget, title: str, text: str, buttons: list[tuple[str, QMessag
         box.setInformativeText(informative)
     created = [box.addButton(label, role) for label, role in buttons]
     if created:
-        box.setDefaultButton(created[0])
+        # Si el primer botón borra, el marcado (el de Enter) es el de cancelar: un Enter de más no borra nada.
+        destructive = buttons[0][1] == QMessageBox.ButtonRole.DestructiveRole
+        safe = next((b for b, (_l, role) in zip(created, buttons) if role == QMessageBox.ButtonRole.RejectRole), None)
+        box.setDefaultButton(safe if destructive and safe is not None else created[0])
     box.exec()
     clicked = box.clickedButton()
     return created.index(clicked) if clicked in created else -1

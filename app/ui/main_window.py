@@ -835,14 +835,15 @@ class MainWindow(QMainWindow):
         if len(updates) >= 10:
             self._safety_backup("antes-de-datos-internet")  # solo cambia la biblioteca, no los archivos
         covers = sum(1 for _t, _c, cover in updates if cover)
+        raw = {t.id: t for t in self.db.with_raw_text([t for t, _c, _cover in updates])}  # lo que no cambia, tal cual
         # Todas en una transacción: si algo falla, no queda la mitad aplicada.
         self.db.update_tracks_info(
             [
                 (
                     track.id,
-                    candidate.title.strip() or track.title,
-                    candidate.artist.strip() or track.artist,
-                    candidate.album.strip() or track.album,
+                    candidate.title.strip() or raw[track.id].title,
+                    candidate.artist.strip() or raw[track.id].artist,
+                    candidate.album.strip() or raw[track.id].album,
                     cover_hash(cover) if cover else None,
                     cover,
                 )
@@ -1105,6 +1106,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(text, 8000)
 
     def _rename_folder(self, folder: str) -> None:
+        protected = file_manager.protected_reason(folder)
+        if protected:
+            QMessageBox.information(self, "Renombrar carpeta", protected)
+            return
         name = self._ask_name("Renombrar carpeta", "Nombre nuevo de la carpeta:", os.path.basename(os.path.normpath(folder)))
         if name is None:
             return
@@ -1137,6 +1142,10 @@ class MainWindow(QMainWindow):
         in_library = len(self.ops.tracks_in(folder, self.library))
         if contents is None:
             QMessageBox.warning(self, "Enviar carpeta a la Papelera", f"La carpeta «{name}» ya no existe.")
+            return
+        protected = file_manager.protected_reason(folder)
+        if protected:
+            QMessageBox.information(self, "Enviar carpeta a la Papelera", protected)  # antes de preguntar
             return
         detail = f"Contiene {plural(contents.files, 'archivo')}"
         if contents.audio != contents.files:
@@ -1888,13 +1897,15 @@ class MainWindow(QMainWindow):
 
     def _backup_now(self) -> None:
         path = backup.create_backup(self.db.conn, "manual")
+        copy = backup.copy_latest_outside() if path is not None else None
         if path is None:
             QMessageBox.warning(self, "Respaldo", f"No se pudo crear el respaldo. Detalles en:\n{error_log.log_path()}")
         else:
             QMessageBox.information(
                 self, "Respaldo",
                 f"Respaldo creado y verificado:\n{path}\n\n"
-                f"Se conservan los {backup.KEEP_RECENT} más recientes y uno por semana de las últimas {backup.KEEP_WEEKS} semanas.",
+                f"Se conservan los {backup.KEEP_RECENT} más recientes y uno por semana de las últimas {backup.KEEP_WEEKS} semanas."
+                + (f"\n\nTambién se guardó una copia fuera de la carpeta del programa, en:\n{copy.parent}" if copy else ""),
             )
 
     def _open_backup_folder(self) -> None:

@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from ..models import Track
 from ..online_job import CoverWorker, LookupWorker, Update
 from ..online_lookup import SOURCES, Candidate, LookupResult, Query, needs_data
-from ..utils import format_time, normalize_text, plural
+from ..utils import format_time, no_markup, normalize_text, plural
 from . import theme
 from .dialogs import ResultBanner, StatusLabel, empty_state, tidy_table, tool_intro
 from .worker_runner import WorkerRunner
@@ -286,7 +286,7 @@ class OnlineLookupDialog(QDialog):
         if not result.candidates:
             item = self.table.item(row, COL_PROPOSAL)
             item.setText("Sin resultados" + (" (error de conexión)" if result.errors else ""))
-            item.setToolTip("\n".join(result.errors) or "Prueba con otra fuente o corrige el título y el artista.")
+            item.setToolTip(no_markup("\n".join(result.errors)) or "Prueba con otra fuente o corrige el título y el artista.")
             self.table.item(row, COL_USE).setFlags(Qt.ItemFlag.NoItemFlags)
             self.table.blockSignals(False)
             return

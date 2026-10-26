@@ -23,11 +23,12 @@ from .importer import scan_file
 from .metadata import UNKNOWN_ARTIST
 from .models import Track
 from .review_folder import safe_name
-from .utils import normalize_text, path_key
+from .utils import no_markup, normalize_text, path_key
 
 log = logging.getLogger(__name__)
 
 EXTENSION = ".m3u8"
+MAX_FILE_BYTES = 5 * 1024 * 1024  # una playlist de miles de canciones ocupa bastante menos
 PREVIOUS_FOLDER = "Anteriores"  # versión anterior de una copia que perdió canciones (p. ej. al quitar faltantes)
 _DURATION_SLACK_S = 3  # al buscar por título y artista, la duración puede diferir un poco (otra codificación)
 
@@ -132,26 +133,28 @@ def _entries(text: str) -> Counter:
 
 def read_file(path: str | Path) -> PlaylistFile:
     path = Path(path)
+    if path.stat().st_size > MAX_FILE_BYTES:
+        raise OSError(f"el archivo es demasiado grande para ser una playlist ({path.stat().st_size // 1024 // 1024} MB)")
     raw = path.read_bytes()
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         text = raw.decode("cp1252", errors="replace")  # .m3u antiguo de otro reproductor
-    result = PlaylistFile(name=path.stem, source=str(path))
+    result = PlaylistFile(name=no_markup(path.stem), source=str(path))
     pending: Entry | None = None
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
         if line.startswith("#PLAYLIST:"):
-            result.name = line[len("#PLAYLIST:"):].strip() or result.name
+            result.name = no_markup(line[len("#PLAYLIST:"):].strip()) or result.name
         elif line.startswith("#EXTINF:"):
             seconds, _, label = line[len("#EXTINF:"):].partition(",")
             try:
                 duration = int(float(seconds))
             except ValueError:
                 duration = -1
-            pending = Entry("", label.strip(), duration)
+            pending = Entry("", no_markup(label.strip()), duration)
         elif not line.startswith("#"):
             location = line if os.path.isabs(line) else os.path.normpath(os.path.join(path.parent, line))
             entry = pending or Entry("")
@@ -181,6 +184,9 @@ class _Finder:
 
     def __init__(self, library: list[Track]) -> None:
         self.by_key = {path_key(t.path): t for t in library}
+        # Recursos de red que ya están en la biblioteca: una playlist ajena no puede hacer que se consulte
+        # otro equipo (al tocar «\\\\servidor\\…» Windows se presenta con las credenciales del usuario).
+        self.known_shares = {_share(t.path) for t in library if _is_network(t.path)}
         self.labels: dict[str, list[Track]] = {}
         for t in library:
             self.labels.setdefault(normalize_text(_label(t)), []).append(t)
@@ -193,8 +199,11 @@ class _Finder:
             return None  # el archivo está en su ruta exacta: se agrega ese, no otro con el mismo título
         return self.by_label(entry)
 
+    def allowed(self, entry: Entry) -> bool:
+        return bool(entry.path) and (not _is_network(entry.path) or _share(entry.path) in self.known_shares)
+
     def by_path(self, entry: Entry) -> Track | None:
-        return self.by_key.get(path_key(entry.path)) if entry.path else None
+        return self.by_key.get(path_key(entry.path)) if self.allowed(entry) else None
 
     def by_label(self, entry: Entry) -> Track | None:
         if not entry.title:
@@ -205,7 +214,15 @@ class _Finder:
         return None
 
     def on_disk(self, entry: Entry) -> bool:
-        return bool(entry.path) and os.path.isfile(entry.path)
+        return self.allowed(entry) and os.path.isfile(entry.path)
+
+
+def _is_network(path: str) -> bool:
+    return path.startswith(("\\\\", "//"))  # \\\\servidor\\recurso, //servidor, \\\\?\\ y \\\\.\\ (dispositivos)
+
+
+def _share(path: str) -> str:
+    return os.path.splitdrive(path.replace("/", "\\"))[0].casefold()
 
 
 def plan_restore(files: list[PlaylistFile], library: list[Track]) -> list[RestorePlan]:

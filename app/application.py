@@ -46,7 +46,7 @@ def _check_and_maybe_restore() -> bool:
     """Revisa la biblioteca antes de abrirla. Devuelve False si el usuario prefiere salir."""
     db_file = database_path()
     if not db_file.exists():
-        return True
+        return _offer_outside_copy(db_file)
     problem = backup.check_database(db_file)
     if problem is None:
         return True
@@ -74,6 +74,32 @@ def _check_and_maybe_restore() -> bool:
             QMessageBox.critical(None, APP_NAME, f"No se pudo restaurar el respaldo:\n{exc}\n\n¿Está el programa abierto dos veces?")
             return False
         QMessageBox.information(None, APP_NAME, f"Biblioteca restaurada desde {latest.name}.\nLa anterior quedó guardada como {aside.name}.")
+    return True
+
+
+def _backup_date(path) -> str:
+    taken = backup._taken_at(path)
+    return taken.strftime("%d/%m/%Y a las %H:%M") if taken else "(fecha desconocida)"
+
+
+def _offer_outside_copy(db_file) -> bool:
+    """No hay biblioteca (primera vez, o se borró la carpeta del programa). Si en Documentos hay una copia
+    de un respaldo, se ofrece recuperarla. Siempre devuelve True (se abre igual)."""
+    copy = backup.newest_outside_copy()
+    if copy is None:
+        return True
+    answer = QMessageBox.question(
+        None, APP_NAME,
+        "No se encontró tu biblioteca, pero hay un respaldo de esta PC guardado en Documentos, del "
+        f"{_backup_date(copy)}:\n{copy}\n\n¿Recuperar tu biblioteca (canciones, playlists y correcciones) desde ese respaldo?",
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes,
+    )
+    if answer == QMessageBox.StandardButton.Yes:
+        try:
+            backup.restore(copy, db_file)
+            log.warning("Biblioteca recuperada desde la copia de Documentos: %s", copy)
+        except OSError as exc:
+            QMessageBox.warning(None, APP_NAME, f"No se pudo recuperar el respaldo:\n{exc}")
     return True
 
 

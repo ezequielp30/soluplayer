@@ -104,7 +104,8 @@ class Preferences:
     @property
     def global_media_keys(self) -> bool:
         """Las teclas multimedia del teclado manejan el reproductor aunque la ventana esté minimizada."""
-        return self._s.value(self.MEDIA_KEYS, True, type=bool)
+        # Apagadas de fábrica: si no, con el reproductor abierto YouTube o Spotify se quedarían sin esas teclas.
+        return self._s.value(self.MEDIA_KEYS, False, type=bool)
 
     @global_media_keys.setter
     def global_media_keys(self, value: bool) -> None:

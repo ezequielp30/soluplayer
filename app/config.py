@@ -71,6 +71,18 @@ def playlists_backup_dir() -> Path:
     return _documents_dir() / APP_NAME / "Playlists"
 
 
+def backups_copy_dir() -> Path:
+    """Copia de los últimos respaldos de la biblioteca FUERA de la carpeta del programa:
+    «Documentos\\Reproductor de Música\\Respaldos». Se puede cambiar con MUSICPLAYER_BACKUPS_COPY_DIR; con
+    una carpeta de datos propia (pruebas) va dentro de ella: nunca a los Documentos del usuario."""
+    override = os.environ.get("MUSICPLAYER_BACKUPS_COPY_DIR")
+    if override:
+        return Path(override)
+    if os.environ.get("MUSICPLAYER_DATA_DIR"):
+        return data_dir() / "copia-respaldos"
+    return _documents_dir() / APP_NAME / "Respaldos"
+
+
 def _documents_dir() -> Path:
     """La carpeta Documentos de Windows, también si está en OneDrive o en otro disco."""
     if os.name == "nt":

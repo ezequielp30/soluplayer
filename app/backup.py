@@ -16,7 +16,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import data_dir
+from .config import backups_copy_dir, data_dir
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +142,57 @@ def backup_if_due(conn: sqlite3.Connection) -> Path | None:
     last = _taken_at(backups[0]) if backups else None
     if last is not None and datetime.now() - last < DAILY_INTERVAL:
         return None
-    return create_backup(conn, "diario")
+    path = create_backup(conn, "diario")
+    if path is not None:
+        copy_latest_outside()
+    return path
+
+
+KEEP_OUTSIDE = 3  # respaldos copiados a Documentos
+
+
+def outside_copies_dir() -> Path:
+    """La subcarpeta de ESTA PC y este usuario: si Documentos está en OneDrive, dos PC con la misma cuenta
+    no se pisan los respaldos ni una ofrece recuperar la biblioteca de la otra."""
+    from .review_folder import safe_name
+
+    who = f"{os.environ.get('COMPUTERNAME', 'PC')} - {os.environ.get('USERNAME', 'usuario')}"
+    return backups_copy_dir() / safe_name(who)
+
+
+def copy_latest_outside() -> Path | None:
+    """Copia el respaldo más reciente a Documentos (fuera de la carpeta del programa: si esa se borra, la
+    biblioteca se puede recuperar). Se guardan los KEEP_OUTSIDE más recientes. Devuelve la copia o None."""
+    backups = list_backups()
+    if not backups:
+        return None
+    target_dir = outside_copies_dir()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / backups[0].name
+        if not target.exists():
+            temp = target.with_name(target.name + ".tmp")
+            shutil.copy2(backups[0], temp)
+            os.replace(temp, target)  # de una vez: nunca una copia a medias con el nombre definitivo
+        for old in sorted(target_dir.glob(f"{_PREFIX}*.db"), key=lambda p: p.name, reverse=True)[KEEP_OUTSIDE:]:
+            old.unlink()
+        for leftover in target_dir.glob("*.tmp"):  # copia cortada a medias (corte de luz)
+            leftover.unlink()
+    except OSError as exc:
+        log.warning("No se pudo copiar el respaldo a %s: %s", target_dir, exc)
+        return None
+    return target
+
+
+def newest_outside_copy() -> Path | None:
+    """El respaldo válido más reciente de la copia en Documentos (para recuperar una biblioteca perdida)."""
+    folder = outside_copies_dir()
+    if not folder.is_dir():
+        return None
+    for path in sorted(folder.glob(f"{_PREFIX}*.db"), key=lambda p: p.name, reverse=True):
+        if check_database(path) is None:
+            return path
+    return None
 
 
 def latest_valid_backup() -> Path | None:
