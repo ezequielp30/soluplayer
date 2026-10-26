@@ -69,6 +69,9 @@
     <addaction name="act_new_playlist"/>
     <addaction name="act_rename_playlist"/>
     <addaction name="act_delete_playlist"/>
+    <addaction name="separator"/>
+    <addaction name="act_save_playlists"/>
+    <addaction name="act_restore_playlists"/>
    </widget>
    <widget class="QMenu" name="menu_herramientas">
     <property name="title">
@@ -241,6 +244,16 @@
   <action name="act_delete_playlist">
    <property name="text">
     <string>&amp;Eliminar playlist…</string>
+   </property>
+  </action>
+  <action name="act_save_playlists">
+   <property name="text">
+    <string>&amp;Guardar copia de las playlists…</string>
+   </property>
+  </action>
+  <action name="act_restore_playlists">
+   <property name="text">
+    <string>Re&amp;staurar playlists…</string>
    </property>
   </action>
   <action name="act_online">

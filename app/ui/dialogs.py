@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QTabWidget,
@@ -251,6 +253,42 @@ class PlaylistNameDialog(QDialog):
             self.edit.setFocus()
             return
         self.accept()
+
+
+class PlaylistRestoreDialog(QDialog):
+    """Las playlists encontradas en una copia, para elegir cuáles restaurar (todas marcadas)."""
+
+    def __init__(self, plans, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Restaurar playlists")
+        self.setMinimumWidth(480)
+        self._plans = list(plans)
+        layout = QVBoxLayout(self)
+        layout.addWidget(note_label(
+            "Marca las playlists que quieres traer. No se borra ni se cambia ninguna de las que ya tienes: "
+            "si ya hay una igual se deja como está, y si hay una distinta con el mismo nombre, la copia entra "
+            "como «Nombre (restaurada)»."
+        ))
+        self.list = QListWidget()
+        for plan in self._plans:
+            text = f"{plan.name} — {plural(plan.found, 'canción', 'canciones')}"
+            if plan.missing:
+                text += f" (no se encuentran {plan.missing})"
+            item = QListWidgetItem(text)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.list.addItem(item)
+        layout.addWidget(self.list)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Restaurar")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("PrimaryButton")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def selected(self) -> list:
+        return [plan for i, plan in enumerate(self._plans) if self.list.item(i).checkState() == Qt.CheckState.Checked]
 
 
 class PreferencesDialog(QDialog):

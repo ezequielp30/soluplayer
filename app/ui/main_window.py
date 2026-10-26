@@ -31,8 +31,8 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError, available_paths
-from .. import backup, error_log, file_manager, library_cleanup, media_keys, review_folder, win_audio
-from ..config import data_dir, resource_path
+from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, win_audio
+from ..config import data_dir, playlists_backup_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
 from ..file_operations import FileOperations
@@ -58,6 +58,7 @@ from .dialogs import (
     FolderImportDialog,
     ImportReportDialog,
     PlaylistNameDialog,
+    PlaylistRestoreDialog,
     PreferencesDialog,
     TitleReviewDialog,
     ask,
@@ -86,6 +87,7 @@ _VIEW_TITLES = {
 
 # Ruta completa: con solo «explorer», Windows lo busca primero en la carpeta actual (p. ej. la de una
 # descarga), donde un «explorer.exe» falso se ejecutaría en su lugar.
+_PLAYLIST_BACKUP_DELAY_MS = 3000  # copia automática de las playlists: unos segundos después del último cambio
 _EXPLORER = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "explorer.exe")
 
 
@@ -154,8 +156,14 @@ class MainWindow(QMainWindow):
             # Solo para pruebas automáticas: silencia la salida sin tocar los ajustes guardados.
             self.player.set_muted(True)
 
+        # Copia automática de las playlists en Documentos (fuera de la carpeta del programa): unos segundos
+        # después de cada cambio, y una al abrir.
+        self._playlist_backup = QTimer(self)
+        self._playlist_backup.setSingleShot(True)
+        self._playlist_backup.setInterval(_PLAYLIST_BACKUP_DELAY_MS)
+        self._playlist_backup.timeout.connect(self._backup_playlists)
         self._reload_library()
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         self.sidebar.select_library("songs")
         self._report_missing_on_start()
 
@@ -185,6 +193,8 @@ class MainWindow(QMainWindow):
             "act_new_playlist": self._create_playlist,
             "act_rename_playlist": self._rename_selected_playlist,
             "act_delete_playlist": self._delete_selected_playlist,
+            "act_save_playlists": self._save_playlists_copy,
+            "act_restore_playlists": self._restore_playlists,
             "act_online": lambda: self._open_online(self.library),
             "act_duplicates": self._open_duplicates,
             "act_loudness": self._open_loudness,
@@ -384,6 +394,9 @@ class MainWindow(QMainWindow):
             QApplication.styleHints().colorSchemeChanged.disconnect(self._on_system_scheme_changed)
         except (RuntimeError, TypeError):
             pass
+        if self._playlist_backup.isActive():
+            self._playlist_backup.stop()
+            self._backup_playlists()  # el último cambio, antes de cerrar la biblioteca
         self.player.stop()
         self._media_keys.disable()
         QApplication.instance().removeNativeEventFilter(self._media_keys)
@@ -392,7 +405,82 @@ class MainWindow(QMainWindow):
 
     # ================================================================== vistas
 
+    def _playlists_changed(self) -> None:
+        """Las playlists cambiaron: se muestran y se programa su copia automática."""
+        self.sidebar.set_playlists(self.db.playlists())
+        self._playlist_backup.start()
+
+    def _backup_playlists(self) -> None:
+        try:
+            written = playlist_files.export_all(self.db, playlists_backup_dir())
+        except (OSError, sqlite3.Error) as exc:
+            log.warning("No se pudo hacer la copia automática de las playlists: %s", exc)
+            return
+        if written:
+            log.info("Copia automática de %d playlist(s) en %s", len(written), playlists_backup_dir())
+
+    def _save_playlists_copy(self) -> None:
+        if not self.db.playlists():
+            QMessageBox.information(self, "Guardar copia de las playlists", "Todavía no hay playlists.")
+            return
+        folder = QFileDialog.getExistingDirectory(self, "Carpeta donde guardar la copia (por ejemplo, un pendrive)",
+                                                  str(playlists_backup_dir().parent))
+        if not folder:
+            return
+        try:
+            playlist_files.export_all(self.db, folder)
+        except OSError as exc:
+            QMessageBox.warning(self, "Guardar copia de las playlists", f"No se pudo guardar en:\n{folder}\n\n{file_manager.explain(exc, folder)}")
+            return
+        QMessageBox.information(
+            self, "Guardar copia de las playlists",
+            f"Se guardaron {plural(len(self.db.playlists()), 'playlist')} en:\n{folder}\n\n"
+            "Para recuperarlas: Playlists → Restaurar playlists… y elegir esta carpeta. "
+            "Además se guarda una copia automática en:\n" + str(playlists_backup_dir()),
+        )
+
+    def _restore_playlists(self) -> None:
+        start = playlists_backup_dir()
+        folder = QFileDialog.getExistingDirectory(self, "Carpeta con la copia de las playlists",
+                                                  str(start if start.is_dir() else start.parent))
+        if not folder:
+            return
+        try:
+            found = playlist_files.read_folder(folder)
+        except OSError as exc:
+            QMessageBox.warning(self, "Restaurar playlists", f"No se pudo leer la carpeta:\n{folder}\n\n{exc}")
+            return
+        if not found:
+            QMessageBox.information(self, "Restaurar playlists", f"No hay playlists (.m3u8 o .m3u) en:\n{folder}")
+            return
+        dialog = PlaylistRestoreDialog(playlist_files.plan_restore(found, self.library), self)
+        if not self._run_dialog(dialog):
+            return
+        chosen = dialog.selected()
+        if not chosen:
+            return
+        self._safety_backup("antes-de-restaurar-playlists")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)  # con miles de canciones puede tardar
+        try:
+            outcome = playlist_files.apply_restore(self.db, chosen)
+        finally:
+            QApplication.restoreOverrideCursor()
+            self._reload_library()  # lo que llegó a restaurarse se ve siempre, aunque algo falle
+            self._playlists_changed()
+        parts = [f"Restauradas: {plural(len(outcome.created), 'playlist')}."]
+        if outcome.unchanged:
+            parts.append(f"Ya estaban iguales: {', '.join(outcome.unchanged)}.")
+        if outcome.added_tracks:
+            parts.append(f"Se agregaron a la biblioteca {plural(outcome.added_tracks, 'canción', 'canciones')} que estaban en el disco.")
+        if outcome.missing:
+            parts.append(f"No se encontraron {plural(outcome.missing, 'canción', 'canciones')} (ya no están en el disco).")
+        for name, reason in outcome.failed:
+            parts.append(f"No se pudo restaurar «{name}»: {reason}")
+        QMessageBox.information(self, "Restaurar playlists", "\n".join(parts))
+
     def _reload_library(self) -> None:
+        if hasattr(self, "_playlist_backup"):
+            self._playlist_backup.start()  # rutas o títulos que cambian (Localizar archivo…, datos de internet)
         self.library = self.db.all_tracks()
         was_folder = self.sidebar.current_view()[0] == "folder"
         self.folder_roots = build_folder_tree(self.library)
@@ -454,7 +542,7 @@ class MainWindow(QMainWindow):
     def _render_playlist(self, playlist_id: int) -> None:
         playlist = self.db.playlist(playlist_id)
         if playlist is None:
-            self.sidebar.set_playlists(self.db.playlists())
+            self._playlists_changed()
             self.sidebar.select_library("songs")
             return
         tracks = self.db.playlist_tracks(playlist_id)
@@ -783,7 +871,7 @@ class MainWindow(QMainWindow):
         """Después de cualquier operación sobre archivos: recargar la biblioteca y refrescar todo."""
         self._reload_library()
         self.player.update_tracks({t.id: t for t in self.library})  # una sola pasada por la cola
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         self._refresh_view()
 
     def _release_files(self, track_ids: set[int]) -> None:
@@ -1248,7 +1336,7 @@ class MainWindow(QMainWindow):
         if not dialog.exec() or dialog.result_value is None:
             return None
         playlist = dialog.result_value
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         self.statusBar().showMessage(f"Playlist «{playlist.name}» creada.", 5000)
         return playlist.id
 
@@ -1264,7 +1352,7 @@ class MainWindow(QMainWindow):
             self,
         )
         if dialog.exec():
-            self.sidebar.set_playlists(self.db.playlists())
+            self._playlists_changed()
             if self.sidebar.current_view() == ("playlist", playlist_id):
                 self.content.set_title(dialog.result_value)
 
@@ -1286,7 +1374,7 @@ class MainWindow(QMainWindow):
         if playlist.track_count:
             self._safety_backup("antes-de-eliminar-playlist")
         self.db.delete_playlist(playlist_id)
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         if was_selected:
             self.sidebar.select_library("songs")
         self.statusBar().showMessage(f"Playlist «{playlist.name}» eliminada.", 5000)
@@ -1398,7 +1486,7 @@ class MainWindow(QMainWindow):
                 allow_duplicates = choice == 1
 
         added = self.db.add_to_playlist(playlist_id, ids, allow_duplicates=allow_duplicates)
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         if self.sidebar.current_view() == ("playlist", playlist_id) and not self.player_bar.search.text():
             self._render_playlist(playlist_id)
         self.statusBar().showMessage(
@@ -1423,7 +1511,7 @@ class MainWindow(QMainWindow):
             if choice != 0:
                 return
         removed = self.db.remove_playlist_entries(entries)
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         self._render_playlist(playlist_id)
         self.statusBar().showMessage(
             f"Se {'quitó' if removed == 1 else 'quitaron'} {plural(removed, 'canción', 'canciones')} "
@@ -1452,7 +1540,7 @@ class MainWindow(QMainWindow):
         self.player.remove_tracks(ids)
         removed = self.db.remove_tracks(ids)
         self._reload_library()
-        self.sidebar.set_playlists(self.db.playlists())
+        self._playlists_changed()
         self._refresh_view()
         self.statusBar().showMessage(
             f"Se {'quitó' if removed == 1 else 'quitaron'} {plural(removed, 'canción', 'canciones')} de la biblioteca.",

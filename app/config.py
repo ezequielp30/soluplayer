@@ -58,6 +58,36 @@ def resource_path(*parts: str) -> Path:
     return base.joinpath(*parts)
 
 
+def playlists_backup_dir() -> Path:
+    """Carpeta de la copia automática de las playlists: «Documentos\\Reproductor de Música\\Playlists».
+    Está FUERA de la carpeta del programa, así sobrevive aunque esa se borre (y si Documentos está en
+    OneDrive, queda también en la nube). Se puede cambiar con MUSICPLAYER_PLAYLISTS_DIR; con una carpeta de
+    datos propia (MUSICPLAYER_DATA_DIR, la de las pruebas) va dentro de ella: nunca a los Documentos del usuario."""
+    override = os.environ.get("MUSICPLAYER_PLAYLISTS_DIR")
+    if override:
+        return Path(override)
+    if os.environ.get("MUSICPLAYER_DATA_DIR"):
+        return data_dir() / "copia-playlists"
+    return _documents_dir() / APP_NAME / "Playlists"
+
+
+def _documents_dir() -> Path:
+    """La carpeta Documentos de Windows, también si está en OneDrive o en otro disco."""
+    if os.name == "nt":
+        import ctypes
+        import uuid
+
+        folder_id = uuid.UUID("{FDD39AD0-238F-46AF-ADB4-6C85480369C7}")  # FOLDERID_Documents
+        guid = (ctypes.c_byte * 16).from_buffer_copy(folder_id.bytes_le)
+        out = ctypes.c_wchar_p()
+        if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(out)) == 0:
+            try:
+                return Path(out.value)
+            finally:
+                ctypes.windll.ole32.CoTaskMemFree(out)
+    return Path.home() / "Documents"
+
+
 def data_dir() -> Path:
     """Carpeta donde se guarda la base de datos (fuera de la carpeta del proyecto).
 

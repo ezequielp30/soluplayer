@@ -83,7 +83,7 @@ def walk(menu, path):
         else:
             yield path + [a.text().replace("&", "")], a
 all_actions = [(p, a) for top in win.menuBar().actions() for p, a in walk(top.menu(), [top.text().replace("&", "")])]
-check("el menú tiene todas las opciones (27)", len(all_actions) == 27, len(all_actions))
+check("el menú tiene todas las opciones (29)", len(all_actions) == 29, len(all_actions))
 
 def state():
     p = win.player
@@ -115,6 +115,8 @@ def expectation(label, before, after, dialogs, urls):
         "Nueva playlist…": PlaylistNameDialog.__name__ in names,
         "Renombrar playlist…": PlaylistNameDialog.__name__ in names,
         "Eliminar playlist…": "Eliminar" in texts or "playlist" in texts.lower(),
+        "Guardar copia de las playlists…": True,  # pide la carpeta (interceptado: no elige ninguna)
+        "Restaurar playlists…": True,
         "Buscar datos en internet…": OnlineLookupDialog.__name__ in names,
         "Buscar canciones repetidas…": DuplicatesDialog.__name__ in names,
         "Analizar y ajustar volumen…": LoudnessDialog.__name__ in names,

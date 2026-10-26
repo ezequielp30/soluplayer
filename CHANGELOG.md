@@ -2,6 +2,20 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.5 — 2026-10-25 (copia de las playlists)
+
+- **Copia automática de las playlists** en `Documentos\Reproductor de Música\Playlists` (fuera de la carpeta
+  del programa: sobrevive aunque esa se borre; si Documentos está en OneDrive, queda también en la nube).
+  Se actualiza unos segundos después de cada cambio y al abrir el programa. Nunca borra nada en esa
+  carpeta: una playlist eliminada en el programa sigue guardada y se puede restaurar, y si una playlist
+  pierde canciones (p. ej. al quitar faltantes) su versión anterior queda en la subcarpeta `Anteriores`.
+- **Playlists → Guardar copia de las playlists…:** en la carpeta que se elija (por ejemplo, un pendrive),
+  un archivo `.m3u8` por playlist (formato estándar: también lo abren VLC, Winamp o foobar2000).
+- **Playlists → Restaurar playlists…:** muestra las playlists de una copia para elegir cuáles traer.
+  Encuentra cada canción por su ruta, la agrega a la biblioteca si está en el disco, o la busca por título,
+  artista y duración si la música cambió de carpeta. No pisa ninguna playlist: si hay una igual se deja, y
+  si hay una distinta con el mismo nombre entra como «Nombre (restaurada)».
+
 ## 1.12.4 — 2026-10-25 (detalles)
 
 Detalles menores de la revisión completa. Cada uno tiene su prueba en `tests/menores_1124_test.py`.
