@@ -1,7 +1,7 @@
 """Prueba exhaustiva de cada opción de menú, menú contextual y botón, con diálogos reales."""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
 
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_menu_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

@@ -1,7 +1,7 @@
 """Compatibilidad de códecs: genera archivos reales en cada formato codificable, los importa y los reproduce
 (en silencio) con el mismo motor del programa; además prueba muestras de la biblioteca real del usuario (solo lectura)."""
 import math, os, sqlite3, struct, sys, tempfile, time
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_codecs_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 from PySide6.QtCore import QByteArray, QEventLoop, QUrl

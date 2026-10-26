@@ -1,7 +1,7 @@
 """1.12.5: copia de las playlists en archivos M3U8 (a mano y automática en Documentos) y restaurarlas.
 Todo en carpetas temporales; la carpeta «Documentos» de las pruebas es otra (MUSICPLAYER_PLAYLISTS_DIR)."""
 import math, os, shutil, struct, sys, tempfile, time, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_pl_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_PLAYLISTS_DIR"] = os.path.join(work, "Documentos", "Playlists")

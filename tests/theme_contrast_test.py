@@ -2,7 +2,7 @@
 texto sobre el botón de acento ≥ 4.5:1, avisos legibles (≥ 4.5:1), títulos de sección de la barra lateral
 ≥ 4.5:1 (sobre la barra y sobre su píldora), la pantalla de la canción actual y el botón de acento distinguible del fondo."""
 import sys
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 from app.ui.styles import _mix
 from app.ui.theme import THEMES
 

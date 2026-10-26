@@ -3,7 +3,7 @@ solo lectura y los archivos de música solo se leen)."""
 import glob, json, os, sqlite3, sys
 from collections import Counter
 
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 from app import backup, mp3gain
 from app.duplicates import find_duplicates
 from app.library_cleanup import plan_missing, relocate_folder

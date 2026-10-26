@@ -1,7 +1,7 @@
 """Ecualizador dentro del programa: activar/desactivar a mitad de canción, presets, guardar presets propios,
 archivos muy largos y que la configuración se recuerde al volver a abrir. (Volumen del programa en 0.)"""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_equi_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_SILENCIO"] = "1"

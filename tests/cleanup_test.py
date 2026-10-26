@@ -1,6 +1,6 @@
 """Prueba de «quitar automáticamente las canciones y carpetas que ya no existen» (todo en carpetas temporales)."""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_cleanup_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"

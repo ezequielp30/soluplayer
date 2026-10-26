@@ -1,7 +1,7 @@
 """1.12.6: nombres de playlist de 30 caracteres como máximo (sin recortar las que ya existían).
 Todo en carpetas temporales."""
 import os, sys, tempfile
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_lim_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 from PySide6.QtCore import QSettings

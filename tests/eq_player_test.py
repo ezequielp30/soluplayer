@@ -1,6 +1,6 @@
 """Prueba del motor con ecualizador sobre la salida de audio real (con volumen 0: no suena nada)."""
 import math, os, struct, sys, tempfile, time, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_eqp_")
 from PySide6.QtCore import QEventLoop, QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer

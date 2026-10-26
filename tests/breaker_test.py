@@ -1,4 +1,4 @@
-import sys, time; sys.path.insert(0, r"D:\reproductor-musica")
+import sys, time; sys.path.insert(0, r"D:\soluplayer")
 from PySide6.QtCore import QCoreApplication
 app = QCoreApplication(sys.argv)
 from app import online_lookup as ol

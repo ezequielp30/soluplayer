@@ -1,6 +1,6 @@
 """Prueba de «Convertir a MP3» sobre COPIAS (los originales de la biblioteca real no se tocan)."""
 import hashlib, math, os, shutil, sqlite3, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_conv_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 import numpy as np

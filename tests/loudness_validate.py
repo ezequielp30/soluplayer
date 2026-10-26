@@ -1,6 +1,6 @@
 """Valida el medidor contra valores conocidos de la norma (señales sintéticas)."""
 import sys, math
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 import numpy as np
 from app.loudness import LoudnessMeter, RATE
 def measure(sig_l, sig_r):

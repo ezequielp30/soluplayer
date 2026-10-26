@@ -11,7 +11,7 @@ for i in range(3):
         w.writeframes(b"".join(struct.pack("<h", int(6000 * math.sin(2 * math.pi * (400 + 100 * i) * n / 22050))) for n in range(22050 * 2)))
     files.append(p)
 env = dict(os.environ, MUSICPLAYER_DATA_DIR=data, MUSICPLAYER_ORG="ReproductorMusicaTest", QT_QPA_PLATFORM="offscreen", MUSICPLAYER_SILENCIO="1")
-exe = r"D:\reproductor-musica\.venv\Scripts\python.exe"
+exe = r"D:\soluplayer\.venv\Scripts\python.exe"
 
 results = []
 def check(name, ok, detail=""):
@@ -32,7 +32,7 @@ def wait_for(cond, secs):
         time.sleep(0.2)
     return cond()
 
-procs = [subprocess.Popen([exe, "main.py", f], cwd=r"D:\reproductor-musica", env=env) for f in files]
+procs = [subprocess.Popen([exe, "main.py", f], cwd=r"D:\soluplayer", env=env) for f in files]
 try:
     check("los 3 archivos llegan a una sola ventana", wait_for(lambda: opened() >= 3, 60), opened())
     wait_for(lambda: sum(p.poll() is None for p in procs) <= 1, 30)
@@ -41,7 +41,7 @@ try:
           len(alive) == 1 and all(p.poll() == 0 for p in procs if p not in alive), [p.poll() for p in procs])
     # 4.ª copia ya abierto el programa: debe entregar y salir enseguida
     t = time.time()
-    p4 = subprocess.Popen([exe, "main.py", files[0]], cwd=r"D:\reproductor-musica", env=env)
+    p4 = subprocess.Popen([exe, "main.py", files[0]], cwd=r"D:\soluplayer", env=env)
     try:
         p4.wait(30)
     except subprocess.TimeoutExpired:

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 ROOT = tempfile.mkdtemp(prefix="mp_step2_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(ROOT, "datos")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 
 import lameenc  # noqa: E402
 from PySide6.QtCore import QTimer  # noqa: E402

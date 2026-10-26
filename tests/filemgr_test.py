@@ -1,7 +1,7 @@
 """Prueba de la gestión de archivos y carpetas: renombrar, crear carpeta, mover y enviar a la Papelera.
 Todo en carpetas temporales (la Papelera de Windows recibe solo archivos de prueba)."""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_filemgr_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"

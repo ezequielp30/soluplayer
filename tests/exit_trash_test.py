@@ -7,7 +7,7 @@ for n in range(3):
     with wave.open(os.path.join(folder, f"t{n}.wav"), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
         w.writeframes(b"".join(struct.pack("<h", int(4000*math.sin(i/(3+n)))) for i in range(8000*5)))
-sys.path.insert(0, r"D:\reproductor-musica"); os.chdir(r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer"); os.chdir(r"D:\soluplayer")
 from PySide6.QtCore import QCoreApplication, QTimer
 from PySide6.QtWidgets import QApplication
 import app.application as appmod

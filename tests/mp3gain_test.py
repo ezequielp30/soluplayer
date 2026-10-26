@@ -1,6 +1,6 @@
 """Prueba de mp3gain sobre COPIAS de MP3 reales (los originales no se tocan)."""
 import hashlib, os, shutil, sqlite3, sys, tempfile, time
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 import numpy as np
 from PySide6.QtCore import QCoreApplication, QEventLoop, QUrl
 from PySide6.QtMultimedia import QAudioDecoder, QAudioFormat
@@ -31,7 +31,9 @@ def sha(p): return hashlib.sha1(open(p, "rb").read()).hexdigest()
 
 db = os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db")
 con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-samples = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.mp3' order by random() limit 4")]
+# Menos de 15 minutos: un álbum entero en un solo MP3 tarda más que el límite de medición de la prueba.
+samples = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.mp3' and duration_ms between 1 and 900000 "
+                                     "order by random() limit 4")]
 samples.insert(0, r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3")
 originals = {p: sha(p) for p in samples}  # antes de tocar nada: así se ve si algo escribió en el original
 work = tempfile.mkdtemp(prefix="mp_gain_")

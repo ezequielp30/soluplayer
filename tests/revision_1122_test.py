@@ -1,7 +1,7 @@
 """1.12.2: correcciones de la revisión completa (superpowers), cada una reproducida antes de corregirla.
 Todo en carpetas temporales; nunca la biblioteca, los ajustes ni la música del usuario."""
 import hashlib, math, os, struct, sys, tempfile, time, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_1122_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 import lameenc, numpy as np

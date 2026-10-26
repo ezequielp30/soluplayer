@@ -2,7 +2,7 @@
 Todo en carpetas temporales (y una temporal en otro disco, que se borra al final)."""
 import ctypes, math, os, shutil, struct, sys, tempfile, time, wave
 from datetime import datetime, timedelta
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_1124_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 from PySide6.QtCore import QEventLoop, QSettings

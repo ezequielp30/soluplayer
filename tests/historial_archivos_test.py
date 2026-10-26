@@ -1,7 +1,7 @@
 """1.12.0: Historial de renombres y movimientos (con deshacer), limpieza de temporales sobrantes al abrir,
 revisión rápida de qué canciones existen, y textos de Qt en español. Todo en carpetas temporales."""
 import math, os, shutil, struct, sys, tempfile, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_hist_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 from PySide6.QtCore import QCoreApplication, QSettings

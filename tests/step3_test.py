@@ -1,7 +1,7 @@
 """Pruebas de los pasos 3 a 5 del arquitecto: WorkerRunner en las ventanas, coordinador de operaciones
 sobre archivos, Historial, menús reorganizados y ajustes de interfaz. Todo en carpetas temporales."""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_step3_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_SILENCIO"] = "1"

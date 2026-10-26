@@ -1,6 +1,6 @@
 """Prueba de «Buscar datos en internet» contra MusicBrainz/Deezer/iTunes reales (archivos de silencio)."""
 import os, sys, tempfile, time, traceback, urllib.error, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_online_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 

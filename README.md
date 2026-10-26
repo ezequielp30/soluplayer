@@ -33,7 +33,7 @@ Dependencias (`requirements.txt`):
 
 ## Instalación y ejecución desde VS Code (PowerShell)
 
-1. Abre la carpeta del proyecto: **Archivo → Abrir carpeta…** y elige `reproductor-musica`.
+1. Abre la carpeta del proyecto: **Archivo → Abrir carpeta…** y elige `soluplayer`.
 2. Abre la terminal integrada: **Terminal → Nueva terminal** (PowerShell).
 3. Ejecuta estos comandos, en orden:
 
@@ -71,7 +71,7 @@ El proyecto incluye `.vscode/launch.json` y `.vscode/settings.json`. Tras crear 
 ## Estructura del proyecto
 
 ```
-reproductor-musica/
+soluplayer/
 ├── main.py                  Punto de entrada
 ├── Editar-menus.cmd         Abre los menús en Qt Designer
 ├── assets/menus.ui          Menús de la ventana principal (editables con Qt Designer)

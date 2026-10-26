@@ -4,7 +4,7 @@ preferencias dañadas, deshacer solo MP3 creados por el programa, ecualizador co
 solo JPEG/PNG, importar sin las carpetas del programa, temas retirados y Repetidas sin copia conservada.
 Todo en carpetas temporales (y una temporal en D: para probar entre discos, que se borra al final)."""
 import ctypes, math, os, shutil, sqlite3, stat, struct, sys, tempfile, time, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_rob_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 import numpy as np

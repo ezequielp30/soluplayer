@@ -1,7 +1,7 @@
 """Prueba de las reparaciones de integridad (todo en carpetas temporales; nunca toca la biblioteca real)."""
 import logging, os, shutil, sqlite3, sys, tempfile, time, traceback, wave
 from datetime import datetime, timedelta
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_repair_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 
@@ -134,7 +134,7 @@ check("Relocalizar conserva título/artista/álbum corregidos", (after.title, af
 check("  y toma la nueva ruta y duración", after.path == scanned.path and after.duration_ms == 5000, (after.path, after.duration_ms))
 
 print("\n[6. Papelera segura]")
-check("Disco local D: permitido", file_ops.trash_block_reason(r"D:\reproductor-musica\main.py") is None)
+check("Disco local D: permitido", file_ops.trash_block_reason(r"D:\soluplayer\main.py") is None)
 check("Carpeta de red bloqueada", "red" in (file_ops.trash_block_reason(r"\\servidor\musica\a.mp3") or ""))
 orig_type = file_ops._drive_type
 for code, word in ((4, "red"), (2, "extraíble"), (5, "CD")):

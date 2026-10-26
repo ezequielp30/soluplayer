@@ -1,6 +1,6 @@
 """Prueba de los menús leídos desde assets/menus.ui (editables con Qt Designer)."""
 import os, shutil, sys, tempfile, time
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_menus_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_SILENCIO"] = "1"

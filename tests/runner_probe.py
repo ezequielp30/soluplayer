@@ -1,6 +1,6 @@
 import sys, threading, time, faulthandler
 faulthandler.enable()
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QApplication, QWidget, QProgressBar, QLabel, QPushButton
 app = QApplication(sys.argv)

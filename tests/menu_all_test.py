@@ -2,7 +2,7 @@
 submenús) y comprueba su efecto, sin errores de Python. Todo en una carpeta temporal y en silencio; lo que
 abriría el Explorador o el Bloc de notas se intercepta."""
 import math, os, shutil, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_menuall_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["MUSICPLAYER_SILENCIO"] = "1"

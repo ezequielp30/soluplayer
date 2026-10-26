@@ -1,7 +1,7 @@
 """Regresión: cada fallo reportado por los 4 agentes revisores, reproducido y comprobado como corregido."""
 import math, os, shutil, sqlite3, struct, sys, tempfile, time, wave
 from types import SimpleNamespace
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_fixes_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 os.environ["QT_QPA_PLATFORM"] = "offscreen"

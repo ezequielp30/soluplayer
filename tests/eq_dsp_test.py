@@ -2,7 +2,7 @@
 sonido, no satura y un bloque tras otro no deja «costuras» (clics)."""
 import sys
 import numpy as np
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 from app.equalizer import BANDS_HZ, LATENCY_FRAMES, PRESETS, EqProcessor, EqSettings
 
 RATE = 48000

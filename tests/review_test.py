@@ -1,6 +1,6 @@
 """Prueba de «Reunir repetidas en una carpeta» y «Devolver a su lugar». Todo en carpetas temporales."""
 import math, os, sqlite3, struct, sys, tempfile, time, traceback, wave
-sys.path.insert(0, r"D:\reproductor-musica")
+sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_review_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer
