@@ -12,6 +12,7 @@ from PySide6.QtMultimedia import QAudioOutput
 from PySide6.QtWidgets import QApplication, QDialog, QFileDialog, QInputDialog, QMessageBox
 app = QApplication(sys.argv); app.setOrganizationName("ReproductorMusicaTest")
 QSettings("ReproductorMusicaTest", "ReproductorMusica").clear()
+QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from app import error_log
 from app.config import database_path
 from app.database import Database

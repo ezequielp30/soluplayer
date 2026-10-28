@@ -366,6 +366,9 @@ class PreferencesDialog(QDialog):
         )
         self.remove_missing.setChecked(prefs.remove_missing_on_start)
         library_layout.addWidget(self.remove_missing)
+        self.confirm_exit = QCheckBox("Preguntar antes de salir del programa")
+        self.confirm_exit.setChecked(prefs.confirm_exit)
+        library_layout.addWidget(self.confirm_exit)
         library_layout.addWidget(note_label(
             "Se quitan solo de la biblioteca y de las playlists (no se borra ningún archivo), con un respaldo "
             "previo. Las de un disco externo o de red desconectado se conservan hasta que vuelva a estar."
@@ -402,6 +405,7 @@ class PreferencesDialog(QDialog):
         self._prefs.ask_titles_on_import = self.ask_titles.isChecked()
         self._prefs.detect_artist_in_filename = self.detect_artist.isChecked()
         self._prefs.remove_missing_on_start = self.remove_missing.isChecked()
+        self._prefs.confirm_exit = self.confirm_exit.isChecked()
         self._prefs.global_media_keys = self.media_keys.isChecked()
         self._prefs.theme = self.theme_picker.selected()
         self._prefs.online_sources = chosen

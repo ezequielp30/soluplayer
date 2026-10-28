@@ -40,6 +40,7 @@ from ..mp3gain import STEP_DB
 from ..utils import plural
 from . import theme
 from .dialogs import ResultBanner, StatusLabel, ask, empty_state, set_primary, tidy_table, tool_intro
+from .worker_runner import StopQuestion
 from .worker_runner import WorkerRunner
 
 COL_USE, COL_SONG, COL_LUFS, COL_GAIN, COL_DIAG = range(5)
@@ -167,7 +168,9 @@ class LoudnessDialog(QDialog):
         worker = AnalyzeWorker(tracks)
         self._measured_count, self._analysis_total = 0, len(tracks)
         worker.measured.connect(self._on_measured)  # método con @Slot: se ejecuta en el hilo principal
-        self.runner.start(worker, len(tracks), "Analizando…", self._on_analysis_finished, label="Analizando")
+        self.runner.start(worker, len(tracks), "Analizando…", self._on_analysis_finished, label="Analizando",
+                          stop_question=StopQuestion("el análisis de volumen", "Seguir analizando", "Detener el análisis",
+                                                     "Lo medido hasta ahora se conserva; las demás se pueden analizar después."))
 
     @Slot(int, object, object, str, int)
     def _on_measured(self, track_id: int, lufs, peak, error: str, annotated_steps: int) -> None:
@@ -425,7 +428,9 @@ class LoudnessDialog(QDialog):
         self._adjust_by_id = {t.id: t for t, _ in jobs}
         worker = AdjustWorker(jobs)
         worker.adjusted.connect(self._on_adjusted)  # método con @Slot: se ejecuta en el hilo principal
-        self.runner.start(worker, len(jobs), "Ajustando volumen…", self._on_adjust_finished, label="Ajustando", modifies_files=True)
+        self.runner.start(worker, len(jobs), "Ajustando volumen…", self._on_adjust_finished, label="Ajustando", modifies_files=True,
+                          stop_question=StopQuestion("el ajuste de volumen", "Seguir ajustando", "Detener el ajuste",
+                                                     "Las canciones ya ajustadas quedan así (se pueden revertir)."))
 
     @Slot(int, int, int, str)
     def _on_adjusted(self, track_id: int, steps: int, total_steps: int, error: str) -> None:

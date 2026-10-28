@@ -2,6 +2,19 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.10 — 2026-10-28 (confirmaciones)
+
+- **Detener una tarea pregunta antes** (análisis y ajuste de volumen, conversión a MP3, canciones repetidas,
+  datos de internet, descarga de carátulas, importación), con el tema, el avance y qué se conserva:
+  «¿Detener el análisis de volumen? Van 312 de 905. Lo medido hasta ahora se conserva…». El botón marcado
+  es el de seguir: un Enter de más no detiene nada.
+- **Cerrar una ventana que está trabajando** (X, «Cerrar» o Esc) ya no la detiene en silencio: pregunta
+  «¿Cerrar y detener…?». Si está modificando archivos, ofrece detener al terminar el archivo en curso.
+- **Salir del programa pregunta** «¿Salir del Reproductor de Música?» (con «No volver a preguntar»; se
+  vuelve a activar en Preferencias). Con una importación en curso pregunta siempre y dice qué se pierde.
+  Al apagar Windows no pregunta.
+- Corrige un cierre del programa al usar la casilla «No volver a preguntar» (se liberaba antes de tiempo).
+
 ## 1.12.9 — 2026-10-28 (apartar las que no se pueden igualar)
 
 - **Analizar y ajustar volumen → Apartar:** mueve a la carpeta **«_Volumen sin igualar»**, en la carpeta

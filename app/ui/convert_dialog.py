@@ -33,7 +33,7 @@ from ..models import Track
 from ..utils import plural
 from . import theme
 from .dialogs import ResultBanner, StatusLabel, ask, empty_state, tidy_table, tool_intro
-from .worker_runner import WorkerRunner
+from .worker_runner import StopQuestion, WorkerRunner
 
 COL_USE, COL_SONG, COL_NOW, COL_MP3, COL_STATE = range(5)
 _TRACK = Qt.ItemDataRole.UserRole
@@ -232,7 +232,9 @@ class ConvertDialog(QDialog):
         # Las etiquetas del MP3 nuevo llevan el texto original (no el «‹ ›» de pantalla).
         worker = converter.ConvertWorker(list(zip(session.items, self._ops.db.with_raw_text(tracks), strict=True)))
         worker.converted.connect(self._on_converted)  # método @Slot: se ejecuta en el hilo principal
-        self.runner.start(worker, len(tracks), "Convirtiendo…", self._on_finished, label="Convirtiendo", modifies_files=True)
+        self.runner.start(worker, len(tracks), "Convirtiendo…", self._on_finished, label="Convirtiendo", modifies_files=True,
+                          stop_question=StopQuestion("la conversión a MP3", "Seguir convirtiendo", "Detener la conversión",
+                                                     "Las ya convertidas quedan convertidas (se pueden deshacer desde el Historial)."))
 
     @Slot(int, str)
     def _on_converted(self, index: int, error: str) -> None:

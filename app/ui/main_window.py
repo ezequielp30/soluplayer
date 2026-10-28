@@ -16,6 +16,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QInputDialog,
     QLineEdit,
@@ -180,7 +181,7 @@ class MainWindow(QMainWindow):
             "act_backup_now": self._backup_now,
             "act_backup_folder": self._open_backup_folder,
             "act_preferences": self._open_preferences,
-            "act_quit": self.close,
+            "act_quit": self._quit_requested,
             "act_play": self._toggle_play,
             "act_stop": self.player.stop,
             "act_prev": self.player.previous,
@@ -377,7 +378,49 @@ class MainWindow(QMainWindow):
         s.setValue("player/shuffle", self.player.shuffle)
         s.setValue("player/repeat", int(self.player.repeat))
 
+    def _quit_requested(self) -> None:
+        """Archivo → Salir (Ctrl+Q): primero se pregunta."""
+        if self._confirm_exit():
+            self._exit_confirmed = True
+            self.close()
+
+    def _import_progress_text(self) -> str:
+        progress = self._progress
+        if progress is not None and progress.maximum() > 0:
+            return f"Se leyeron {progress.value()} de {progress.maximum()} archivos. "
+        return ""
+
+    def _confirm_exit(self) -> bool:
+        """¿Salir? Con una importación en curso se pregunta siempre y se dice qué se pierde; si no, salvo que
+        se haya elegido «No volver a preguntar». El botón marcado es el que NO sale."""
+        if self._import_worker is not None:
+            return ask(
+                self, "Salir", "¿Salir y cancelar la importación?",
+                [("Salir y cancelar", QMessageBox.ButtonRole.DestructiveRole),
+                 ("Seguir importando", QMessageBox.ButtonRole.RejectRole)],
+                QMessageBox.Icon.Question,
+                self._import_progress_text() + "Lo leído en esta importación no se guardará.",
+            ) == 0
+        if not self.prefs.confirm_exit:
+            return True
+        box = QMessageBox(QMessageBox.Icon.Question, "Salir", f"¿Salir del {APP_NAME}?", parent=self)
+        leave = box.addButton("Salir", QMessageBox.ButtonRole.AcceptRole)
+        box.setDefaultButton(box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole))
+        never = QCheckBox("No volver a preguntar", box)  # con padre: si no, Python la libera y el aviso falla
+        box.setCheckBox(never)
+        box.exec()
+        if box.clickedButton() is not leave:
+            return False
+        if never.isChecked():
+            self.prefs.confirm_exit = False  # se vuelve a activar en Preferencias
+        return True
+
     def closeEvent(self, event) -> None:
+        # Con la X de la ventana (la persona la cierra) se pregunta; al apagar Windows o desde el programa, no.
+        exiting = getattr(self, "_exit_confirmed", False) or QApplication.instance().isSavingSession()
+        if event.spontaneous() and not exiting and not self._confirm_exit():
+            event.ignore()
+            return
         if self._import_worker is not None:
             # Lo que la importación avise de aquí en más ya no debe llegar: la biblioteca se cierra enseguida
             # y lo leído hasta ahora no se guarda (se avisaría con la ventana ya cerrada).
@@ -768,8 +811,19 @@ class MainWindow(QMainWindow):
         self._import_thread.start()
 
     def _cancel_import(self) -> None:
-        if self._import_worker is not None:
-            self._import_worker.cancel()
+        if self._import_worker is None:
+            return
+        if ask(
+            self, "Importar música", "¿Cancelar la importación?",
+            [("Cancelar la importación", QMessageBox.ButtonRole.DestructiveRole),
+             ("Seguir importando", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Question,
+            self._import_progress_text() + "Las canciones leídas hasta ahora se agregan igual a tu biblioteca.",
+        ) != 0:
+            if self._progress is not None:
+                self._progress.show()  # el «Cancelar» de la barra la había ocultado
+            return
+        self._import_worker.cancel()
         if self._progress is not None:
             self._progress.setLabelText("Cancelando…")
 

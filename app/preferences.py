@@ -99,6 +99,17 @@ class Preferences:
     def remove_missing_on_start(self, value: bool) -> None:
         self._s.setValue(self.REMOVE_MISSING, bool(value))
 
+    CONFIRM_EXIT = "preferences/confirm_exit"
+
+    @property
+    def confirm_exit(self) -> bool:
+        """Preguntar antes de salir del programa (con algo en curso se pregunta siempre)."""
+        return self._s.value(self.CONFIRM_EXIT, True, type=bool)
+
+    @confirm_exit.setter
+    def confirm_exit(self, value: bool) -> None:
+        self._s.setValue(self.CONFIRM_EXIT, bool(value))
+
     NORMALIZE = "preferences/playback_normalization"
 
     @property

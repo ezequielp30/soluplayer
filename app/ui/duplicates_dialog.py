@@ -36,7 +36,7 @@ from ..models import Track
 from ..utils import format_time, plural
 from . import theme
 from .dialogs import ResultBanner, StatusLabel, ask, empty_state, tool_intro
-from .worker_runner import WorkerRunner
+from .worker_runner import StopQuestion, WorkerRunner
 
 # (id de la copia que se conserva, copias a quitar)
 Plan = list[tuple[int, list[Track]]]
@@ -173,7 +173,9 @@ class DuplicatesDialog(QDialog):
             return
         mode = self.mode.currentData()
         text = "Comparando el contenido de los archivos…" if mode == MODE_CONTENT else "Buscando canciones repetidas…"
-        self.runner.start(FindDuplicatesWorker(self._tracks_provider(), mode), 0, text, self._on_found)
+        self.runner.start(FindDuplicatesWorker(self._tracks_provider(), mode), 0, text, self._on_found,
+                          stop_question=StopQuestion("la búsqueda de canciones repetidas", "Seguir buscando",
+                                                     "Detener la búsqueda", "No se modificó ningún archivo."))
 
     def _on_found(self, groups, qualities, error: str) -> None:
         if groups is None:

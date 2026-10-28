@@ -42,7 +42,7 @@ class Slow(QObject):
     def run(s): time.sleep(1.5); s.finished.emit()
 
 got.clear(); r.start(Slow(), 0, 'z', cb)
-t0 = time.time(); ok = r.request_close(wait_ms=200)
+t0 = time.time(); ok = r.request_close(wait_ms=200, ask=False)
 print('3 close', ok, round(time.time() - t0, 1), 'orphans', len(_orphans), 'busy', r.busy, flush=True)
 check('cerrar con una tarea lenta no espera de más y la deja huérfana', ok and not r.busy and len(_orphans) == 1)
 t0 = time.time()
@@ -52,13 +52,13 @@ print('  orphan finished', len(_orphans) == 0, 'callback not called', got == [],
 check('la huérfana termina sola y no llama a la ventana cerrada', len(_orphans) == 0 and got == [])
 
 got.clear(); r.start(W(0.01), 3, 'w', cb)
-ok = r.request_close(); print('4 close-ok', ok, got, 'busy', r.busy, flush=True)
+ok = r.request_close(ask=False); print('4 close-ok', ok, got, 'busy', r.busy, flush=True)
 check('una tarea corta termina antes de cerrar', ok and got == [((True,), True)] and not r.busy, got)
 
 got.clear(); r.start(W(0.2), 3, 'm', cb, modifies_files=True)
 from PySide6.QtWidgets import QMessageBox
 QMessageBox.information = lambda *a, **k: got.append('aviso')
-blocked = r.request_close() is False
+blocked = r.request_close(ask=False) is False
 print('5 modifies blocks', blocked, got, flush=True)
 check('no se cierra mientras se modifican archivos, y se avisa', blocked and got == ['aviso'], got)
 while r.busy: app.processEvents()

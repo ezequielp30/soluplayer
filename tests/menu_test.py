@@ -471,8 +471,10 @@ def t_about():
 
 def t_exit():
     bar.volume.setValue(42)
+    QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", True)
+    expect(msgbox_with("¿Salir del"), click_msg("Salir"))
     menu_action("Archivo", "Salir").trigger(); spin(200)
-    check("Salir → cierra la ventana", not win.isVisible())
+    check("Salir → pregunta «¿Salir del…?» y cierra la ventana", not win.isVisible())
     s = QSettings("ReproductorMusicaTest", "ReproductorMusica")
     check("  guarda volumen", int(s.value("player/volume", -1)) == 42, s.value("player/volume"))
     db2 = Database(database_path())

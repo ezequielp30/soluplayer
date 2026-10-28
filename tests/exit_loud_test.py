@@ -2,7 +2,8 @@ import os, shutil, sys, tempfile
 work = tempfile.mkdtemp(prefix="mp_exitloud_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data"); os.environ["MUSICPLAYER_ORG"] = "ReproductorMusicaTest"; os.environ["MUSICPLAYER_SILENCIO"] = "1"  # ajustes (registro) aparte: no se tocan los del usuario
 sys.path.insert(0, r"D:\soluplayer"); os.chdir(r"D:\soluplayer")
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QSettings
+QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from PySide6.QtWidgets import QApplication
 import app.application as appmod
 src = [r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3"]

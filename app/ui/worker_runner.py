@@ -14,6 +14,7 @@ Reglas:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Callable
 
 from PySide6.QtCore import QCoreApplication, QObject, Qt, QThread, Signal
@@ -44,6 +45,18 @@ def wait_pending(timeout_ms: int = 5000) -> bool:
     return deadline_ok
 
 
+@dataclass(frozen=True)
+class StopQuestion:
+    """Cómo se pregunta antes de detener una tarea: sobre qué es y qué pasa con lo hecho."""
+    task: str  # «el análisis de volumen»
+    keep: str  # «Seguir analizando» (el botón marcado: un Enter de más no detiene nada)
+    stop: str  # «Detener el análisis»
+    consequence: str = ""  # «Lo medido hasta ahora se conserva…»
+
+
+_GENERIC = StopQuestion("la tarea en curso", "Seguir", "Detener")
+
+
 class WorkerRunner(QObject):
     busy_changed = Signal(bool)
 
@@ -64,10 +77,11 @@ class WorkerRunner(QObject):
         self._on_finished: Callable | None = None
         self._label = ""
         self._modifies_files = False
+        self._question = _GENERIC
         progress.hide()
         if stop_button is not None:
             stop_button.hide()
-            stop_button.clicked.connect(self.stop)
+            stop_button.clicked.connect(self._confirm_stop)
 
     @property
     def busy(self) -> bool:
@@ -86,6 +100,7 @@ class WorkerRunner(QObject):
         *,
         label: str = "",
         modifies_files: bool = False,
+        stop_question: StopQuestion | None = None,
     ) -> None:
         """`label` («Convirtiendo», «Analizando»…) arma el estado «Convirtiendo 3 de 40: título».
         `on_finished` recibe los argumentos de la señal `finished` del trabajador, ya en el hilo principal."""
@@ -96,6 +111,7 @@ class WorkerRunner(QObject):
         self._on_finished = on_finished
         self._label = label
         self._modifies_files = modifies_files
+        self._question = stop_question or _GENERIC
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         # El hilo acaba solo, aunque la ventana ya no exista. Conexión directa (quit es seguro entre hilos):
@@ -151,11 +167,44 @@ class WorkerRunner(QObject):
                 self.stop_button.setEnabled(False)
             self.status.setText("Deteniendo…")
 
-    def request_close(self, wait_ms: int = 8000) -> bool:
-        """Llamar al cerrar la ventana. Devuelve False si no se debe cerrar todavía."""
+    def _ask(self, question: str, informative: str) -> bool:
+        """True si la persona elige detener. El botón marcado es el de seguir."""
+        from .dialogs import ask
+
+        q = self._question
+        return ask(
+            self._window, "Detener", question,
+            [(q.stop, QMessageBox.ButtonRole.DestructiveRole), (q.keep, QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Question, informative,
+        ) == 0
+
+    def _progress_text(self) -> str:
+        total = self.progress.maximum()
+        return f"Van {self.progress.value()} de {total}. " if total > 0 else ""
+
+    def _confirm_stop(self) -> None:
+        """«Detener»: primero pregunta, con el tema y el avance."""
+        if self._worker is None:
+            return
+        q = self._question
+        if self._ask(f"¿Detener {q.task}?", self._progress_text() + q.consequence):
+            self.stop()
+
+    def request_close(self, wait_ms: int = 8000, ask: bool = True) -> bool:
+        """Llamar al cerrar la ventana (también con Esc). Devuelve False si no se debe cerrar todavía. Con
+        una tarea en marcha primero se pregunta (ask=False: sin preguntar, como antes)."""
         if self._thread is None:
             return True
-        if self._modifies_files:
+        q = self._question
+        if ask:
+            if self._modifies_files:
+                if self._ask(f"¿Cerrar y detener {q.task}?", self._progress_text() + q.consequence
+                             + "\nSe termina el archivo que se está modificando; después se puede cerrar la ventana."):
+                    self.stop()
+                return False  # no se cierra con archivos a medias
+            if not self._ask(f"¿Cerrar y detener {q.task}?", self._progress_text() + q.consequence):
+                return False
+        elif self._modifies_files:
             QMessageBox.information(
                 self._window, "Espera",
                 "Se están modificando archivos: espera a que termine"

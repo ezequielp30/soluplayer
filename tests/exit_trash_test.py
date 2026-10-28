@@ -8,7 +8,8 @@ for n in range(3):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
         w.writeframes(b"".join(struct.pack("<h", int(4000*math.sin(i/(3+n)))) for i in range(8000*5)))
 sys.path.insert(0, r"D:\soluplayer"); os.chdir(r"D:\soluplayer")
-from PySide6.QtCore import QCoreApplication, QTimer
+from PySide6.QtCore import QCoreApplication, QTimer, QSettings
+QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from PySide6.QtWidgets import QApplication
 import app.application as appmod
 

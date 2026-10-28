@@ -35,7 +35,7 @@ from ..online_lookup import SOURCES, Candidate, LookupResult, Query, needs_data
 from ..utils import format_time, no_markup, normalize_text, plural
 from . import theme
 from .dialogs import ResultBanner, StatusLabel, empty_state, tidy_table, tool_intro
-from .worker_runner import WorkerRunner
+from .worker_runner import StopQuestion, WorkerRunner
 
 SAFE_SCORE = 0.85  # a partir de aquí la coincidencia se marca sola
 COL_USE, COL_CURRENT, COL_PROPOSAL, COL_SCORE = range(4)
@@ -230,6 +230,8 @@ class OnlineLookupDialog(QDialog):
             worker, len(queries),
             f"Buscando… (≈ {max(1, round(estimate / 60))} min)" if estimate > 90 else "Buscando…",
             self._on_search_finished, label="Buscando",
+            stop_question=StopQuestion("la búsqueda de datos en internet", "Seguir buscando", "Detener la búsqueda",
+                                       "Lo encontrado hasta ahora se conserva para revisarlo."),
         )
 
     @Slot(int, object)
@@ -388,6 +390,8 @@ class OnlineLookupDialog(QDialog):
         self.runner.start(
             worker, len(chosen), "Descargando carátulas…" if self.covers.isChecked() else "Guardando…",
             self._on_covers_ready,
+            stop_question=StopQuestion("la descarga de carátulas", "Seguir descargando", "Detener la descarga",
+                                       "Los datos elegidos se guardan igual; solo se dejan de bajar carátulas."),
         )
 
     def _on_covers_ready(self, updates: list[Update]) -> None:

@@ -111,6 +111,7 @@ def loud_empty(d):
         # cerrar mientras analiza: se detiene y se cierra
         d.btn_analyze_all.click(); spin(30)
         seen["busy_when_closing"] = d.runner.busy
+        expect(msg("¿Cerrar y detener el análisis"), click("Detener el análisis"))  # ahora pregunta antes
     finally:
         d.reject(); seen["closed"] = not d.isVisible()
 expect(is_(LoudnessDialog), loud_empty)
@@ -128,7 +129,7 @@ quiet = next(t for t in win.library if t.title == "Uno")
 def adjust(d):
     try:
         d._run_adjust([(quiet, 2)])
-        expect(msg("Se están modificando archivos"), lambda b: (seen.setdefault("blocked", True), b.accept()))
+        expect(msg("¿Cerrar y detener el ajuste"), lambda b: (seen.setdefault("blocked", True), click("Seguir ajustando")(b)))
         d.reject()  # mientras modifica archivos no se puede cerrar
         seen["still_open"] = d.isVisible()
         # El resultado queda en la franja de la ventana (ya no hay aviso emergente al terminar).
