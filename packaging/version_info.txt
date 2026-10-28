@@ -2,8 +2,8 @@
 # crear-instalador.ps1 sustituye 1.0.0 por la versión de app/__init__.py.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 12, 8, 0),
-    prodvers=(1, 12, 8, 0),
+    filevers=(1, 12, 9, 0),
+    prodvers=(1, 12, 9, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -17,11 +17,11 @@ VSVersionInfo(
         StringStruct('CompanyName', 'Ezequiel Perez'),
         StringStruct('FileDescription', 'Reproductor de Música'),
         StringStruct('LegalCopyright', '© 2026 Ezequiel Perez · GNU GPL versión 3 o posterior'),
-        StringStruct('FileVersion', '1.12.8'),
+        StringStruct('FileVersion', '1.12.9'),
         StringStruct('InternalName', 'ReproductorMusica'),
         StringStruct('OriginalFilename', 'ReproductorMusica.exe'),
         StringStruct('ProductName', 'Reproductor de Música'),
-        StringStruct('ProductVersion', '1.12.8')
+        StringStruct('ProductVersion', '1.12.9')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [0x0C0A, 1200])])
