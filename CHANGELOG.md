@@ -2,6 +2,20 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.9 — 2026-10-28 (apartar las que no se pueden igualar)
+
+- **Analizar y ajustar volumen → Apartar:** mueve a la carpeta **«_Volumen sin igualar»**, en la carpeta
+  principal de tu música, las canciones que no se pueden igualar: bajas con picos altos (ya subidas hasta
+  donde se puede sin distorsionar), las que no se pudieron medir (dañadas o sin audio) y las de otro
+  formato (no MP3) que necesitan ajuste. Con un LEEME.txt que explica cada una. La carpeta principal es la
+  que contiene a la mayoría de tus canciones (nunca la raíz de un disco ni una carpeta del sistema) y se
+  muestra antes de confirmar; las ya apartadas no se vuelven a ofrecer. Mover seguro: respaldo previo, nunca pisa nada
+  (si dos se llaman igual, la segunda no se mueve y se avisa), las playlists se conservan y se deshace
+  desde el Historial.
+- Las canciones que no se pudieron medir (dañadas o sin audio) quedan marcadas; las que no estaban en el
+  disco durante el análisis (USB desconectado) siguen pendientes. «Revertir» nunca convierte esa marca en
+  una medición.
+
 ## 1.12.8 — 2026-10-28 (volumen parejo en cualquier reproductor)
 
 Auditoría de «Analizar y ajustar volumen» según EBU R128 / ITU-R BS.1770: ya medía sonoridad integrada

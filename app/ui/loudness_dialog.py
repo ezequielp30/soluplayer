@@ -9,6 +9,7 @@ emergentes). Al terminar, la lista se actualiza: las canciones ya ajustadas deja
 from __future__ import annotations
 
 import os
+from collections import Counter
 from typing import Callable
 
 from PySide6.QtCore import Qt, Slot
@@ -29,7 +30,10 @@ from PySide6.QtWidgets import (
 )
 
 from ..file_operations import FileOperations
-from ..loudness import CEILING_DBTP, MAX_GAIN, TARGET_LUFS, decide, spread
+from ..loudness import (
+    CEILING_DBTP, MAX_GAIN, SET_ASIDE_FOLDER, TARGET_LUFS, decide, measurement_to_store, plausible, spread,
+    why_not_equalizable,
+)
 from ..loudness_job import REVERT, AdjustWorker, AnalyzeWorker, can_adjust
 from ..models import Track
 from ..mp3gain import STEP_DB
@@ -136,6 +140,10 @@ class LoudnessDialog(QDialog):
         self.btn_apply.clicked.connect(self._apply)
         close = QPushButton("Cerrar")
         close.clicked.connect(self.reject)
+        self.btn_aside = QPushButton("Apartar…")
+        self.btn_aside.setToolTip(f"Mueve las que no se pueden igualar a «{SET_ASIDE_FOLDER}», en la carpeta principal de tu música")
+        self.btn_aside.clicked.connect(self._set_aside)
+        bottom.addWidget(self.btn_aside)
         bottom.addWidget(self.btn_revert)
         bottom.addWidget(self.btn_apply)
         bottom.addWidget(close)
@@ -163,6 +171,9 @@ class LoudnessDialog(QDialog):
 
     @Slot(int, object, object, str, int)
     def _on_measured(self, track_id: int, lufs, peak, error: str, annotated_steps: int) -> None:
+        track = next((t for t in self._tracks() if t.id == track_id), None)
+        if lufs is None and track is not None:
+            lufs = measurement_to_store(None, track.path)  # dañada o sin audio: marcada; no está: pendiente
         self._pending_save.append((track_id, lufs, peak))
         self._measured_count = getattr(self, "_measured_count", 0) + 1
         if annotated_steps:
@@ -253,7 +264,12 @@ class LoudnessDialog(QDialog):
             else:
                 use.setFlags(Qt.ItemFlag.ItemIsEnabled)
             use.setData(_TRACK, (track, steps))
-            lufs = f"{track.loudness_lufs:.1f} LUFS" if track.loudness_lufs is not None else "—"
+            if track.loudness_lufs is None:
+                lufs = "—"
+            elif not plausible(track.loudness_lufs, track.true_peak_db):
+                lufs = "no se pudo medir"
+            else:
+                lufs = f"{track.loudness_lufs:.1f} LUFS"
             state, detail = self._state(track, decision, steps)
             peak = f"\nPico real: {track.true_peak_db:.1f} dBTP" if track.true_peak_db is not None else ""
             gain = f"{steps * STEP_DB:+.1f} dB" if steps else ""
@@ -312,8 +328,51 @@ class LoudnessDialog(QDialog):
                 jobs.append((track, steps))
         return jobs
 
+    def _unequalizable(self) -> list[tuple[Track, str]]:
+        return [(t, reason) for t in self._tracks() if (reason := why_not_equalizable(t, can_adjust(t.path)))]
+
+    def _set_aside(self) -> None:
+        items = self._unequalizable()
+        if not items:
+            self.banner.show_result("No hay canciones que apartar: todas se pueden igualar (o falta analizarlas).")
+            return
+        destination = self._ops.set_aside_folder(self._tracks())
+        if not destination:
+            self.banner.show_result("No hay una carpeta principal clara para tu música: no se apartó nada.", ok=False)
+            return
+        kinds = Counter(reason.split(":")[0].split(" (")[0] for _t, reason in items)
+        detail = "\n".join(f"  · {name}: {count}" for name, count in kinds.items())
+        if ask(
+            self, "Apartar canciones",
+            f"¿Mover {plural(len(items), 'canción', 'canciones')} que no se pueden igualar a:\n{destination}?",
+            [("Apartar", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Question,
+            f"{detail}\n\nSiguen en tu biblioteca y en tus playlists, con un LEEME.txt que explica cada una. "
+            "Se puede deshacer desde el Historial.",
+        ) != 0:
+            return
+        try:
+            outcome = self._ops.set_aside(items, self._tracks())
+        except Exception as exc:  # carpeta sin permiso, disco lleno…
+            self.banner.show_result(f"No se pudieron apartar: {exc}", ok=False)
+            return
+        self._ops.changed()
+        self._refresh_table()
+        self.banner.setToolTip("")
+        if not outcome.moved and not outcome.failed:
+            self.banner.show_result("No se movió nada (operación cancelada).", ok=False)
+            return
+        text = f"Se apartaron {plural(len(outcome.moved), 'canción', 'canciones')} en {outcome.folder}."
+        if outcome.failed:
+            text += f" No se movieron {len(outcome.failed)} (pasa el mouse por aquí)."
+            self.banner.setToolTip("\n".join(f"{os.path.basename(p)}: {r}" for p, r in outcome.failed[:15]))
+        self.banner.show_result(text, ok=not outcome.failed)
+
     def _update_buttons(self, *_args) -> None:
         busy = self.runner.busy
+        aside = len(self._unequalizable())
+        self.btn_aside.setText(f"Apartar ({aside})…" if aside else "Apartar…")
+        self.btn_aside.setEnabled(bool(aside) and not busy)
         jobs = self._checked_jobs()
         self.btn_apply.setText(f"Igualar volumen ({len(jobs)})" if jobs else "Igualar volumen")
         self.btn_apply.setEnabled(bool(jobs) and not busy)

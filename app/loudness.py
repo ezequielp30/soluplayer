@@ -12,6 +12,7 @@ decodifica a 48 kHz, la frecuencia para la que la norma define los filtros.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -178,6 +179,41 @@ def plausible(loudness: float | None, true_peak: float | None) -> bool:
 # y −13 LUFS, así que bajan 3–7 dB y quedan parejas sin perder dinámica, y el volumen sigue alcanzando en
 # celulares y autorradios. Más bajo (−18), más canciones bajas no podrían llegar sin pasar de −1 dBTP.
 TARGET_LUFS = -16.0
+
+# «Se intentó medir y no se pudo» (archivo dañado o sin audio). 0 LUFS integrados no existe en música real:
+# plausible() lo rechaza, así que en todo lo demás cuenta como medición no fiable (nunca como «sin analizar»).
+UNMEASURABLE_LUFS = 0.0
+
+SET_ASIDE_FOLDER = "_Volumen sin igualar"  # en la carpeta principal de la música (el «_» la deja primera)
+
+
+def measurement_to_store(lufs: float | None, path: str) -> float | None:
+    """Lo que se guarda de una medición. Sin valor: si el archivo está, se intentó y no se pudo (dañado o sin
+    audio) → UNMEASURABLE_LUFS; si no está (disco desconectado, renombrado) → None: queda pendiente."""
+    if lufs is not None:
+        return lufs
+    return UNMEASURABLE_LUFS if os.path.isfile(path) else None
+
+
+def why_not_equalizable(track, adjustable: bool) -> str | None:
+    """Por qué esta canción no se puede igualar a TARGET_LUFS dentro del archivo (None si se puede, si ya está
+    bien o si todavía no se analizó). Una baja que aún puede subir algo no se aparta: primero se iguala."""
+    if not track.available or track.loudness_lufs is None:
+        return None  # no está en el disco, o todavía no se analizó: no se sabe
+    if os.path.basename(os.path.dirname(track.path)) == SET_ASIDE_FOLDER:
+        return None  # ya apartada
+    if not adjustable:
+        if plausible(track.loudness_lufs, track.true_peak_db) and abs(TARGET_LUFS - track.loudness_lufs) <= STEP_DB / 2:
+            return None  # ya suena como las demás: no hace falta ajustarla
+        ext = track.path.rsplit(".", 1)[-1].upper() if "." in track.path else "?"
+        return f"Otro formato ({ext}): no se puede grabar el volumen sin recomprimir"
+    if not plausible(track.loudness_lufs, track.true_peak_db):
+        return "No se pudo medir (archivo dañado o sin audio)"
+    decision = decide(track.loudness_lufs, track.true_peak_db, TARGET_LUFS, track.norm_gain_db)
+    if decision.status == "bajo" and decision.gain_db == 0 and decision.limited_by_peak:
+        return (f"Picos altos: está {decision.wanted_db:.1f} dB por debajo, y subirla más distorsionaría "
+                f"(sus picos ya llegan a {track.true_peak_db:.1f} dBTP)")
+    return None
 
 
 @dataclass(frozen=True)

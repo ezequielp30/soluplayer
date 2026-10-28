@@ -80,6 +80,43 @@ class DuplicatesOutcome:
 
 
 @dataclass
+class SetAsideOutcome:
+    folder: str
+    moved: list[tuple[str, str]] = field(default_factory=list)
+    failed: list[tuple[str, str]] = field(default_factory=list)
+
+
+def library_root(library: list[Track]) -> str:
+    """La carpeta principal de la música: la más profunda que contiene a la MAYORÍA de las canciones (una
+    suelta en Descargas no la lleva a la raíz del disco). Nunca la raíz de un disco o de un recurso de red,
+    ni Windows o Archivos de programa: en ese caso «» (no hay una carpeta principal clara)."""
+    folders = [long_path(os.path.dirname(t.path)) for t in library if t.available]
+    if not folders:
+        return ""
+    counts: dict[str, int] = {}
+    shown: dict[str, str] = {}
+    for folder in folders:
+        current = folder.rstrip("\\/")
+        while True:
+            key = os.path.normcase(current)
+            counts[key] = counts.get(key, 0) + 1
+            shown.setdefault(key, current)
+            parent = os.path.dirname(current)
+            if parent == current or not parent:
+                break
+            current = parent
+    majority = [k for k, n in counts.items() if n * 2 > len(folders)]
+    if not majority:
+        return ""
+    best = shown[max(majority, key=len)]  # la más profunda
+    drive, rest = os.path.splitdrive(best)
+    system = [os.environ.get(v, "") for v in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)")]
+    if rest.strip("\\/") == "" or any(s and os.path.normcase(best).startswith(os.path.normcase(s)) for s in system):
+        return ""
+    return best
+
+
+@dataclass
 class GatherOutcome:
     session: review_folder.Session
     problems: list[review_folder.Skipped]
@@ -228,9 +265,13 @@ class FileOperations:
 
     def record_volume(self, track: Track, steps: int, total_steps: int) -> None:
         """Un MP3 ajustado. Se guarda en el acto: si algo se detiene a mitad, queda anotado."""
+        from .loudness import plausible
+
+        measured = track.loudness_lufs is not None and plausible(track.loudness_lufs, None)
         self.db.save_loudness([(
             track.id,
-            track.loudness_lufs + steps * mp3gain.STEP_DB if track.loudness_lufs is not None else None,
+            # La marca «no se pudo medir» no es un número: no se le suman los pasos (sería una medición falsa).
+            track.loudness_lufs + steps * mp3gain.STEP_DB if measured else track.loudness_lufs,
             track.true_peak_db + steps * mp3gain.STEP_DB if track.true_peak_db is not None else None,
         )])
         # El total sale de la anotación del propio archivo (fuente fiable), no de una suma en memoria.
@@ -455,6 +496,62 @@ class FileOperations:
         if fixed:
             self._on_changed()
         return fixed
+
+    def set_aside(self, items: list[tuple[Track, str]], library: list[Track]) -> SetAsideOutcome:
+        """Mueve las canciones que no se pueden igualar a «_Volumen sin igualar» en la carpeta principal de
+        la música, con un LEEME.txt que dice qué es cada una. Mover seguro: respaldo previo, nunca pisa nada,
+        las playlists se conservan y se deshace desde el Historial."""
+        from .loudness import SET_ASIDE_FOLDER
+
+        root = library_root(library)
+        if not root:
+            raise file_manager.FileManagerError(
+                "No hay una carpeta principal clara para tu música (las canciones están repartidas en la raíz del "
+                "disco o en carpetas del sistema): no se apartó nada."
+            )
+        folder = os.path.join(root, SET_ASIDE_FOLDER)
+        created = not os.path.isdir(folder)
+        os.makedirs(folder, exist_ok=True)
+        reasons = {t.path: reason for t, reason in items}
+        result = self.move_tracks([t for t, _r in items], folder)
+        if result.moved:
+            when = datetime.now().strftime("%d/%m/%Y %H:%M")
+            lines = []
+            if not os.path.exists(os.path.join(folder, "LEEME.txt")):
+                lines += [
+                    "Canciones que no se pudieron igualar al volumen del resto",
+                    "=========================================================",
+                    "",
+                    "El Reproductor de Música iguala el volumen DENTRO de los MP3 (sin recomprimir ni distorsionar),",
+                    "para que suenen parejos en cualquier reproductor. Estas canciones no se pudieron igualar:",
+                    "  · Picos altos: son más bajas que el resto, pero subirlas más las haría distorsionar.",
+                    "  · No se pudo medir: el archivo está dañado o no tiene audio.",
+                    "  · Otro formato: no son MP3 y no se pueden ajustar sin recomprimir (perder calidad).",
+                    "Siguen en tu biblioteca y en tus playlists. Para devolverlas a su lugar:",
+                    "Herramientas → Historial de cambios en archivos → «Mover a otra carpeta» → Deshacer.",
+                ]
+            lines += ["", f"Apartadas el {when}:"]
+            lines += [f"  {os.path.basename(target)} — {reasons.get(source, '')}  (estaba en {os.path.dirname(source)})"
+                      for source, target in result.moved]
+            try:
+                # newline="": los \r\n van tal cual (en modo texto Windows los volvería \r\r\n).
+                with open(os.path.join(folder, "LEEME.txt"), "a", encoding="utf-8-sig", newline="") as handle:
+                    handle.write("\r\n".join(lines) + "\r\n")
+            except OSError as exc:
+                log.warning("No se pudo escribir el LEEME de %s: %s", folder, exc)
+        elif created:
+            try:
+                os.rmdir(folder)  # no se movió nada: no queda una carpeta vacía
+            except OSError:
+                pass
+        return SetAsideOutcome(folder, result.moved, result.failed)
+
+    def set_aside_folder(self, library: list[Track]) -> str:
+        """Dónde quedaría la carpeta de las apartadas («» si no hay una carpeta principal clara)."""
+        from .loudness import SET_ASIDE_FOLDER
+
+        root = library_root(library)
+        return os.path.join(root, SET_ASIDE_FOLDER) if root else ""
 
     def trash_tracks(self, tracks: list[Track]) -> tuple[int, list[tuple[str, str]]]:
         """Envía los archivos de las canciones a la Papelera y las quita de la biblioteca y de las playlists.
