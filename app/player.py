@@ -10,6 +10,7 @@ from enum import IntEnum
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 
+from .loudness import playback_gain
 from .models import Track, unreachable_root
 
 log = logging.getLogger(__name__)
@@ -70,6 +71,12 @@ class PlaybackController(QObject):
         # una que llegó sola pasa a la siguiente sin detener la música; si fallan todas, se avisa.
         self._auto_loaded = False
         self._failed_in_row = 0
+        # Igualar el volumen al reproducir: el volumen que elige el usuario × la ganancia de la canción.
+        self._user_volume = self._audio.volume()
+        self._normalize = False
+        self._norm_target = -14.0
+        self._measurements: dict[int, Track] = {}  # mediciones al día (la cola puede tener copias viejas)
+        self._track_gain_db = 0.0
 
         self._wire(self._qt_player)
 
@@ -309,7 +316,36 @@ class PlaybackController(QObject):
             self._player.setPosition(position)
 
     def set_volume(self, percent: int) -> None:
-        self._audio.setVolume(max(0, min(100, percent)) / 100)
+        self._user_volume = max(0, min(100, percent)) / 100
+        self._apply_volume()
+
+    def set_normalization(self, enabled: bool, target: float, measurements: dict[int, Track] | None = None,
+                          now: bool = True) -> None:
+        """Igualar el volumen al reproducir (lineal, por canción, sin tocar archivos). `measurements`: las
+        canciones de la biblioteca al día, de donde se toma la sonoridad medida de cada una. Con now=False
+        (la biblioteca se recargó) la canción que suena sigue igual: el cambio llega con la próxima, sin un
+        salto de volumen a mitad de canción."""
+        self._normalize, self._norm_target = enabled, target
+        if measurements is not None:
+            self._measurements = measurements
+        if now:
+            self._update_track_gain(self.current_track)
+
+    @property
+    def track_gain_db(self) -> float:
+        return self._track_gain_db
+
+    def _update_track_gain(self, track: Track | None) -> None:
+        gain = 0.0
+        if self._normalize and track is not None:
+            measured = self._measurements.get(track.id, track)
+            gain = playback_gain(measured.loudness_lufs, measured.true_peak_db, self._norm_target)
+        self._track_gain_db = gain
+        self._apply_volume()
+
+    def _apply_volume(self) -> None:
+        # Windows no pasa del 100 %: una canción muy baja sube solo lo que deja libre el volumen elegido.
+        self._audio.setVolume(min(1.0, self._user_volume * 10 ** (self._track_gain_db / 20)))
 
     def set_muted(self, muted: bool) -> None:
         self._audio.setMuted(muted)
@@ -385,6 +421,7 @@ class PlaybackController(QObject):
                 self._player.setSource(url)
                 log.debug("Reproduciendo: %s", track.path)  # privacidad: el registro no guarda qué se escucha
                 self._started_pending = True  # se cuenta como reproducida cuando realmente empiece a sonar
+                self._update_track_gain(track)  # antes de que suene: sin salto de volumen al empezar
                 self.current_track_changed.emit(track)
                 if autoplay:
                     self._player.play()

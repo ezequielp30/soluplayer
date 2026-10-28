@@ -163,7 +163,8 @@ class Mp3Info:
 
     @property
     def max_down_steps(self) -> int:
-        return self.min_gain
+        # Hasta 1, nunca 0: un gránulo en 0 se toma como silencio y revertir no lo restauraría.
+        return max(0, self.min_gain - 1)
 
 
 def inspect(path: str) -> Mp3Info:
@@ -193,7 +194,7 @@ def apply_steps(path: str, steps: int, annotate_total: int | None = None) -> Mp3
     info = Mp3Info(len(frames), min([g for g in gains if g > 0] or [0]), max(gains))
     if steps > 0 and info.max_gain + steps > 255:
         raise Mp3GainError("La ganancia interna del archivo no admite tanta subida.")
-    if steps < 0 and info.min_gain + steps < 0:
+    if steps < 0 and info.min_gain + steps < 1:
         raise Mp3GainError("La ganancia interna del archivo no admite tanta bajada.")
     for frame in frames:
         base = frame.side_start * 8
@@ -256,8 +257,47 @@ def read_applied_steps(path: str) -> int:
 
 
 def write_applied_steps(path: str, total_steps: int) -> None:
-    """Guarda en el propio archivo cuánto se subió en total (0 = sin ajuste: se quita la anotación).
-    Así el ajuste se puede revertir aunque la biblioteca se restaure o la canción se reimporte."""
+    """Guarda en el propio archivo cuánto se ajustó en total (0 = sin ajuste: se quita la anotación).
+    Así el ajuste se puede revertir aunque la biblioteca se restaure o la canción se reimporte. La etiqueta
+    APEv2 va ANTES de una ID3v1 (como la deja MP3Gain): la ID3v1 tiene que quedar en los últimos 128 bytes,
+    donde la buscan autorradios y reproductores viejos."""
+    id3v1 = _take_id3v1(path)
+    try:
+        _write_undo(path, total_steps)
+    finally:
+        if id3v1:
+            with open(path, "ab") as handle:
+                handle.write(id3v1)
+
+
+def _take_id3v1(path: str) -> bytes:
+    """Quita del final la etiqueta ID3v1 (128 bytes que empiezan con «TAG») y la devuelve; b"" si no hay.
+    Si quedó DESPUÉS de una APEv2 (versiones anteriores), también se rescata y vuelve al final."""
+    with open(path, "rb+") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        if size < 128:
+            return b""
+        handle.seek(size - 128)
+        tail = handle.read(128)
+        if tail.startswith(b"TAG"):
+            handle.truncate(size - 128)
+            return tail
+    try:
+        APEv2(path)  # ¿hay etiqueta APE? (si no, no hay nada que reordenar)
+    except APENoHeaderError:
+        return b""
+    data = open(path, "rb").read()
+    found = data.rfind(b"TAG", 0, len(data) - 32)
+    if found != -1 and found + 128 <= len(data) and data[found + 128:found + 136] == b"APETAGEX":
+        # Orden viejo: [audio][ID3v1][APE] → se saca la ID3v1 de en medio.
+        with open(path, "wb") as handle:
+            handle.write(data[:found] + data[found + 128:])
+        return data[found:found + 128]
+    return b""
+
+
+def _write_undo(path: str, total_steps: int) -> None:
     try:
         tag = APEv2(path)
     except APENoHeaderError:

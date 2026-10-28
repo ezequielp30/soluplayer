@@ -83,13 +83,13 @@ def walk(menu, path):
         else:
             yield path + [a.text().replace("&", "")], a
 all_actions = [(p, a) for top in win.menuBar().actions() for p, a in walk(top.menu(), [top.text().replace("&", "")])]
-check("el menú tiene todas las opciones (29)", len(all_actions) == 29, len(all_actions))
+check("el menú tiene todas las opciones (30)", len(all_actions) == 30, len(all_actions))
 
 def state():
     p = win.player
     return {"playing": p.is_playing, "pos": p.position(), "track": p.current_track.id if p.current_track else None,
             "shuffle": p.shuffle, "repeat": int(p.repeat), "volume": win.player_bar.volume.value(),
-            "focus_search": win.player_bar.search.hasFocus(), "eq_open": bool(getattr(win, "_eq_dialog", None)) and win._eq_dialog.isVisible(),
+            "focus_search": win.player_bar.search.hasFocus(), "eq_open": bool(getattr(win, "_eq_dialog", None)) and win._eq_dialog.isVisible(), "normalize": win.prefs.playback_normalization,
             "playlists": len(db.playlists())}
 
 def expectation(label, before, after, dialogs, urls):
@@ -109,6 +109,7 @@ def expectation(label, before, after, dialogs, urls):
         "Orden aleatorio": after["shuffle"] != before["shuffle"],
         "Cambiar repetición": after["repeat"] != before["repeat"],
         "Ecualizador…": after["eq_open"],
+        "Igualar volumen al reproducir": after["normalize"] != before["normalize"],
         "Subir volumen": after["volume"] >= before["volume"],
         "Bajar volumen": after["volume"] <= before["volume"],
         "Probar sonido…": "Probar sonido" in texts,

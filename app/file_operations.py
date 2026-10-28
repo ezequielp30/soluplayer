@@ -234,7 +234,7 @@ class FileOperations:
             track.true_peak_db + steps * mp3gain.STEP_DB if track.true_peak_db is not None else None,
         )])
         # El total sale de la anotación del propio archivo (fuente fiable), no de una suma en memoria.
-        self.db.set_norm_gains([(track.id, round(max(0, total_steps) * mp3gain.STEP_DB, 2))])
+        self.db.set_norm_gains([(track.id, round(total_steps * mp3gain.STEP_DB, 2))])  # con signo
 
     def save_measurements(self, rows: list[tuple[int, float | None, float | None]]) -> None:
         if rows:
@@ -253,7 +253,7 @@ class FileOperations:
         stale: list[tuple[int, float]] = []
         failed = 0
         for track in library:
-            if track.norm_gain_db <= 0 or not track.path.lower().endswith(".mp3") or not track.available:
+            if track.norm_gain_db == 0 or not track.path.lower().endswith(".mp3") or not track.available:
                 continue
             try:
                 if mp3gain.read_applied_steps(track.path) == 0:
@@ -322,7 +322,7 @@ class FileOperations:
                 can_undo=not undone and bool(pending), count=len(pending), session=s,
                 location=os.path.dirname(first.target) if first else "",
             ))
-        adjusted = [t for t in library if t.norm_gain_db > 0]
+        adjusted = [t for t in library if t.norm_gain_db != 0]
         if adjusted:
             entries.append(HistoryEntry(
                 KIND_VOLUME, None, "Ajustar volumen (MP3, sin pérdida)",

@@ -152,6 +152,7 @@ def _db(linear: float) -> float | None:
 
 
 CEILING_DBTP = -1.0  # pico real máximo tras subir el volumen (margen recomendado por EBU R128)
+STEP_DB = 1.5  # el paso del MP3 sin pérdida (global_gain): ±0,75 dB alrededor de la referencia es «igual»
 LOW_THRESHOLD_LU = 3.0  # a partir de 3 LU por debajo de la referencia se considera «muy bajo»
 MIN_USEFUL_GAIN = 1.0  # menos de 1 dB no se nota: no se aplica
 MAX_GAIN = 12.0
@@ -172,6 +173,19 @@ def plausible(loudness: float | None, true_peak: float | None) -> bool:
     return loudness is not None and -70 < loudness < 0 and (true_peak is None or true_peak < 6)
 
 
+def original_loudness(track) -> float | None:
+    """Sonoridad que tenía la canción antes de los ajustes del programa (lo medido menos lo aplicado)."""
+    if track.loudness_lufs is None:
+        return None
+    return track.loudness_lufs - (track.norm_gain_db or 0.0)
+
+
+def library_reference(tracks) -> float:
+    """Referencia de la biblioteca calculada con la sonoridad ORIGINAL de cada canción: así no se corre al
+    igualar (si se calculara con lo ya ajustado, cada «Igualar» la movería un poco y reescribiría archivos)."""
+    return reference_level([original_loudness(t) for t in tracks])
+
+
 def reference_level(loudness_values: list[float]) -> float:
     """Nivel de referencia: la mediana de la biblioteca (así las bajas se igualan a las demás),
     acotada entre −16 y −9 LUFS para no apuntar a valores extremos."""
@@ -182,9 +196,31 @@ def reference_level(loudness_values: list[float]) -> float:
     return max(-16.0, min(-9.0, median))
 
 
+PLAYBACK_MAX_UP = 12.0  # al reproducir: lo más que se sube una canción
+PLAYBACK_MAX_DOWN = 20.0  # y lo más que se baja
+
+
+def playback_gain(loudness: float | None, true_peak: float | None, target: float) -> float:
+    """Ganancia lineal (dB, toda la canción por igual: sin compresión ni «bombeo») para que suene al objetivo
+    al reproducirla, sin tocar el archivo. Al subir, el pico real nunca pasa de CEILING_DBTP; bajar no
+    distorsiona. Sin medición fiable (o sin pico conocido, si habría que subir): 0."""
+    if loudness is None or not plausible(loudness, true_peak):
+        return 0.0
+    gain = target - loudness
+    if gain > 0:
+        if true_peak is None:
+            return 0.0
+        gain = max(0.0, min(gain, CEILING_DBTP - true_peak, PLAYBACK_MAX_UP))
+    else:
+        gain = max(gain, -PLAYBACK_MAX_DOWN)
+    return round(gain, 1)
+
+
 def decide(loudness: float | None, true_peak: float | None, reference: float, applied: float = 0.0) -> Decision:
-    """Regla de experto: solo se sube lo que está claramente bajo, y nunca por encima de −1 dBTP.
-    `applied` = dB ya subidos a esta canción: el tope de +12 dB es en total, no por cada vez."""
+    """Igualar a la referencia DENTRO del MP3 (sin pérdida, pasos de STEP_DB): sube las bajas y baja las
+    fuertes, para que suenen parejas en cualquier reproductor. Ganancia lineal (toda la canción por igual).
+    Al subir, el pico real nunca pasa de CEILING_DBTP; bajar no distorsiona. `applied` = dB ya aplicados a
+    esta canción (con signo): el tope de ±MAX_GAIN es en total, no por cada vez."""
     if loudness is None:
         return Decision("sin datos", 0.0, 0.0, False, "No se pudo medir (silencio o archivo dañado).")
     if not plausible(loudness, true_peak):
@@ -193,31 +229,36 @@ def decide(loudness: float | None, true_peak: float | None, reference: float, ap
             "Medición no fiable (el archivo tiene tramas anómalas): no se toca por seguridad.",
         )
     wanted = reference - loudness
-    if wanted < LOW_THRESHOLD_LU:
-        status = "alto" if wanted < -LOW_THRESHOLD_LU else "correcto"
-        reason = "Más fuerte que la mayoría: no se toca." if status == "alto" else "Volumen adecuado: no se toca."
-        return Decision(status, 0.0, round(wanted, 1), False, reason)
-    headroom = CEILING_DBTP - (true_peak if true_peak is not None else 0.0)
-    allowed = max(0.0, MAX_GAIN - max(0.0, applied))  # lo que queda del tope por canción
-    if allowed < MIN_USEFUL_GAIN:
-        return Decision(
-            "bajo", 0.0, round(wanted, 1), False,
-            f"Ya se subió +{applied:.1f} dB, que es el máximo por canción (+{MAX_GAIN:.0f} dB): no se sube más.",
-        )
-    gain = min(wanted, headroom, allowed)
-    limited = headroom < min(wanted, allowed) - 0.05  # lo frenan los picos (no el tope de +12 dB)
-    if gain < MIN_USEFUL_GAIN:
+    if abs(wanted) <= STEP_DB / 2:  # justo a medio paso también es «igual»: ni subir ni bajar mejora
+        return Decision("correcto", 0.0, round(wanted, 1), False, "Volumen igual al de tu biblioteca: no se toca.")
+    if wanted > 0:
+        allowed = MAX_GAIN - max(0.0, applied)  # lo que queda del tope por canción
+        if allowed < STEP_DB:
+            return Decision(
+                "bajo", 0.0, round(wanted, 1), False,
+                f"Ya se subió +{applied:.1f} dB, que es el máximo por canción (+{MAX_GAIN:.0f} dB): no se sube más.",
+            )
         if true_peak is None:
-            reason = f"Está {wanted:.1f} dB por debajo, pero no se conoce su pico: no se sube por seguridad."
+            return Decision("bajo", 0.0, round(wanted, 1), True,
+                            f"Está {wanted:.1f} dB por debajo, pero no se conoce su pico: no se sube por seguridad.")
+        by_peak = math.floor((CEILING_DBTP - true_peak) / STEP_DB + 1e-9)
+        steps = min(round(wanted / STEP_DB), by_peak, math.floor(allowed / STEP_DB + 1e-9))
+        limited = by_peak < min(round(wanted / STEP_DB), math.floor(allowed / STEP_DB + 1e-9))
+        if steps <= 0:
+            return Decision("bajo", 0.0, round(wanted, 1), True,
+                            f"Está {wanted:.1f} dB por debajo, pero sus picos ya llegan a {true_peak:.1f} dBTP: subirla distorsionaría.")
+        gain = steps * STEP_DB
+        if limited:
+            detail = f" (de {wanted:.1f} necesarios; limitado por los picos para no distorsionar)."
+        elif round(wanted / STEP_DB) * STEP_DB > allowed:
+            detail = f" (de {wanted:.1f} necesarios; el tope por canción es +{MAX_GAIN:.0f} dB en total)."
         else:
-            reason = f"Está {wanted:.1f} dB por debajo, pero sus picos ya llegan a {true_peak:.1f} dBTP: subirla distorsionaría."
-        return Decision("bajo", 0.0, round(wanted, 1), True, reason)
-    gain = math.floor(gain * 10) / 10  # redondeo hacia abajo: nunca pasarse del margen
-    if limited:
-        detail = f" (de {wanted:.1f} necesarios; limitado por los picos para no distorsionar)."
-    elif wanted > allowed:
-        detail = f" (de {wanted:.1f} necesarios; el tope por canción es +{MAX_GAIN:.0f} dB en total)."
-    else:
-        detail = " hasta el nivel de referencia."
-    reason = f"Sube {gain:.1f} dB{detail}"
-    return Decision("bajo", gain, round(wanted, 1), limited, reason)
+            detail = " hasta el nivel de referencia."
+        return Decision("bajo", gain, round(wanted, 1), limited, f"Sube +{gain:.1f} dB{detail}")
+    allowed_down = MAX_GAIN + min(0.0, applied)  # lo que queda del tope hacia abajo
+    steps = max(round(wanted / STEP_DB), -math.floor(allowed_down / STEP_DB + 1e-9))
+    if steps >= 0:
+        return Decision("alto", 0.0, round(wanted, 1), False,
+                        f"Ya se bajó {applied:.1f} dB, que es el máximo por canción (−{MAX_GAIN:.0f} dB): no se baja más.")
+    gain = steps * STEP_DB
+    return Decision("alto", gain, round(wanted, 1), False, f"Baja {gain:.1f} dB hasta el nivel de referencia (sin pérdida).")

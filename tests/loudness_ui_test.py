@@ -93,10 +93,10 @@ def dialog(d):
             rows[os.path.basename(track.path)] = (d.table.item(r, COL_USE).checkState() == Qt.CheckState.Checked, d.table.item(r, COL_GAIN).text(), d.table.item(r, COL_DIAG).text())
         state["rows"] = rows
         state["apply_text"] = d.btn_apply.text()
-        expect(msg("¿Subir el volumen"), click("Subir volumen"))
+        expect(msg("¿Igualar el volumen"), click("Igualar volumen"))
         d.btn_apply.click()
         # El resultado queda en la franja de la ventana (sin aviso emergente).
-        wait_until(lambda: not d.runner.busy and "Se subió el volumen" in d.banner.text(), 120000)
+        wait_until(lambda: not d.runner.busy and ("Se subió el volumen" in d.banner.text() or "Se bajó el volumen" in d.banner.text()), 120000)
         state["result"] = d.banner.text()
         state["need_after"] = d.table.rowCount()
         spin(300)
@@ -108,7 +108,7 @@ def dialog(d):
         state["hashes_after_apply"] = {k: sha(p) for k, p in copies.items()}
         state["gains_after_apply"] = {os.path.basename(t.path): t.norm_gain_db for t in win.library}
         d.btn_revert.click()
-        wait_until(lambda: not d.runner.busy and "Se revirti" in d.banner.text(), 120000)
+        wait_until(lambda: not d.runner.busy and "volumen original" in d.banner.text(), 120000)
         state["revert"] = d.banner.text()
     finally:
         d.reject(); state["done"] = True
@@ -120,7 +120,8 @@ for name, row in state.get("rows", {}).items(): print(f"       {name:12s} marcad
 rows = state.get("rows", {})
 check("Herramientas → Analizar y ajustar volumen: analiza todas", f"Analizadas: {len(copies)} de {len(copies)}" in state.get("summary", "").replace("<b>", "").replace("</b>", ""), state.get("summary", "")[:80])
 check("  propone subir la canción baja «Track 1»", rows.get("track1.mp3", (False,))[0] and rows["track1.mp3"][1].startswith("+"), rows.get("track1.mp3"))
-check("  no toca una canción fuerte (Hossana)", "hossana.mp3" not in rows or not rows["hossana.mp3"][0], rows.get("hossana.mp3"))
+check("  propone BAJAR las canciones fuertes, para igualarlas en cualquier reproductor (la de la referencia no se toca)",
+      any(r[0] and r[1].startswith("-") for r in rows.values()) and not rows.get("hossana.mp3", (False,))[0], rows)
 check("  WAV muy bajo: se indica, pero no se ajusta (no MP3)", "bajo.wav" in rows and not rows["bajo.wav"][0] and "no se puede ajustar" in rows["bajo.wav"][2].lower(), rows.get("bajo.wav"))
 check("  al terminar se limpia la lista: las subidas ya no figuran como pendientes",
       state.get("need_after") == len(rows) - sum(1 for r in rows.values() if r[0]), (state.get("need_after"), len(rows)))

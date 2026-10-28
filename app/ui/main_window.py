@@ -38,6 +38,7 @@ from ..equalizer import EqSettings
 from ..file_operations import FileOperations
 from ..folders import breadcrumb as folder_breadcrumb
 from ..folders import build_folder_tree, display_name, tracks_in_folder
+from ..loudness import library_reference
 from ..importer import ImportWorker, ScannedTrack, ScanResult, in_skipped_folder, scan_file
 from ..models import Track
 from ..player import PlaybackController, RepeatMode
@@ -185,6 +186,7 @@ class MainWindow(QMainWindow):
             "act_prev": self.player.previous,
             "act_next": self.player.next,
             "act_shuffle": None,  # casilla: se conecta abajo con «toggled»
+            "act_normalize": None,  # casilla: se conecta abajo con «toggled»
             "act_repeat": self.player.cycle_repeat,
             "act_equalizer": self._open_equalizer,
             "act_volume_up": lambda: self._nudge_volume(5),
@@ -220,6 +222,10 @@ class MainWindow(QMainWindow):
         self.act_shuffle = action("act_shuffle")
         self.act_shuffle.setCheckable(True)
         self.act_shuffle.toggled.connect(self.player.set_shuffle)
+        self.act_normalize = action("act_normalize")
+        self.act_normalize.setCheckable(True)
+        self.act_normalize.setChecked(self.prefs.playback_normalization)
+        self.act_normalize.toggled.connect(self._set_normalization)
         self.act_rename = action("act_rename_playlist")
         self.act_delete = action("act_delete_playlist")
         # Teclas multimedia del teclado, además del atajo que se elija en el editor.
@@ -478,10 +484,25 @@ class MainWindow(QMainWindow):
             parts.append(f"No se pudo restaurar «{name}»: {reason}")
         QMessageBox.information(self, "Restaurar playlists", "\n".join(parts))
 
+    def _set_normalization(self, enabled: bool) -> None:
+        self.prefs.playback_normalization = enabled
+        self._apply_normalization()
+        self.statusBar().showMessage(
+            "Igualar volumen al reproducir: activado (las canciones analizadas suenan al mismo volumen)."
+            if enabled else "Igualar volumen al reproducir: desactivado.", 6000,
+        )
+
+    def _apply_normalization(self, now: bool = True) -> None:
+        """El objetivo es la referencia de la biblioteca (la misma de «Analizar y ajustar volumen»)."""
+        target = library_reference(self.library)
+        self.player.set_normalization(self.prefs.playback_normalization, target, {t.id: t for t in self.library}, now=now)
+
     def _reload_library(self) -> None:
         if hasattr(self, "_playlist_backup"):
             self._playlist_backup.start()  # rutas o títulos que cambian (Localizar archivo…, datos de internet)
         self.library = self.db.all_tracks()
+        if hasattr(self, "act_normalize"):
+            self._apply_normalization(now=False)  # mediciones nuevas: desde la próxima canción (sin saltos)
         was_folder = self.sidebar.current_view()[0] == "folder"
         self.folder_roots = build_folder_tree(self.library)
         self.sidebar.set_folders(self.folder_roots)

@@ -99,6 +99,18 @@ class Preferences:
     def remove_missing_on_start(self, value: bool) -> None:
         self._s.setValue(self.REMOVE_MISSING, bool(value))
 
+    NORMALIZE = "preferences/playback_normalization"
+
+    @property
+    def playback_normalization(self) -> bool:
+        """Igualar el volumen de las canciones al reproducirlas (con lo medido en «Analizar y ajustar volumen»)."""
+        # Apagado de fábrica: lo principal es igualar DENTRO de los MP3 (vale en cualquier reproductor).
+        return self._s.value(self.NORMALIZE, False, type=bool)
+
+    @playback_normalization.setter
+    def playback_normalization(self, value: bool) -> None:
+        self._s.setValue(self.NORMALIZE, bool(value))
+
     MEDIA_KEYS = "preferences/global_media_keys"
 
     @property

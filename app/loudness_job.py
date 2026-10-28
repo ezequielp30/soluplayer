@@ -18,6 +18,7 @@ from .models import Track
 log = logging.getLogger(__name__)
 
 ADJUSTABLE = frozenset({".mp3"})  # formatos que se pueden ajustar sin recomprimir
+REVERT = None  # en lugar de pasos: devolver el archivo a como estaba (según su propia anotación)
 
 
 def can_adjust(path: str) -> bool:
@@ -87,7 +88,7 @@ class AdjustWorker(QObject):
     adjusted = Signal(int, int, int, str)  # id, pasos aplicados ahora, pasos totales en el archivo, error
     finished = Signal()
 
-    def __init__(self, jobs: list[tuple[Track, int]]) -> None:
+    def __init__(self, jobs: list[tuple[Track, int | None]]) -> None:
         super().__init__()
         self._jobs = jobs
 
@@ -105,15 +106,21 @@ class AdjustWorker(QObject):
         try:
             # Si la anotación no se puede leer (archivo bloqueado…), se falla: suponer «0» sumaría mal.
             before = mp3gain.read_applied_steps(track.path)
-            if steps < 0:  # revertir: lo que diga el propio archivo manda
-                steps = -before if before else steps
-            if steps > 0:  # nunca pasar del límite interno del MP3 (255)
+            if steps is REVERT:  # lo que diga el propio archivo manda
+                if not before:
+                    raise mp3gain.Mp3GainError("No tiene ningún ajuste que revertir.")
+                steps = -before
+            elif steps > 0:  # nunca pasar de los límites internos del MP3 (0…255)
                 steps = min(steps, mp3gain.inspect(track.path).max_up_steps)
                 if steps <= 0:
                     raise mp3gain.Mp3GainError("La ganancia interna del archivo ya está al máximo.")
+            elif steps < 0:
+                steps = max(steps, -mp3gain.inspect(track.path).max_down_steps)
+                if steps >= 0:
+                    raise mp3gain.Mp3GainError("La ganancia interna del archivo ya está al mínimo.")
             if steps == 0:
-                raise mp3gain.Mp3GainError("No hay ningún ajuste que aplicar o revertir.")
-            total = max(0, before + steps)
+                raise mp3gain.Mp3GainError("No hay ningún ajuste que aplicar.")
+            total = before + steps  # con signo: también se anotan las bajadas
             # Audio y anotación en una sola escritura atómica: o cambian los dos, o ninguno.
             mp3gain.apply_steps(track.path, steps, annotate_total=total)
             log.info("Volumen ajustado %+d pasos (%+.1f dB, total %+d): %s", steps, steps * mp3gain.STEP_DB, total, track.path)

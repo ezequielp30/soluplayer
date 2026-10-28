@@ -2,6 +2,24 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.12.8 — 2026-10-28 (volumen parejo en cualquier reproductor)
+
+Auditoría de «Analizar y ajustar volumen» según EBU R128 / ITU-R BS.1770: ya medía sonoridad integrada
+(LUFS) y pico real (×4) y ajustaba de forma lineal y sin pérdida, pero solo SUBÍA las canciones muy bajas.
+No se adoptan normalizadores que recomprimen el audio (loudnorm/ffmpeg-normalize, filtros, limitadores):
+cambiarían los archivos con pérdida y no se podrían revertir.
+
+- **Igualar todas, dentro de los MP3:** cada canción se lleva al volumen de tu biblioteca, subiendo las
+  bajas y **bajando las fuertes**, sin recomprimir (pasos de 1,5 dB: queda a menos de ±0,75 dB). Queda
+  guardado en el archivo, así que suena pareja **en cualquier reproductor** (celular, auto, otros
+  programas). Al subir, el pico real nunca pasa de −1 dBTP; tope de ±12 dB por canción. Las bajadas
+  también se anotan dentro del MP3 y se revierten exactas, byte a byte.
+- Corrige un defecto latente: bajar un MP3 sin ajustes previos no dejaba la nota para revertir.
+- **Reproducción → Igualar volumen al reproducir** (apagado de fábrica): complemento que iguala al sonar,
+  sin tocar archivos, también otros formatos; el cambio llega con la canción siguiente (sin saltos).
+- Pruebas en `tests/igualar_archivos_test.py` y `tests/igualar_volumen_test.py` (con validación de doble
+  pasada: −23,7 y −8,1 LUFS quedan en −14,0 y el pico real no pasa de −1 dBTP).
+
 ## 1.12.7 — 2026-10-26 (auditoría de seguridad y privacidad)
 
 Correcciones de una auditoría de seguridad y privacidad. Cada una tiene su prueba en

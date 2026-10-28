@@ -56,6 +56,7 @@
     <addaction name="act_shuffle"/>
     <addaction name="act_repeat"/>
     <addaction name="act_equalizer"/>
+    <addaction name="act_normalize"/>
     <addaction name="separator"/>
     <addaction name="act_volume_up"/>
     <addaction name="act_volume_down"/>
@@ -254,6 +255,17 @@
   <action name="act_restore_playlists">
    <property name="text">
     <string>Re&amp;staurar playlists…</string>
+   </property>
+  </action>
+  <action name="act_normalize">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Igualar volumen al reproducir</string>
+   </property>
+   <property name="toolTip">
+    <string>Todas las canciones analizadas suenan al mismo volumen, sin modificar ningún archivo</string>
    </property>
   </action>
   <action name="act_online">

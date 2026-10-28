@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QApplication, QDialog  # noqa: E402
 app = QApplication(sys.argv)
 
 from app import backup, converter, journal, mp3gain  # noqa: E402
-from app.loudness_job import AdjustWorker  # noqa: E402
+from app.loudness_job import REVERT, AdjustWorker  # noqa: E402
 from app.models import Track  # noqa: E402
 from app.ui import dialogs  # noqa: E402
 from app.ui.main_window import MainWindow  # noqa: E402
@@ -132,7 +132,7 @@ worker.finished.connect(lambda: finished.append(True))
 worker.run()
 check("se ajustó 2 pasos y se anotó el total", emitted == [(10, 2, 2, "")], emitted)
 check("la anotación dice 2 pasos", mp3gain.read_applied_steps(mp3) == 2)
-worker = AdjustWorker([(track(10, mp3), -99)])  # revertir: manda lo que diga el archivo
+worker = AdjustWorker([(track(10, mp3), REVERT)])  # revertir: manda lo que diga el archivo
 emitted.clear()
 worker.adjusted.connect(lambda *a: emitted.append(a))
 worker.run()
@@ -159,7 +159,7 @@ before = {p: open(p, "rb").read() for p in (mp3b, noted, mp3)}
 FileOperations.sync_volume_annotations(fake_ops, lib, None)
 check("no se escribe en ningún MP3", all(open(p, "rb").read() == b for p, b in before.items()))
 check("solo la que no tiene anotación vuelve a «sin ajuste» en la biblioteca", saved == [(20, 0.0)], saved)
-worker = AdjustWorker([(track(21, noted), -1)])
+worker = AdjustWorker([(track(21, noted), REVERT)])
 emitted.clear()
 worker.adjusted.connect(lambda *a: emitted.append(a))
 worker.run()

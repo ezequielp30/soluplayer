@@ -14,7 +14,7 @@ $tests = @(
     "step2_test", "step3_test", "folders_test", "titles_test", "dup_test", "review_test", "repair_test",
     "convert_test", "loudness_ui_test", "online_test", "mp3gain_test", "codec_test", "breaker_test",
     "exit_test", "exit_loud_test", "exit_convert_test", "exit_convert2_test", "exit_trash_test",
-    "si_real", "loudness_validate", "runner_probe", "robustez_test", "historial_archivos_test", "revision_1122_test", "menores_1124_test", "playlists_respaldo_test", "limite_playlists_test", "seguridad_1127_test"
+    "si_real", "loudness_validate", "runner_probe", "robustez_test", "historial_archivos_test", "revision_1122_test", "menores_1124_test", "playlists_respaldo_test", "limite_playlists_test", "seguridad_1127_test", "igualar_volumen_test", "igualar_archivos_test"
 )
 $failed = @()
 foreach ($t in $tests) {
