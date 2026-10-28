@@ -38,7 +38,7 @@ from ..equalizer import EqSettings
 from ..file_operations import FileOperations
 from ..folders import breadcrumb as folder_breadcrumb
 from ..folders import build_folder_tree, display_name, tracks_in_folder
-from ..loudness import library_reference
+from ..loudness import TARGET_LUFS
 from ..importer import ImportWorker, ScannedTrack, ScanResult, in_skipped_folder, scan_file
 from ..models import Track
 from ..player import PlaybackController, RepeatMode
@@ -494,7 +494,7 @@ class MainWindow(QMainWindow):
 
     def _apply_normalization(self, now: bool = True) -> None:
         """El objetivo es la referencia de la biblioteca (la misma de «Analizar y ajustar volumen»)."""
-        target = library_reference(self.library)
+        target = TARGET_LUFS
         self.player.set_normalization(self.prefs.playback_normalization, target, {t.id: t for t in self.library}, now=now)
 
     def _reload_library(self) -> None:

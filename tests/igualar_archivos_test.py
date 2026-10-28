@@ -93,9 +93,10 @@ import random
 random.seed(3)
 lib = [Track(id=i, path=f"C:\\m\\{i}.mp3", title="x", artist="", album="", genre="", duration_ms=1, added_at="",
              loudness_lufs=round(random.gauss(-11.5, 3), 2), true_peak_db=round(random.uniform(-6, 0.5), 2)) for i in range(400)]
-lib_ref = getattr(loudness, "library_reference", None)
+TARGET = getattr(loudness, "TARGET_LUFS", None)
+check("el objetivo es fijo: −16 LUFS (escucha general; no la mediana de la biblioteca)", TARGET == -16.0, TARGET)
 def one_click(tracks):
-    ref = lib_ref(tracks) if lib_ref else loudness.reference_level([t.loudness_lufs for t in tracks])
+    ref = TARGET if TARGET is not None else loudness.reference_level([t.loudness_lufs for t in tracks])
     changed = 0
     for i, t in enumerate(tracks):
         d = decide(t.loudness_lufs, t.true_peak_db, ref, t.norm_gain_db)
@@ -108,6 +109,13 @@ first, ref1 = one_click(lib)
 second, ref2 = one_click(lib)
 check("pulsar «Igualar» otra vez no vuelve a tocar archivos (la referencia no se corre)", first > 0 and second == 0 and ref1 == ref2,
       (first, second, ref1, ref2))
+spread = getattr(loudness, "spread", None)
+report = spread([t.loudness_lufs for t in lib], ref1) if spread else None
+print(f"    dispersión tras igualar: {report}")
+check("dispersión entre pistas: las que alcanzan el objetivo quedan a ±0,75 LU (dentro de ±1 LU)",
+      report is not None and report.max_deviation_in <= 0.75 and report.inside >= 0.85 * report.total, report)
+check("  y se cuentan aparte las bajas que no pueden llegar por sus picos (sin distorsionar)",
+      report is not None and report.inside + report.below == report.total and report.above == 0, report)
 check("justo a medio paso (0,75 dB) cuenta como igual, sin motivo falso", decide(-12.75, -10.0, -12.0).status == "correcto"
       and decide(-11.25, -1.0, -12.0).status == "correcto", (decide(-12.75, -10.0, -12.0).reason, decide(-11.25, -1.0, -12.0).reason))
 from app.ui.loudness_dialog import LoudnessDialog

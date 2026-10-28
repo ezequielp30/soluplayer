@@ -9,8 +9,11 @@ Auditoría de «Analizar y ajustar volumen» según EBU R128 / ITU-R BS.1770: ya
 No se adoptan normalizadores que recomprimen el audio (loudnorm/ffmpeg-normalize, filtros, limitadores):
 cambiarían los archivos con pérdida y no se podrían revertir.
 
-- **Igualar todas, dentro de los MP3:** cada canción se lleva al volumen de tu biblioteca, subiendo las
-  bajas y **bajando las fuertes**, sin recomprimir (pasos de 1,5 dB: queda a menos de ±0,75 dB). Queda
+- **Igualar todas, dentro de los MP3, a −16 LUFS** (objetivo fijo para escucha general: la mayoría de las
+  canciones comerciales vienen entre −9 y −13 LUFS y bajan sin perder dinámica, y el volumen sigue
+  alcanzando en celulares y autorradios). Sube las bajas y **baja las fuertes**, sin recomprimir (pasos de
+  1,5 dB: queda a menos de ±0,75 LU). La ventana muestra cuántas quedaron parejas y cuántas no pueden subir
+  más sin distorsionar (en una biblioteca simulada de 400 canciones: 391 a ±0,75 LU). Queda
   guardado en el archivo, así que suena pareja **en cualquier reproductor** (celular, auto, otros
   programas). Al subir, el pico real nunca pasa de −1 dBTP; tope de ±12 dB por canción. Las bajadas
   también se anotan dentro del MP3 y se revierten exactas, byte a byte.

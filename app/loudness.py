@@ -173,17 +173,33 @@ def plausible(loudness: float | None, true_peak: float | None) -> bool:
     return loudness is not None and -70 < loudness < 0 and (true_peak is None or true_peak < 6)
 
 
-def original_loudness(track) -> float | None:
-    """Sonoridad que tenía la canción antes de los ajustes del programa (lo medido menos lo aplicado)."""
-    if track.loudness_lufs is None:
-        return None
-    return track.loudness_lufs - (track.norm_gain_db or 0.0)
+# Objetivo de sonoridad para escuchar música en general (celular, auto, equipos): −16 LUFS integrados.
+# Es el extremo alto del rango habitual (−16…−18): la mayoría de las canciones comerciales vienen entre −9
+# y −13 LUFS, así que bajan 3–7 dB y quedan parejas sin perder dinámica, y el volumen sigue alcanzando en
+# celulares y autorradios. Más bajo (−18), más canciones bajas no podrían llegar sin pasar de −1 dBTP.
+TARGET_LUFS = -16.0
 
 
-def library_reference(tracks) -> float:
-    """Referencia de la biblioteca calculada con la sonoridad ORIGINAL de cada canción: así no se corre al
-    igualar (si se calculara con lo ya ajustado, cada «Igualar» la movería un poco y reescribiría archivos)."""
-    return reference_level([original_loudness(t) for t in tracks])
+@dataclass(frozen=True)
+class Spread:
+    total: int  # canciones medidas
+    inside: int  # a ±STEP_DB/2 del objetivo
+    below: int  # más bajas (no pueden subir más sin distorsionar)
+    above: int  # más fuertes
+    max_deviation_in: float  # la mayor diferencia entre las que están «dentro»
+
+    def __str__(self) -> str:
+        return (f"{self.inside} de {self.total} a ±{STEP_DB / 2:.2f} LU del objetivo (máx. {self.max_deviation_in:.2f}); "
+                f"{self.below} más bajas, {self.above} más fuertes")
+
+
+def spread(loudness_values: list[float | None], target: float = TARGET_LUFS) -> Spread:
+    """Qué tan parejas quedaron: cuántas canciones están a medio paso del objetivo y cuántas no."""
+    values = [v for v in loudness_values if v is not None and plausible(v, None)]
+    inside = [v for v in values if abs(v - target) <= STEP_DB / 2 + 1e-9]
+    return Spread(len(values), len(inside), sum(1 for v in values if v < target - STEP_DB / 2 - 1e-9),
+                  sum(1 for v in values if v > target + STEP_DB / 2 + 1e-9),
+                  round(max((abs(v - target) for v in inside), default=0.0), 2))
 
 
 def reference_level(loudness_values: list[float]) -> float:

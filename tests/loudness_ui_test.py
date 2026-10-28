@@ -120,8 +120,8 @@ for name, row in state.get("rows", {}).items(): print(f"       {name:12s} marcad
 rows = state.get("rows", {})
 check("Herramientas → Analizar y ajustar volumen: analiza todas", f"Analizadas: {len(copies)} de {len(copies)}" in state.get("summary", "").replace("<b>", "").replace("</b>", ""), state.get("summary", "")[:80])
 check("  propone subir la canción baja «Track 1»", rows.get("track1.mp3", (False,))[0] and rows["track1.mp3"][1].startswith("+"), rows.get("track1.mp3"))
-check("  propone BAJAR las canciones fuertes, para igualarlas en cualquier reproductor (la de la referencia no se toca)",
-      any(r[0] and r[1].startswith("-") for r in rows.values()) and not rows.get("hossana.mp3", (False,))[0], rows)
+check("  propone BAJAR las canciones fuertes hacia −16 LUFS, para igualarlas en cualquier reproductor",
+      any(r[0] and r[1].startswith("-") for r in rows.values()), rows)
 check("  WAV muy bajo: se indica, pero no se ajusta (no MP3)", "bajo.wav" in rows and not rows["bajo.wav"][0] and "no se puede ajustar" in rows["bajo.wav"][2].lower(), rows.get("bajo.wav"))
 check("  al terminar se limpia la lista: las subidas ya no figuran como pendientes",
       state.get("need_after") == len(rows) - sum(1 for r in rows.values() if r[0]), (state.get("need_after"), len(rows)))

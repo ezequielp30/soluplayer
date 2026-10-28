@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..file_operations import FileOperations
-from ..loudness import CEILING_DBTP, MAX_GAIN, decide, library_reference
+from ..loudness import CEILING_DBTP, MAX_GAIN, TARGET_LUFS, decide, spread
 from ..loudness_job import REVERT, AdjustWorker, AnalyzeWorker, can_adjust
 from ..models import Track
 from ..mp3gain import STEP_DB
@@ -44,7 +44,7 @@ FILTER_NEED, FILTER_DONE, FILTER_ALL = "need", "done", "all"
 
 _DETAILS = (
     "Mide la sonoridad de cada canción con el estándar EBU R128 (LUFS) y su pico real (dBTP).\n"
-    "Iguala cada canción al volumen de tu biblioteca: sube las bajas y baja las fuertes, de forma lineal (toda "
+    f"Iguala cada canción a {TARGET_LUFS:.0f} LUFS (escucha general): sube las bajas y baja las fuertes, de forma lineal (toda "
     f"la canción por igual, sin compresión). Al subir, el pico nunca pasa de {CEILING_DBTP:.0f} dBTP: no se distorsiona.\n"
     "En los MP3 el ajuste es permanente y sin pérdida (no se recomprime, pasos de 1,5 dB), se oye en cualquier "
     "reproductor y se puede revertir. WMA, M4A y otros formatos se indican pero no se tocan.\n"
@@ -192,7 +192,7 @@ class LoudnessDialog(QDialog):
 
     def _rows(self) -> list[tuple[Track, object, int]]:
         tracks = self._tracks()
-        reference = library_reference(tracks)  # con la sonoridad original: no se corre al igualar
+        reference = TARGET_LUFS  # fijo: no depende de qué canciones haya ni de las ya ajustadas
         self._reference = reference
         rows = []
         for track in tracks:
@@ -291,9 +291,16 @@ class LoudnessDialog(QDialog):
         set_primary(self.btn_analyze_new, pending > 0)
         set_primary(self.btn_apply, pending == 0)
         self.summary.setText(
-            f"Analizadas: {analyzed} de {total} · referencia {self._reference:.1f} LUFS · "
+            f"Analizadas: {analyzed} de {total} · objetivo {self._reference:.0f} LUFS · "
             f"por igualar: {sum(1 for r in need if r[2])} · ajustadas: {len(done)}"
         )
+        report = spread([t.loudness_lufs for t, _d, _s in rows if can_adjust(t.path)], self._reference)
+        if report.total:
+            self.summary.setToolTip(
+                f"Parejas (a ±{STEP_DB / 2:.2f} LU del objetivo): {report.inside} de {report.total} MP3 analizados.\n"
+                f"Más bajas: {report.below} (algunas no pueden subir más sin distorsionar).\n"
+                f"Más fuertes: {report.above}."
+            )
         self._update_buttons()
 
     def _checked_jobs(self) -> list[tuple[Track, int]]:
