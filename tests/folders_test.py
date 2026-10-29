@@ -115,7 +115,7 @@ sb._folder_menu(pos_m); spin(400)
 check("Menú carpeta → Reproducir en aleatorio", win.player.shuffle and win.player.current_track.title in ("a", "b", "c"))
 check("  opciones del menú", all(any(s.startswith(x) for s in seen) for x in
       ["Reproducir carpeta", "Reproducir en aleatorio", "Agregar carpeta a playlist", "Mostrar en el Explorador",
-       "Buscar música nueva", "Expandir todo", "Contraer todo", "Importar otra carpeta"]), seen)
+       "Buscar música nueva", "Expandir todo", "Contraer todo", "Quitar carpeta de la biblioteca", "Agregar otra carpeta"]), seen)
 win.player.set_shuffle(False)
 
 expect(is_(QMenu), pick("Reproducir carpeta"))

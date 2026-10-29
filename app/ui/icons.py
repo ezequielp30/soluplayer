@@ -102,6 +102,13 @@ _SHAPES: dict[str, tuple[str, str]] = {
         '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13'
         'a2 2 0 0 0 2 2z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
     ),
+    "folder_minus": (
+        _STROKE,
+        '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13'
+        'a2 2 0 0 0 2 2z"/><path d="M9 13h6"/>',
+    ),
+    "arrow_up": (_STROKE, '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'),
+    "arrow_down": (_STROKE, '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'),
     "trash": (
         _STROKE,
         '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',

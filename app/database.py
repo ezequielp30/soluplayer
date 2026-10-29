@@ -14,7 +14,7 @@ from .metadata import AudioMetadata
 from .models import Playlist, Track
 from .utils import no_markup, normalize_text, path_key
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Cambios de esquema por versión (se aplican en orden, dentro de la misma transacción).
 _MIGRATIONS: dict[int, list[str]] = {
@@ -23,6 +23,9 @@ _MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE tracks ADD COLUMN true_peak_db REAL",
         "ALTER TABLE tracks ADD COLUMN norm_gain_db REAL NOT NULL DEFAULT 0",
         "ALTER TABLE tracks ADD COLUMN analyzed_at TEXT",
+    ],
+    3: [  # orden manual de «Canciones» (NULL = sin posición elegida: va al final, en el orden de siempre)
+        "ALTER TABLE tracks ADD COLUMN sort_pos INTEGER",
     ],
 }
 
@@ -177,14 +180,29 @@ class Database:
 
     def all_tracks(self) -> list[Track]:
         rows = self.conn.execute(
-            f"SELECT {_TRACK_COLUMNS} FROM tracks t ORDER BY t.artist COLLATE NOCASE, "
-            "t.album COLLATE NOCASE, t.title COLLATE NOCASE"
+            f"SELECT {_TRACK_COLUMNS} FROM tracks t ORDER BY t.sort_pos IS NULL, t.sort_pos, "
+            "t.artist COLLATE NOCASE, t.album COLLATE NOCASE, t.title COLLATE NOCASE"
         ).fetchall()
         tracks = [_row_to_track(r, check=False) for r in rows]
         present = available_paths(t.path for t in tracks)
         for track in tracks:
             track.available = track.path in present
         return tracks
+
+    def set_library_order(self, track_ids: list[int]) -> None:
+        """Guarda el orden manual de «Canciones» (arrastrar para ordenar) en UNA transacción.
+        Las que no están en la lista quedan sin posición: al final, en el orden de siempre."""
+        with self.conn:
+            self.conn.execute("UPDATE tracks SET sort_pos = NULL WHERE sort_pos IS NOT NULL")
+            self.conn.executemany("UPDATE tracks SET sort_pos = ? WHERE id = ?", [(i, tid) for i, tid in enumerate(track_ids)])
+
+    def clear_library_order(self) -> None:
+        """Vuelve «Canciones» al orden de siempre (artista, álbum, título)."""
+        with self.conn:
+            self.conn.execute("UPDATE tracks SET sort_pos = NULL WHERE sort_pos IS NOT NULL")
+
+    def has_library_order(self) -> bool:
+        return self.conn.execute("SELECT 1 FROM tracks WHERE sort_pos IS NOT NULL LIMIT 1").fetchone() is not None
 
     def recent_tracks(self, limit: int = RECENT_LIMIT) -> list[Track]:
         rows = self.conn.execute(
@@ -466,6 +484,27 @@ class Database:
             "SELECT DISTINCT track_id FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,)
         ).fetchall()
         return {r[0] for r in rows} & ids
+
+    def playlist_entries_of(self, track_ids: Iterable[int]) -> int:
+        """Cuántas entradas de playlists son de estas canciones (para avisar antes de quitarlas)."""
+        ids = list(set(track_ids))
+        total = 0
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            total += self.conn.execute(f"SELECT COUNT(*) FROM playlist_tracks WHERE track_id IN ({marks})", chunk).fetchone()[0]
+        return total
+
+    def reorder_playlist(self, playlist_id: int, entry_ids: list[int]) -> None:
+        """Guarda el orden elegido a mano (ids de entrada: una canción puede estar repetida).
+        Debe nombrar exactamente las entradas de la playlist; si no (cambió mientras tanto), no toca nada."""
+        current = {r[0] for r in self.conn.execute("SELECT id FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))}
+        if len(entry_ids) != len(current) or set(entry_ids) != current:
+            raise ValueError("La playlist cambió mientras se reordenaba.")
+        with self.conn:
+            self.conn.executemany(
+                "UPDATE playlist_tracks SET position = ? WHERE id = ?", [(i, eid) for i, eid in enumerate(entry_ids)]
+            )
 
     def add_to_playlist(self, playlist_id: int, track_ids: list[int], allow_duplicates: bool = False) -> int:
         """Agrega canciones al final. Sin allow_duplicates omite las que ya están."""

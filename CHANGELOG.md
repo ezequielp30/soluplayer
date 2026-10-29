@@ -2,6 +2,22 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.13.0 — 2026-10-29 (carpetas de música y orden manual)
+
+- **Quitar una carpeta de la biblioteca** (clic derecho en la carpeta, o el botón **−** junto al **+** de
+  «Carpetas»): olvida sus canciones (con las subcarpetas) sin tocar el disco; nada va a la Papelera y se
+  puede volver a agregar con «Importar carpeta…». Antes de quitar dice cuántas canciones son y cuántas
+  entradas de playlists se van con ellas (como «Quitar de la biblioteca»). Con 10 o más, o si hay
+  playlists afectadas, se hace un respaldo antes.
+- **Ordenar a mano «Canciones» y las playlists:** arrastra las canciones, o usa **Alt+↑ / Alt+↓** (también
+  «Subir»/«Bajar» en el clic derecho). El orden se guarda, «Reproducir» lo sigue y, si esa lista es la que
+  está sonando, la canción siguiente ya respeta el orden nuevo. Las importadas después van al final.
+  Ordenar por una columna sigue funcionando; al arrastrar, lo que se ve pasa a ser el orden manual.
+  «Volver al orden de siempre» (clic derecho en «Canciones») lo deshace. En una playlist, una canción
+  repetida se mueve por separado.
+- La base de datos pasa a la versión 3 (respaldo automático antes de actualizar).
+- Pruebas en `tests/carpetas_orden_test.py`.
+
 ## 1.12.10 — 2026-10-28 (confirmaciones)
 
 - **Detener una tarea pregunta antes** (análisis y ajuste de volumen, conversión a MP3, canciones repetidas,

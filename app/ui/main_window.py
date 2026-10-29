@@ -302,6 +302,7 @@ class MainWindow(QMainWindow):
         sb.folder_rename_requested.connect(self._rename_folder)
         sb.folder_create_requested.connect(self._create_subfolder)
         sb.folder_trash_requested.connect(self._trash_folder)
+        sb.folder_unlink_requested.connect(self._unlink_folder)
 
         c = self.content
         c.play_requested.connect(self._on_play_requested)
@@ -319,6 +320,8 @@ class MainWindow(QMainWindow):
         c.rename_file_requested.connect(self._rename_track_file)
         c.move_files_requested.connect(self._move_track_files)
         c.trash_files_requested.connect(self._trash_track_files)
+        c.reorder_requested.connect(self._save_order)
+        c.reset_order_requested.connect(self._reset_order)
 
     # ================================================================== ajustes
 
@@ -600,7 +603,11 @@ class MainWindow(QMainWindow):
                 _VIEW_TITLES[kind], self._groups_by(attr), noun, self._library_empty_state(), group_icon
             )
         else:
-            self.content.show_tracks("Canciones", self.library, MODE_LIBRARY, self._library_empty_state())
+            self.content.show_tracks(
+                "Canciones", self.library, MODE_LIBRARY, self._library_empty_state(), reorderable=True
+            )
+            if self.library and self.db.has_library_order():
+                self.content.add_subtitle_note("orden personalizado")
         self._sync_current_track()
 
     def _render_playlist(self, playlist_id: int) -> None:
@@ -619,7 +626,7 @@ class MainWindow(QMainWindow):
             [EmptyAction("Ir a Canciones", lambda: self.sidebar.select_library("songs"), primary=True)],
         )
         self.content.show_tracks(
-            playlist.name, tracks, MODE_PLAYLIST, empty, cover_hash=cover, show_cover=True
+            playlist.name, tracks, MODE_PLAYLIST, empty, cover_hash=cover, show_cover=True, reorderable=True
         )
         self._sync_current_track()
 
@@ -682,6 +689,97 @@ class MainWindow(QMainWindow):
             )
             return
         self._start_import(folder=path, recursive=True)
+
+    def _unlink_folder(self, folder: str) -> None:
+        """Quita de la biblioteca las canciones de la carpeta (y subcarpetas). Solo se olvidan sus registros:
+        los archivos y la carpeta siguen en el disco (nada va a la Papelera) y se pueden volver a agregar."""
+        name = display_name(folder)
+        tracks = self.ops.tracks_in(folder, self.library)
+        if not tracks:
+            QMessageBox.information(
+                self, "Quitar carpeta de la biblioteca", f"La carpeta «{name}» no tiene canciones en la biblioteca."
+            )
+            return
+        ids = {t.id for t in tracks}
+        in_playlists = self.db.playlist_entries_of(ids)
+        detail = f"Ubicación: {os.path.normpath(folder)}\n\n"
+        detail += f"Se quitan {plural(len(ids), 'canción', 'canciones')} de la biblioteca (incluye subcarpetas)"
+        detail += f" y {plural(in_playlists, 'entrada', 'entradas')} de tus playlists.\n\n" if in_playlists else ".\n\n"
+        detail += (
+            "Los archivos NO se borran ni van a la Papelera: siguen en el disco. "
+            "Puedes volver a agregar la carpeta cuando quieras con «Importar carpeta…»."
+        )
+        if ask(
+            self,
+            "Quitar carpeta de la biblioteca",
+            f"¿Quitar la carpeta «{name}» de la biblioteca?",
+            [("Quitar de la biblioteca", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Warning,
+            detail,
+        ) != 0:
+            return
+        if len(ids) >= 10 or in_playlists:
+            self._safety_backup("antes-de-quitar-carpeta")
+        self.player.remove_tracks(ids)
+        try:
+            removed = self.db.remove_tracks(ids)
+        except sqlite3.Error as exc:
+            QMessageBox.warning(
+                self, "Quitar carpeta de la biblioteca", f"No se pudo quitar la carpeta de la biblioteca:\n{exc}"
+            )
+            return
+        self._reload_library()
+        self._playlists_changed()
+        self._refresh_view()
+        self.statusBar().showMessage(
+            f"Carpeta «{name}» quitada de la biblioteca ({plural(removed, 'canción', 'canciones')}). "
+            "Los archivos siguen en el disco.",
+            8000,
+        )
+
+    # ================================================================== orden manual
+
+    def _save_order(self, tracks: list[Track]) -> None:
+        """Guarda el orden elegido a mano en «Canciones» o en la playlist que se ve, y la canción
+        siguiente lo sigue si esa lista es la que está sonando."""
+        kind, playlist_id = self.sidebar.current_view()
+        try:
+            if kind == "playlist" and playlist_id is not None:
+                self.db.reorder_playlist(playlist_id, [t.entry_id for t in tracks])
+            elif kind == "songs":
+                self.db.set_library_order([t.id for t in tracks])
+                self.library = list(tracks)
+            else:
+                return
+        except (sqlite3.Error, ValueError) as exc:
+            QMessageBox.warning(self, "Ordenar canciones", f"No se pudo guardar el orden nuevo:\n{exc}")
+            self._refresh_view()
+            return
+        if kind == "playlist":
+            self._playlists_changed()
+        elif "orden personalizado" not in self.content.subtitle.text():
+            self.content.add_subtitle_note("orden personalizado")
+        if self.player.follow_order(tracks):
+            self.statusBar().showMessage("Orden guardado. La reproducción sigue el orden nuevo.", 4000)
+        else:
+            self.statusBar().showMessage("Orden guardado.", 3000)
+
+    def _reset_order(self) -> None:
+        if not self.db.has_library_order():
+            self.statusBar().showMessage("«Canciones» ya está en el orden de siempre.", 4000)
+            return
+        if ask(
+            self,
+            "Volver al orden de siempre",
+            "¿Volver «Canciones» al orden de siempre (artista, álbum, título)?",
+            [("Volver al orden de siempre", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            informative="Se pierde el orden que elegiste a mano. Las playlists conservan su propio orden.",
+        ) != 0:
+            return
+        self.db.clear_library_order()
+        self._reload_library()
+        self._refresh_view()
+        self.player.follow_order(self.content.visible_tracks())
 
     def _groups_by(self, attr: str) -> list[Group]:
         buckets: dict[str, list[Track]] = {}

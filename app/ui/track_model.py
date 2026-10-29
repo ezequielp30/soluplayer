@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QAbstractTableModel, QByteArray, QMimeData, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QFont
 
 from ..models import Track
@@ -17,6 +17,17 @@ ROW_COVER_SIZE = 40
 
 TRACK_ROLE = Qt.ItemDataRole.UserRole + 1
 SORT_ROLE = Qt.ItemDataRole.UserRole + 2
+
+
+def move_rows(items: list, rows: list[int], target: int) -> list:
+    """Mueve las filas `rows` (en su orden) para que queden juntas antes de la fila `target` de `items`
+    (len(items) = al final). Es lo que hace soltar canciones arrastradas."""
+    chosen = sorted(set(r for r in rows if 0 <= r < len(items)))
+    picked = set(chosen)
+    rest = [item for i, item in enumerate(items) if i not in picked]
+    target -= sum(1 for r in chosen if r < target)
+    target = max(0, min(target, len(rest)))
+    return rest[:target] + [items[r] for r in chosen] + rest[target:]
 
 
 class TrackTableModel(QAbstractTableModel):
@@ -65,6 +76,21 @@ class TrackTableModel(QAbstractTableModel):
 
     def columnCount(self, parent=QModelIndex()) -> int:
         return 0 if parent.isValid() else len(HEADERS)
+
+    def flags(self, index: QModelIndex):
+        if not index.isValid():
+            return Qt.ItemFlag.ItemIsDropEnabled  # soltar entre filas (nunca «sobre» una canción)
+        return super().flags(index) | Qt.ItemFlag.ItemIsDragEnabled
+
+    def supportedDropActions(self):
+        return Qt.DropAction.MoveAction
+
+    def mimeData(self, indexes):
+        """Arrastrar solo reordena dentro de la tabla (las filas las toma la vista): sin copiar los datos de
+        cada canción, que con muchas seleccionadas incluía todas sus carátulas."""
+        data = QMimeData()
+        data.setData(self.mimeTypes()[0], QByteArray())
+        return data
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation == Qt.Orientation.Horizontal and role == Qt.ItemDataRole.DisplayRole:

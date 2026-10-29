@@ -1,3 +1,3 @@
 """Paquete principal del reproductor de música."""
 
-__version__ = "1.12.10"
+__version__ = "1.13.0"

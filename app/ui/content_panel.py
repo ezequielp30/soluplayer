@@ -6,7 +6,7 @@ import html
 from dataclasses import dataclass
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QItemSelectionModel, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -42,6 +42,7 @@ from .track_model import (
     TRACK_ROLE,
     TrackSortProxy,
     TrackTableModel,
+    move_rows,
 )
 
 HEADER_COVER = 92
@@ -124,6 +125,44 @@ class EmptyState(QWidget):
             self.icon.setPixmap(icon(self._icon_name, "faint", 52).pixmap(52, 52))
 
 
+class ReorderTable(QTableView):
+    """Tabla de canciones que, si se permite, se ordena arrastrando filas. No mueve nada por su cuenta:
+    avisa con rows_dropped(filas, fila de destino) y el panel arma y guarda el orden nuevo."""
+
+    rows_dropped = Signal(list, int)
+
+    def set_reorderable(self, enabled: bool) -> None:
+        self.setDragEnabled(enabled)
+        self.setAcceptDrops(enabled)
+        self.setDropIndicatorShown(enabled)
+        self.setDragDropOverwriteMode(False)
+        self.setDragDropMode(
+            QAbstractItemView.DragDropMode.InternalMove if enabled else QAbstractItemView.DragDropMode.NoDragDrop
+        )
+
+    def reorderable(self) -> bool:
+        return self.dragDropMode() == QAbstractItemView.DragDropMode.InternalMove
+
+    def dropEvent(self, event) -> None:
+        if event.source() is not self or not self.reorderable():
+            event.ignore()
+            return
+        pos = event.position().toPoint()
+        index = self.indexAt(pos)
+        if index.isValid():
+            target = index.row() + (1 if pos.y() > self.visualRect(index).center().y() else 0)
+        else:
+            target = self.model().rowCount()
+        rows = sorted({i.row() for i in self.selectionModel().selectedRows()})
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()  # el modelo no borra filas (no tiene removeRows): soltar no quita ninguna canción
+        self.stopAutoScroll()
+        self.setState(QAbstractItemView.State.NoState)
+        self.viewport().update()
+        if rows:
+            self.rows_dropped.emit(rows, target)
+
+
 class ContentPanel(QFrame):
     play_requested = Signal(object, int)
     shuffle_play_requested = Signal(object)
@@ -140,6 +179,8 @@ class ContentPanel(QFrame):
     rename_file_requested = Signal(object)  # Track
     move_files_requested = Signal(object)  # list[Track]
     trash_files_requested = Signal(object)  # list[Track]
+    reorder_requested = Signal(object)  # list[Track] en el orden nuevo (arrastradas o Alt+↑/↓)
+    reset_order_requested = Signal()
 
     def __init__(self, covers: CoverProvider, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -252,7 +293,7 @@ class ContentPanel(QFrame):
         self.model = TrackTableModel(covers, self)
         self.proxy = TrackSortProxy(self)
         self.proxy.setSourceModel(self.model)
-        self.table = QTableView()
+        self.table = ReorderTable()
         self.table.setModel(self.proxy)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -283,6 +324,7 @@ class ContentPanel(QFrame):
         self.table.doubleClicked.connect(self._on_double_click)
         self.table.clicked.connect(self._on_click)
         self.table.selectionModel().selectionChanged.connect(lambda *_: self._update_buttons())
+        self.table.rows_dropped.connect(self._move_rows)
         self.splitter.addWidget(self.table)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setSizes([230, 800])
@@ -299,7 +341,15 @@ class ContentPanel(QFrame):
         delete.setShortcut(QKeySequence(QKeySequence.StandardKey.Delete))
         delete.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
         delete.triggered.connect(self._delete_selected)
-        self.table.addActions([enter, delete])
+        move_up = QAction(self.table)
+        move_up.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Up))
+        move_up.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        move_up.triggered.connect(lambda: self._nudge_selected(-1))
+        move_down = QAction(self.table)
+        move_down.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Down))
+        move_down.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        move_down.triggered.connect(lambda: self._nudge_selected(1))
+        self.table.addActions([enter, delete, move_up, move_down])
 
         self.btn_play.clicked.connect(self._play_all)
         self.btn_shuffle.clicked.connect(lambda: self.shuffle_play_requested.emit(self.visible_tracks()))
@@ -322,12 +372,15 @@ class ContentPanel(QFrame):
         cover_hash: str | None = None,
         show_cover: bool = False,
         breadcrumb: list[tuple[str, str]] | None = None,
+        reorderable: bool = False,
     ) -> None:
         """Muestra una lista de canciones. 'empty' = (icono, título, mensaje, acciones).
 
         `breadcrumb` = [(nombre, ruta)] de carpetas; cada tramo salvo el último es un enlace.
+        `reorderable`: se puede ordenar a mano (arrastrar o Alt+↑/↓); el orden nuevo llega por reorder_requested.
         """
         self._mode = mode
+        self.table.set_reorderable(reorderable)
         self._groups = []
         self.group_list.hide()
         self._set_breadcrumb(breadcrumb)
@@ -360,6 +413,7 @@ class ContentPanel(QFrame):
         """Vista agrupada (Artistas, Álbumes) con lista de grupos a la izquierda."""
         previous = self._current_group_label() if keep_selection else None
         self._mode = MODE_LIBRARY
+        self.table.set_reorderable(False)
         self._groups = groups
         self._group_noun = noun
         self.title.setToolTip("")  # que no quede la ruta de la carpeta vista antes
@@ -544,6 +598,45 @@ class ContentPanel(QFrame):
         if tracks:
             self.online_lookup_requested.emit(tracks)
 
+    def _move_rows(self, rows: list[int], target: int) -> None:
+        """Pone las filas elegidas antes de `target` (en el orden en que se ven) y avisa del orden nuevo.
+        Si la lista estaba ordenada por una columna, ese orden visible pasa a ser el orden manual."""
+        visible = self.visible_tracks()
+        ordered = move_rows(visible, rows, target)
+        if all(a is b for a, b in zip(ordered, visible)):
+            return
+        moved = {id(visible[r]) for r in rows if 0 <= r < len(visible)}
+        scroll = self.table.verticalScrollBar().value()
+        self.proxy.sort(-1)
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self.model.set_tracks(ordered)
+        self.table.verticalScrollBar().setValue(scroll)
+        selection = self.table.selectionModel()
+        first = None
+        for row, track in enumerate(ordered):
+            if id(track) in moved:
+                index = self.proxy.index(row, 0)
+                selection.select(
+                    index, QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows
+                )
+                if first is None:
+                    first = index
+                    selection.setCurrentIndex(index, QItemSelectionModel.SelectionFlag.NoUpdate)
+        if first is not None:
+            self.table.scrollTo(first)
+        self.reorder_requested.emit(ordered)
+
+    def _nudge_selected(self, step: int) -> None:
+        """Alt+↑ / Alt+↓: sube o baja una fila las canciones seleccionadas."""
+        if not self.table.reorderable():
+            return
+        rows = sorted(index.row() for index in self.table.selectionModel().selectedRows())
+        if not rows:
+            return
+        target = rows[0] - 1 if step < 0 else rows[-1] + 2
+        if 0 <= target <= self.proxy.rowCount():
+            self._move_rows(rows, target)
+
     def _delete_selected(self) -> None:
         tracks = self.selected_tracks()
         if not tracks:
@@ -591,6 +684,15 @@ class ContentPanel(QFrame):
         if available:
             count = "" if len(available) == 1 else f" ({len(available)})"
             menu.addAction(icon("move", TEXT, 16), f"Mover a otra carpeta{count}…", lambda: self.move_files_requested.emit(available))
+        if self.table.reorderable():
+            menu.addSeparator()
+            up = menu.addAction(icon("arrow_up", TEXT, 16), "Subir", lambda: self._nudge_selected(-1))
+            up.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Up))
+            down = menu.addAction(icon("arrow_down", TEXT, 16), "Bajar", lambda: self._nudge_selected(1))
+            down.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Down))
+            if self._mode == MODE_LIBRARY:
+                menu.addAction("Volver al orden de siempre (artista, álbum, título)", self.reset_order_requested.emit)
+            menu.addSeparator()
         if self._mode == MODE_PLAYLIST:
             label = "Quitar de la playlist" if len(tracks) == 1 else f"Quitar {len(tracks)} canciones de la playlist"
             menu.addAction(label, lambda: self.remove_from_playlist_requested.emit(tracks))

@@ -55,6 +55,7 @@ class Sidebar(QFrame):
     folder_rename_requested = Signal(str)
     folder_create_requested = Signal(str)  # carpeta donde crear una subcarpeta
     folder_trash_requested = Signal(str)
+    folder_unlink_requested = Signal(str)  # quitar de la biblioteca sin tocar los archivos
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -114,8 +115,18 @@ class Sidebar(QFrame):
         folders_layout = QVBoxLayout(folders_panel)
         folders_layout.setContentsMargins(0, 0, 0, 0)
         folders_layout.setSpacing(4)
-        self.btn_add_folder = self._header_button("Importar carpeta…", self.import_folder_requested.emit, "folder_plus")
-        folders_layout.addLayout(self._section_header("Carpetas", "folders", "folder_open", self.btn_add_folder))
+        self.btn_add_folder = self._header_button(
+            "Agregar una carpeta de música (importarla)…", self.import_folder_requested.emit, "folder_plus"
+        )
+        self.btn_unlink_folder = self._header_button(
+            "Quitar la carpeta seleccionada de la biblioteca\n(los archivos no se borran ni van a la Papelera)",
+            self._unlink_current,
+            "folder_minus",
+        )
+        self.btn_unlink_folder.setEnabled(False)
+        folders_header = self._section_header("Carpetas", "folders", "folder_open", self.btn_unlink_folder)
+        folders_header.addWidget(self.btn_add_folder)
+        folders_layout.addLayout(folders_header)
 
         self.folder_tree = QTreeWidget()
         self.folder_tree.setHeaderHidden(True)
@@ -249,7 +260,7 @@ class Sidebar(QFrame):
         """Vuelve a dibujar los iconos con los colores del tema activo."""
         for row, (_kind, _label, icon_name) in enumerate(LIBRARY_VIEWS):
             self.library_list.item(row).setIcon(icon(icon_name, MUTED, 18))
-        for button in (self.btn_new, self.btn_add_folder):
+        for button in (self.btn_new, self.btn_add_folder, self.btn_unlink_folder):
             button.setIcon(icon(button.property("icon_name"), MUTED, 16))
         for glyph in self._section_glyphs:
             glyph.setPixmap(icon(glyph.property("icon_name"), glyph.property("role"), 15).pixmap(15, 15))
@@ -299,6 +310,7 @@ class Sidebar(QFrame):
             add(root, self.folder_tree)
         self.folder_tree.blockSignals(False)
         self.empty_folders.setVisible(not roots)
+        self.btn_unlink_folder.setEnabled(self.current_folder() is not None)
 
     def select_folder(self, path: str) -> None:
         key = folder_key(path)
@@ -366,6 +378,7 @@ class Sidebar(QFrame):
         self._clear(self.library_list)
         self._clear(self.playlist_list)
         current.setSelected(True)
+        self.btn_unlink_folder.setEnabled(True)
         self.view_selected.emit("folder", current.data(0, _ID_ROLE))
 
     @staticmethod
@@ -380,6 +393,12 @@ class Sidebar(QFrame):
         self.folder_tree.setCurrentItem(None)
         self.folder_tree.clearSelection()
         self.folder_tree.blockSignals(False)
+        self.btn_unlink_folder.setEnabled(False)
+
+    def _unlink_current(self) -> None:
+        folder = self.current_folder()
+        if folder is not None:
+            self.folder_unlink_requested.emit(folder)
 
     def _rename_current(self) -> None:
         pid = self.current_playlist_id()
@@ -424,13 +443,19 @@ class Sidebar(QFrame):
             menu.addSeparator()
             menu.addAction(icon("edit", TEXT, 16), "Renombrar carpeta…", lambda: self.folder_rename_requested.emit(path))
             menu.addAction(icon("folder_plus", TEXT, 16), "Nueva subcarpeta…", lambda: self.folder_create_requested.emit(path))
+            menu.addSeparator()
+            menu.addAction(
+                icon("folder_minus", TEXT, 16),
+                "Quitar carpeta de la biblioteca…",
+                lambda: self.folder_unlink_requested.emit(path),
+            )
             menu.addAction(icon("trash", "danger", 16), "Enviar carpeta a la Papelera…", lambda: self.folder_trash_requested.emit(path))
             if item.childCount():
                 menu.addSeparator()
                 menu.addAction("Expandir todo", lambda: self._expand_all(item, True))
                 menu.addAction("Contraer todo", lambda: self._expand_all(item, False))
             menu.addSeparator()
-        menu.addAction(icon("add", TEXT, 16), "Importar otra carpeta…", self.import_folder_requested.emit)
+        menu.addAction(icon("folder_plus", TEXT, 16), "Agregar otra carpeta de música…", self.import_folder_requested.emit)
         menu.exec(global_pos)
         menu.deleteLater()  # si no, cada clic derecho deja un menú en memoria
 

@@ -210,6 +210,25 @@ class PlaybackController(QObject):
             random.shuffle(added)
         self._order.extend(added)
 
+    def follow_order(self, tracks: list[Track]) -> bool:
+        """Si la cola es esta misma lista en otro orden (se reordenó a mano), la siguiente canción sigue el
+        orden nuevo sin cortar la que suena. En aleatorio el orden de escucha no cambia. Devuelve si la cola cambió."""
+        def key(t: Track) -> tuple[int, int | None]:
+            return t.id, t.entry_id
+
+        current = self.current_track
+        if current is None or sorted(map(key, self._queue)) != sorted(map(key, tracks)):
+            return False
+        new_index = {key(t): i for i, t in enumerate(tracks)}
+        old_queue = self._queue
+        self._queue = list(tracks)
+        if self._shuffle:
+            self._order = [new_index[key(old_queue[i])] for i in self._order]
+        else:
+            self._order = list(range(len(self._queue)))
+            self._pos = new_index[key(current)]
+        return True
+
     def update_track(self, track: Track) -> None:
         """Refleja cambios de metadatos/ruta en la cola (p. ej. tras relocalizar)."""
         self.update_tracks({track.id: track})
