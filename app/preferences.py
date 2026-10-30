@@ -122,6 +122,23 @@ class Preferences:
     def playback_normalization(self, value: bool) -> None:
         self._s.setValue(self.NORMALIZE, bool(value))
 
+    SONG_COLUMNS = "preferences/song_columns"
+
+    @property
+    def song_columns(self) -> list[str]:
+        """Datos de cada canción que se ven en las listas, además del título (claves de track_model.SONG_COLUMNS)."""
+        from .ui.track_model import DEFAULT_SONG_COLUMNS, SONG_COLUMNS
+
+        valid = {key for key, _label, _col in SONG_COLUMNS}
+        value = self._s.value(self.SONG_COLUMNS)
+        if value is None:
+            return list(DEFAULT_SONG_COLUMNS)
+        return [k for k in str(value).split(",") if k in valid]  # "" = solo el título
+
+    @song_columns.setter
+    def song_columns(self, keys: list[str]) -> None:
+        self._s.setValue(self.SONG_COLUMNS, ",".join(keys))
+
     MEDIA_KEYS = "preferences/global_media_keys"
 
     @property

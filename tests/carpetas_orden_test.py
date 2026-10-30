@@ -46,10 +46,11 @@ os.makedirs(os.path.dirname(database_path()), exist_ok=True)
 db = Database(database_path())
 db.add_tracks([scan_file(p)[0] for p in files])
 # Simula una base de la versión anterior (sin orden manual) y la vuelve a abrir.
-db.conn.execute("ALTER TABLE tracks DROP COLUMN sort_pos"); db.conn.execute("PRAGMA user_version = 2"); db.conn.commit(); db.close()
+db.conn.execute("ALTER TABLE tracks DROP COLUMN sort_pos"); db.conn.execute("DROP TABLE view_order"); db.conn.execute("PRAGMA user_version = 2"); db.conn.commit(); db.close()
 db = Database(database_path())
 check("una base anterior se actualiza sin perder canciones", len(db.all_tracks()) == len(files)
-      and db.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3)
+      and db.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
+      and db.view_order("recent") == {})
 before = [t.id for t in db.all_tracks()]
 check("sin orden manual, «Canciones» queda como siempre", not db.has_library_order())
 custom = list(reversed(before))
@@ -120,20 +121,78 @@ c.table.clearSelection(); c.table.selectRow(0)
 QTest.keyClick(c.table, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier); spin(100)
 check("Alt+↓ en la playlist queda guardado", [t.entry_id for t in db.playlist_tracks(pl.id)][1] == first)
 
-win.sidebar.select_library("artists"); spin(150)
-check("en Artistas no se arrastra (el orden es por grupo)", not c.table.reorderable())
-win.sidebar.select_library("recent"); spin(150)
-check("en Recientes tampoco", not c.table.reorderable())
-
 win.sidebar.select_library("songs"); spin(150)
 answer_with(0); win._reset_order(); spin(150)
 check("«Volver al orden de siempre» pregunta y lo restablece", not db.has_library_order() and "orden" in asked[-1][1])
+
+print("[Ventana: cada vista con su propio orden]")
+def nudge_down_first():
+    c.table.clearSelection(); c.table.selectRow(0)
+    c._nudge_selected(1); spin(100)  # lo mismo que «Bajar» del clic derecho (Alt+↓ ya se prueba en «Canciones»)
+
+win.sidebar.select_folder(rock); spin(150)
+check("en una carpeta se puede ordenar", c.table.reorderable())
+shown = [t.id for t in c.visible_tracks()]
+nudge_down_first()
+want = [shown[1], shown[0]] + shown[2:]
+check("Alt+↓ en la carpeta queda guardado para esa carpeta",
+      [t.id for t in win._folder_tracks(rock)] == want and "orden personalizado" in c.subtitle.text())
+check("  «Canciones» no cambia", not db.has_library_order())
+win.sidebar.select_folder(os.path.join(rock, "80s")); spin(100)
+win.sidebar.select_folder(rock); spin(150)
+check("  al volver a la carpeta sigue igual", [t.id for t in c.visible_tracks()] == want)
+win._on_play_requested(c.visible_tracks(), 0); spin(300)
+check("  «Reproducir» sigue ese orden", win.player.current_track.id == want[0]); win.player.stop()
+win._play_folder(rock, False); spin(300)
+check("  y también el doble clic / menú de la carpeta", win.player.current_track.id == want[0]); win.player.stop()
+
+win.sidebar.select_library("artists"); spin(150)
+check("en Artistas se puede ordenar cada artista", c.table.reorderable() and c.current_group_label() is not None)
+group = c.current_group_label(); shown = [t.id for t in c.visible_tracks()]
+nudge_down_first()
+from app.utils import normalize_text
+saved = db.view_order(f"artist:{normalize_text(group)}")
+check("  se guarda el orden de ese artista", sorted(saved, key=saved.get) == [shown[1], shown[0]] + shown[2:])
+win.sidebar.select_library("albums"); spin(100); win.sidebar.select_library("artists"); spin(150)
+check("  y se ve igual al volver", [t.id for t in c.visible_tracks()] == [shown[1], shown[0]] + shown[2:])
+
+win.sidebar.select_library("recent"); spin(150)
+check("en Recientes se puede ordenar", c.table.reorderable())
+shown = [t.id for t in c.visible_tracks()]
+nudge_down_first()
+check("  se guarda", [t.id for t in c.visible_tracks()] == [shown[1], shown[0]] + shown[2:] and db.view_order("recent"))
+
+print("[Reabrir el programa]")
+folder_before = [t.id for t in win._folder_tracks(rock)]
+win.close(); spin(100); db.close()
+db = Database(database_path())
+win = mw.MainWindow(db); win.show(); spin(300); c = win.content
+win.sidebar.select_folder(rock); spin(150)
+check("el orden de la carpeta sigue después de cerrar y abrir", [t.id for t in c.visible_tracks()] == folder_before)
+win.sidebar.select_library("recent"); spin(150)
+check("  y el de Recientes", [t.id for t in c.visible_tracks()][:2] == [shown[1], shown[0]])
+
+print("[Aleatorio]")
+win.sidebar.select_library("songs"); spin(150)
+before = [t.id for t in c.visible_tracks()]
+import random as _random
+_random.seed(7)
+c.btn_shuffle.click(); spin(300)
+after = [t.id for t in c.visible_tracks()]
+check("«Aleatorio» mezcla a la vista las canciones mostradas", sorted(after) == sorted(before) and after != before)
+check("  suena la primera de la lista mezclada", win.player.current_track and win.player.current_track.id == after[0])
+win.player.next(); spin(300)
+check("  y después la segunda (sigue lo que se ve)", win.player.current_track.id == after[1])
+check("  el resumen lo dice", "mezcladas al azar" in c.subtitle.text())
+check("  no pisa el orden guardado", not db.has_library_order())
+win.player.stop()
 
 print("[Ventana: quitar una carpeta]")
 seen = []
 def record_menu():
     menu = QApplication.activePopupWidget()
-    if not isinstance(menu, QMenu):
+    if not isinstance(menu, QMenu) or not any(a.text() == "Reproducir carpeta" for a in menu.actions()):
+        if isinstance(menu, QMenu): menu.close()  # otro menú que quedó abierto: no es el de la carpeta
         QTimer.singleShot(50, record_menu); return
     seen.extend(a.text() for a in menu.actions()); menu.close()
 QTimer.singleShot(100, record_menu)
@@ -175,6 +234,39 @@ again = [s for s in (scan_file(p)[0] for p in files[:5]) if s.key not in known]
 added, _dups = db.add_tracks(again); win._reload_library()
 check("se puede volver a agregar la carpeta (la importación no las da por conocidas)",
       len(again) == 5 and len(added) == 5 and len(db.all_tracks()) == total)
+
+print("[Qué ver de cada canción]")
+from app.ui.track_model import COL_ALBUM, COL_ARTIST, COL_DURATION, COL_FILE, COL_GENRE, COL_TITLE
+from app.ui.dialogs import PreferencesDialog
+win.sidebar.select_library("songs"); spin(100)
+hidden = lambda col: c.table.isColumnHidden(col)
+check("de fábrica: título, artista, álbum, duración y carátula",
+      not hidden(COL_TITLE) and not hidden(COL_ARTIST) and not hidden(COL_ALBUM) and not hidden(COL_DURATION)
+      and hidden(COL_GENRE) and hidden(COL_FILE) and "cover" in c.columns())
+dialog = PreferencesDialog(win.prefs, win)
+check("Preferencias tiene la sección «Canciones» con el título fijo",
+      any(dialog.nav.item(i).text() == "Canciones" for i in range(dialog.nav.count())) and "album" in dialog.column_boxes)
+win.show(); dialog.show(); spin(150)
+screen = win.screen().availableGeometry()
+check("Preferencias se abre centrada en la pantalla",
+      abs(dialog.frameGeometry().center().x() - screen.center().x()) <= 2
+      and abs(dialog.frameGeometry().center().y() - screen.center().y()) <= 2,
+      (dialog.frameGeometry().center(), screen.center()))
+check("  con secciones a la izquierda (una página a la vista)", dialog.nav.count() >= 5 and dialog.pages.count() == dialog.nav.count())
+dialog.hide()
+dialog.column_boxes["album"].setChecked(False); dialog.column_boxes["genre"].setChecked(True)
+dialog.column_boxes["cover"].setChecked(False)
+dialog._save(); win.content.set_columns(win.prefs.song_columns); spin(100)
+check("al guardar: se oculta el álbum y se ve el género", hidden(COL_ALBUM) and not hidden(COL_GENRE) and not hidden(COL_TITLE))
+check("  sin carátulas las filas son más bajas", c.table.verticalHeader().defaultSectionSize() < 40
+      and c.model.index(0, COL_TITLE).data(Qt.ItemDataRole.DecorationRole) is None)
+c._toggle_column("file", True); spin(50)
+check("clic derecho en los encabezados también lo cambia y se guarda",
+      not hidden(COL_FILE) and "file" in win.prefs.song_columns
+      and c.model.index(0, COL_FILE).data() == os.path.basename(c.model.track_at(0).path))
+win.close(); spin(100); db.close()
+db = Database(database_path()); win = mw.MainWindow(db); win.show(); spin(200); c = win.content
+check("  y sigue así al abrir de nuevo el programa", hidden(COL_ALBUM) and not hidden(COL_GENRE) and not hidden(COL_FILE))
 
 win.close(); spin(100)
 print(f"\nRESULTADO: {sum(results)}/{len(results)} correctas")

@@ -11,8 +11,22 @@ from . import theme
 from .covers import CoverProvider
 from .icons import ACCENT, MUTED, icon, padded_pixmap
 
-COL_TITLE, COL_ARTIST, COL_ALBUM, COL_DURATION, COL_ACTION = range(5)
-HEADERS = ["Título", "Artista", "Álbum", "Duración", ""]
+import os
+
+COL_TITLE, COL_ARTIST, COL_ALBUM, COL_GENRE, COL_FILE, COL_DURATION, COL_ACTION = range(7)
+HEADERS = ["Título", "Artista", "Álbum", "Género", "Archivo", "Duración", ""]
+
+# Datos que se pueden mostrar u ocultar (Preferencias → Canciones, o clic derecho en los encabezados).
+# El título se ve siempre. "cover" no es una columna: la carátula pequeña junto al título.
+SONG_COLUMNS = [
+    ("artist", "Artista", COL_ARTIST),
+    ("album", "Álbum", COL_ALBUM),
+    ("genre", "Género", COL_GENRE),
+    ("file", "Nombre del archivo", COL_FILE),
+    ("duration", "Duración", COL_DURATION),
+    ("cover", "Carátula", None),
+]
+DEFAULT_SONG_COLUMNS = ["artist", "album", "duration", "cover"]
 ROW_COVER_SIZE = 40
 
 TRACK_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -36,6 +50,7 @@ class TrackTableModel(QAbstractTableModel):
         self._covers = covers
         self._tracks: list[Track] = []
         self._current_id: int | None = None
+        self._show_covers = True
         self._bold = QFont()
         self._bold.setBold(True)
         self._italic = QFont()
@@ -53,6 +68,11 @@ class TrackTableModel(QAbstractTableModel):
 
     def track_at(self, row: int) -> Track | None:
         return self._tracks[row] if 0 <= row < len(self._tracks) else None
+
+    def set_show_covers(self, show: bool) -> None:
+        if show != self._show_covers:
+            self._show_covers = show
+            self.repaint_all()
 
     def set_current_track(self, track_id: int | None) -> None:
         self._current_id = track_id
@@ -119,6 +139,10 @@ class TrackTableModel(QAbstractTableModel):
                 return track.artist
             if col == COL_ALBUM:
                 return track.album
+            if col == COL_GENRE:
+                return track.genre
+            if col == COL_FILE:
+                return os.path.basename(track.path)
             if col == COL_DURATION:
                 return format_time(track.duration_ms) if track.duration_ms else "—"
         if role == SORT_ROLE:
@@ -132,8 +156,9 @@ class TrackTableModel(QAbstractTableModel):
                 return padded_pixmap("add_circle", MUTED, 20, ROW_COVER_SIZE)
             if col == COL_TITLE:
                 if not track.available:
-                    return icon("warning", "warning", ROW_COVER_SIZE)
-                return self._covers.pixmap(track.cover_hash, ROW_COVER_SIZE)
+                    return icon("warning", "warning", ROW_COVER_SIZE if self._show_covers else 18)
+                if self._show_covers:
+                    return self._covers.pixmap(track.cover_hash, ROW_COVER_SIZE)
         if role == Qt.ItemDataRole.ToolTipRole:
             if col == COL_ACTION:
                 return "Agregar a playlist"
@@ -149,7 +174,7 @@ class TrackTableModel(QAbstractTableModel):
                 return theme.qcolor("faint")
             if is_current:
                 return theme.qcolor(ACCENT)
-            if col in (COL_ARTIST, COL_ALBUM, COL_DURATION):
+            if col in (COL_ARTIST, COL_ALBUM, COL_GENRE, COL_FILE, COL_DURATION):
                 return theme.qcolor(MUTED)
         if role == Qt.ItemDataRole.FontRole:
             if is_current and track.available:

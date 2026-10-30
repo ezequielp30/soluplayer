@@ -359,7 +359,9 @@ def t_playlist_view_and_remove():
     total = sum(t.duration_ms for t in c.visible_tracks())
     check("Vista de playlist: nombre, nº canciones y duración", c.title.text() == "Favoritas" and "7 canciones" in c.subtitle.text()
           and "42 s" in c.subtitle.text(), (c.subtitle.text(), total))
-    check("  cada fila tiene carátula/título/artista/álbum/duración", c.model.columnCount() == 5 and c.proxy.index(0, 3).data() == "0:06")
+    from app.ui.track_model import COL_DURATION, HEADERS
+    check("  cada fila tiene carátula/título/artista/álbum/duración", c.model.columnCount() == len(HEADERS)
+          and c.proxy.index(0, COL_DURATION).data() == "0:06")
     pos = c.table.visualRect(c.proxy.index(0, 1)).center()
     expect(is_(QMenu), pick_menu("Quitar de la playlist"))
     c._table_menu(pos); spin(200)
@@ -367,7 +369,8 @@ def t_playlist_view_and_remove():
     win.activateWindow(); c.table.setFocus(); spin(100); c.table.selectRow(0); QTest.keyClick(c.table, Qt.Key.Key_Delete); spin(200)
     check("  tecla Supr quita de la playlist (sin borrar archivo)", db.playlist(fav.id).track_count == 5 and len(win.library) == 6)
     c.btn_shuffle.click(); spin(300)
-    check("Botón «Aleatorio» en playlist", win.player.shuffle and win.player.is_playing)
+    check("Botón «Aleatorio» en playlist (mezcla la lista a la vista y suena la primera)",
+          win.player.is_playing and win.player.current_track.entry_id == c.visible_tracks()[0].entry_id)
     c.btn_play.click(); spin(300)
     check("Botón «Reproducir» en playlist", win.player.is_playing)
     win.player.set_shuffle(False)

@@ -2,6 +2,26 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.14.0 — 2026-10-30 (orden propio en cada lista, qué ver de cada canción, Preferencias nuevas)
+
+- **Cada lista tiene su propio orden, y se conserva al cerrar el programa:** además de «Canciones» y las
+  playlists, ahora también cada **carpeta**, cada **artista**, cada **álbum** y **Recientes** (arrastrar,
+  Alt+↑/↓ o «Subir»/«Bajar»). El orden de una carpeta no cambia el de «Canciones» ni el de otra carpeta.
+  «Reproducir», el doble clic y el menú de la carpeta lo siguen. Al renombrar una carpeta desde el programa
+  su orden la acompaña. En Recientes, las que se escuchen después aparecen arriba. Clic derecho → «Volver
+  al orden de siempre» deshace el orden de esa lista. (La búsqueda no se ordena: sus resultados cambian con
+  lo que se escribe.)
+- **«Aleatorio» mezcla la lista a la vista** y suena en ese orden, de arriba abajo (antes mezclaba sin
+  mostrarlo). No reemplaza tu orden guardado; si después mueves una canción, se guarda lo que ves.
+  «Reproducir en aleatorio» de una carpeta hace lo mismo.
+- **Qué ver de cada canción:** Preferencias → Canciones (o clic derecho sobre los encabezados de la lista):
+  Artista, Álbum, Género, Nombre del archivo, Duración y Carátula; el título se ve siempre. Vale para todas
+  las listas y se recuerda.
+- **Preferencias más simple:** secciones a la izquierda (Apariencia, Canciones, Importación, Internet,
+  Biblioteca, Teclado), una página a la vista y sin marcos. Se abre **centrada en la pantalla**, igual que
+  las ventanas de Herramientas.
+- La base de datos pasa a la versión 4 (respaldo automático antes de actualizar).
+
 ## 1.13.0 — 2026-10-29 (carpetas de música y orden manual)
 
 - **Quitar una carpeta de la biblioteca** (clic derecho en la carpeta, o el botón **−** junto al **+** de

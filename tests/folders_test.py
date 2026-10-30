@@ -112,7 +112,9 @@ pos_m = sb.folder_tree.visualItemRect(find("Música")).center()
 seen = []
 expect(is_(QMenu), pick("Reproducir en aleatorio", seen))
 sb._folder_menu(pos_m); spin(400)
-check("Menú carpeta → Reproducir en aleatorio", win.player.shuffle and win.player.current_track.title in ("a", "b", "c"))
+check("Menú carpeta → Reproducir en aleatorio (la muestra mezclada y suena la primera de la vista)",
+      c.title.text() == "Música" and win.player.current_track.title in ("a", "b", "c")
+      and win.player.current_track.id == c.visible_tracks()[0].id)
 check("  opciones del menú", all(any(s.startswith(x) for s in seen) for x in
       ["Reproducir carpeta", "Reproducir en aleatorio", "Agregar carpeta a playlist", "Mostrar en el Explorador",
        "Buscar música nueva", "Expandir todo", "Contraer todo", "Quitar carpeta de la biblioteca", "Agregar otra carpeta"]), seen)

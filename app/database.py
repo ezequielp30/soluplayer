@@ -14,7 +14,7 @@ from .metadata import AudioMetadata
 from .models import Playlist, Track
 from .utils import no_markup, normalize_text, path_key
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Cambios de esquema por versión (se aplican en orden, dentro de la misma transacción).
 _MIGRATIONS: dict[int, list[str]] = {
@@ -26,6 +26,14 @@ _MIGRATIONS: dict[int, list[str]] = {
     ],
     3: [  # orden manual de «Canciones» (NULL = sin posición elegida: va al final, en el orden de siempre)
         "ALTER TABLE tracks ADD COLUMN sort_pos INTEGER",
+    ],
+    4: [  # orden manual de cada vista: una carpeta, un artista, un álbum, Recientes (cada una con el suyo)
+        "CREATE TABLE IF NOT EXISTS view_order ("
+        " view TEXT NOT NULL,"
+        " track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,"
+        " position INTEGER NOT NULL,"
+        " PRIMARY KEY (view, track_id))",
+        "CREATE INDEX IF NOT EXISTS idx_view_order_track ON view_order(track_id)",
     ],
 }
 
@@ -203,6 +211,47 @@ class Database:
 
     def has_library_order(self) -> bool:
         return self.conn.execute("SELECT 1 FROM tracks WHERE sort_pos IS NOT NULL LIMIT 1").fetchone() is not None
+
+    def view_order(self, view: str) -> dict[int, int]:
+        """{id de canción: posición} elegido a mano para una vista («folder:<ruta>», «artist:<nombre>»,
+        «album:<nombre>», «recent»)."""
+        rows = self.conn.execute("SELECT track_id, position FROM view_order WHERE view = ?", (view,))
+        return {r[0]: r[1] for r in rows}
+
+    def view_orders(self, prefix: str) -> dict[str, dict[int, int]]:
+        """Todos los órdenes manuales cuyas vistas empiezan con `prefix` (p. ej. «artist:»), en UNA consulta."""
+        orders: dict[str, dict[int, int]] = {}
+        rows = self.conn.execute(
+            "SELECT view, track_id, position FROM view_order WHERE substr(view, 1, ?) = ?", (len(prefix), prefix)
+        )
+        for view, track_id, position in rows:
+            orders.setdefault(view, {})[track_id] = position
+        return orders
+
+    def set_view_order(self, view: str, track_ids: list[int]) -> None:
+        """Guarda el orden manual de una vista en UNA transacción (reemplaza el anterior)."""
+        with self.conn:
+            self.conn.execute("DELETE FROM view_order WHERE view = ?", (view,))
+            self.conn.executemany(
+                "INSERT OR IGNORE INTO view_order (view, track_id, position) VALUES (?, ?, ?)",
+                [(view, tid, i) for i, tid in enumerate(track_ids)],
+            )
+
+    def clear_view_order(self, view: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM view_order WHERE view = ?", (view,))
+
+    def move_folder_orders(self, old: str, new: str) -> None:
+        """La carpeta se renombró: su orden manual y el de sus subcarpetas pasan a las rutas nuevas
+        (claves de folders.folder_key)."""
+        old_view, new_view = "folder:" + old, "folder:" + new
+        prefix = old_view.rstrip("\\/") + os.sep
+        with self.conn:
+            for (view,) in self.conn.execute("SELECT DISTINCT view FROM view_order WHERE view LIKE 'folder:%'").fetchall():
+                if view == old_view or view.startswith(prefix):
+                    target = new_view + view[len(old_view):]
+                    self.conn.execute("DELETE FROM view_order WHERE view = ?", (target,))
+                    self.conn.execute("UPDATE view_order SET view = ? WHERE view = ?", (target, view))
 
     def recent_tracks(self, limit: int = RECENT_LIMIT) -> list[Track]:
         rows = self.conn.execute(

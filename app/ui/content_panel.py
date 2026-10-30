@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import random
 from dataclasses import dataclass
 from typing import Callable
 
@@ -37,7 +38,11 @@ from .track_model import (
     COL_ALBUM,
     COL_ARTIST,
     COL_DURATION,
+    COL_FILE,
+    COL_GENRE,
     COL_TITLE,
+    DEFAULT_SONG_COLUMNS,
+    SONG_COLUMNS,
     ROW_COVER_SIZE,
     TRACK_ROLE,
     TrackSortProxy,
@@ -181,12 +186,14 @@ class ContentPanel(QFrame):
     trash_files_requested = Signal(object)  # list[Track]
     reorder_requested = Signal(object)  # list[Track] en el orden nuevo (arrastradas o Alt+↑/↓)
     reset_order_requested = Signal()
+    columns_changed = Signal(list)  # datos visibles elegidos con clic derecho en los encabezados
 
     def __init__(self, covers: CoverProvider, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("ContentPanel")
         self._covers = covers
         self._mode = MODE_LIBRARY
+        self._reset_label: str | None = None
         self._groups: list[Group] = []
         self._group_noun = ("", "")
 
@@ -313,10 +320,18 @@ class ContentPanel(QFrame):
         hh.setSectionResizeMode(COL_TITLE, QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(COL_ARTIST, QHeaderView.ResizeMode.Interactive)
         hh.setSectionResizeMode(COL_ALBUM, QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(COL_GENRE, QHeaderView.ResizeMode.Interactive)
+        hh.setSectionResizeMode(COL_FILE, QHeaderView.ResizeMode.Interactive)
         hh.setSectionResizeMode(COL_DURATION, QHeaderView.ResizeMode.Fixed)
         hh.setSectionResizeMode(COL_ACTION, QHeaderView.ResizeMode.Fixed)
         hh.resizeSection(COL_ARTIST, 190)
         hh.resizeSection(COL_ALBUM, 210)
+        hh.resizeSection(COL_GENRE, 130)
+        hh.resizeSection(COL_FILE, 220)
+        hh.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        hh.customContextMenuRequested.connect(self._header_menu)
+        self._columns: list[str] = []
+        self.set_columns(DEFAULT_SONG_COLUMNS)
         hh.resizeSection(COL_DURATION, 80)
         hh.resizeSection(COL_ACTION, 44)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -352,7 +367,7 @@ class ContentPanel(QFrame):
         self.table.addActions([enter, delete, move_up, move_down])
 
         self.btn_play.clicked.connect(self._play_all)
-        self.btn_shuffle.clicked.connect(lambda: self.shuffle_play_requested.emit(self.visible_tracks()))
+        self.btn_shuffle.clicked.connect(lambda: self.shuffle_play_requested.emit(self.shuffle_visible()))
         self.btn_add.clicked.connect(self._add_selected_from_button)
         self.refresh_icons()
 
@@ -373,14 +388,17 @@ class ContentPanel(QFrame):
         show_cover: bool = False,
         breadcrumb: list[tuple[str, str]] | None = None,
         reorderable: bool = False,
+        reset_label: str | None = None,
     ) -> None:
         """Muestra una lista de canciones. 'empty' = (icono, título, mensaje, acciones).
 
         `breadcrumb` = [(nombre, ruta)] de carpetas; cada tramo salvo el último es un enlace.
         `reorderable`: se puede ordenar a mano (arrastrar o Alt+↑/↓); el orden nuevo llega por reorder_requested.
+        `reset_label`: texto de la opción del clic derecho que vuelve al orden de siempre (reset_order_requested).
         """
         self._mode = mode
         self.table.set_reorderable(reorderable)
+        self._reset_label = reset_label if reorderable else None
         self._groups = []
         self.group_list.hide()
         self._set_breadcrumb(breadcrumb)
@@ -409,11 +427,15 @@ class ContentPanel(QFrame):
         empty: tuple[str, str, str, list[EmptyAction]],
         group_icon: str,
         keep_selection: bool = True,
+        reorderable: bool = False,
+        reset_label: str | None = None,
     ) -> None:
-        """Vista agrupada (Artistas, Álbumes) con lista de grupos a la izquierda."""
+        """Vista agrupada (Artistas, Álbumes) con lista de grupos a la izquierda. Con `reorderable`, las
+        canciones de cada grupo se ordenan a mano (current_group_label() dice de cuál es el orden nuevo)."""
         previous = self._current_group_label() if keep_selection else None
         self._mode = MODE_LIBRARY
-        self.table.set_reorderable(False)
+        self.table.set_reorderable(reorderable)
+        self._reset_label = reset_label if reorderable else None
         self._groups = groups
         self._group_noun = noun
         self.title.setToolTip("")  # que no quede la ruta de la carpeta vista antes
@@ -448,6 +470,62 @@ class ContentPanel(QFrame):
         else:
             self.subtitle.setText(f"0 {noun[1]}")
             self._set_table([])
+
+    def current_group_label(self) -> str | None:
+        return self._current_group_label() if self._groups else None
+
+    def set_current_group_tracks(self, tracks: list[Track]) -> None:
+        """El grupo elegido quedó en otro orden: se recuerda para cuando se vuelva a él."""
+        row = self.group_list.currentRow()
+        if 0 <= row < len(self._groups):
+            self._groups[row].tracks = list(tracks)
+
+    def shuffle_visible(self) -> list[Track]:
+        """«Aleatorio»: mezcla a la vista las canciones mostradas y devuelve la lista en ese orden. No se guarda
+        como orden manual hasta que se mueva alguna (entonces se guarda lo que se ve)."""
+        tracks = self.visible_tracks()
+        random.shuffle(tracks)
+        self.proxy.sort(-1)
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self.model.set_tracks(tracks)
+        self.table.clearSelection()
+        self.table.scrollToTop()
+        if tracks and "mezcladas al azar" not in self.subtitle.text():
+            self.add_subtitle_note("mezcladas al azar")
+        return tracks
+
+    def columns(self) -> list[str]:
+        return list(self._columns)
+
+    def set_columns(self, keys: list[str]) -> None:
+        """Qué datos de cada canción se ven, además del título (claves de SONG_COLUMNS)."""
+        self._columns = [key for key, _label, _col in SONG_COLUMNS if key in keys]
+        for key, _label, col in SONG_COLUMNS:
+            if col is not None:
+                self.table.setColumnHidden(col, key not in self._columns)
+        covers = "cover" in self._columns
+        self.model.set_show_covers(covers)
+        self.table.setIconSize(QSize(ROW_COVER_SIZE, ROW_COVER_SIZE) if covers else QSize(18, 18))
+        self.table.verticalHeader().setDefaultSectionSize(ROW_COVER_SIZE + 14 if covers else 32)
+
+    def _header_menu(self, pos) -> None:
+        menu = QMenu(self)
+        title = menu.addAction("Título (siempre visible)")
+        title.setEnabled(False)
+        for key, label, _col in SONG_COLUMNS:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(key in self._columns)
+            action.toggled.connect(lambda on, k=key: self._toggle_column(k, on))
+        menu.addSeparator()
+        menu.addAction("Más opciones en Herramientas → Preferencias → Canciones").setEnabled(False)
+        menu.exec(self.table.horizontalHeader().mapToGlobal(pos))
+        menu.deleteLater()  # si no, cada clic derecho deja un menú en memoria
+
+    def _toggle_column(self, key: str, on: bool) -> None:
+        keys = [k for k in self._columns if k != key] + ([key] if on else [])
+        self.set_columns(keys)
+        self.columns_changed.emit(self.columns())
 
     def visible_tracks(self) -> list[Track]:
         """Canciones en el orden en que se ven (respeta el orden por columna elegido)."""
@@ -690,8 +768,8 @@ class ContentPanel(QFrame):
             up.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Up))
             down = menu.addAction(icon("arrow_down", TEXT, 16), "Bajar", lambda: self._nudge_selected(1))
             down.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Down))
-            if self._mode == MODE_LIBRARY:
-                menu.addAction("Volver al orden de siempre (artista, álbum, título)", self.reset_order_requested.emit)
+            if self._reset_label:
+                menu.addAction(self._reset_label, self.reset_order_requested.emit)
             menu.addSeparator()
         if self._mode == MODE_PLAYLIST:
             label = "Quitar de la playlist" if len(tracks) == 1 else f"Quitar {len(tracks)} canciones de la playlist"

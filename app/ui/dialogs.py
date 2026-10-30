@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -20,7 +19,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QTabWidget,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -299,93 +298,121 @@ class PreferencesDialog(QDialog):
     def __init__(self, prefs: Preferences, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferencias")
-        self.setMinimumWidth(520)
+        self.resize(760, 500)
         self._prefs = prefs
         outer = QVBoxLayout(self)
-        tabs = QTabWidget()
-        outer.addWidget(tabs)
-        theme_page, general_page = QWidget(), QWidget()
-        tabs.addTab(theme_page, "Tema")
-        tabs.addTab(general_page, "General")
-        layout = QVBoxLayout(general_page)
-        theme_layout = QVBoxLayout(theme_page)
+        outer.setContentsMargins(0, 0, 0, 12)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        outer.addLayout(body, 1)
 
-        appearance = QGroupBox("Elige un tema")
-        appearance_layout = QVBoxLayout(appearance)
+        # Como Ajustes de Windows o Spotify: secciones a la izquierda, una sola página a la vista y sin marcos.
+        self.nav = QListWidget()
+        self.nav.setObjectName("GroupList")
+        self.nav.setFixedWidth(170)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.pages = QStackedWidget()
+        body.addWidget(self.nav)
+        body.addWidget(self.pages, 1)
+        self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
+
+        def page(name: str, title: str) -> QVBoxLayout:
+            widget = QWidget()
+            column = QVBoxLayout(widget)
+            column.setContentsMargins(24, 16, 24, 8)
+            column.setSpacing(8)
+            heading = QLabel(title)
+            heading.setObjectName("EmptyTitle")
+            column.addWidget(heading)
+            column.addSpacing(4)
+            self.pages.addWidget(widget)
+            QListWidgetItem(name, self.nav)
+            return column
+
+        # Apariencia
+        appearance = page("Apariencia", "Tema")
         self._original_theme = theme.mode()
         self.theme_picker = ThemePicker(prefs.theme)
         self.theme_buttons = self.theme_picker.buttons
         # Vista previa en vivo: el tema elegido se aplica al momento; «Cancelar» vuelve al anterior.
         self.theme_picker.chosen.connect(lambda key: theme.apply(QApplication.instance(), key))
-        appearance_layout.addWidget(self.theme_picker)
-        appearance_layout.addWidget(note_label("Se aplica al instante como vista previa; «Guardar» lo deja para las próximas veces."))
-        theme_layout.addWidget(appearance)
-        theme_layout.addStretch(1)
+        appearance.addWidget(self.theme_picker)
+        appearance.addWidget(note_label("Se ve al instante; «Guardar» lo deja para las próximas veces."))
+        appearance.addStretch(1)
 
-        online = QGroupBox("Datos en internet (Herramientas → Buscar datos en internet)")
-        online_layout = QVBoxLayout(online)
-        online_layout.addWidget(QLabel("Bases de datos que se usan por defecto:"))
+        # Canciones: qué datos se ven de cada una
+        from .track_model import SONG_COLUMNS
+
+        songs = page("Canciones", "Qué ver de cada canción")
+        always = QCheckBox("Nombre de la canción (título)")
+        always.setChecked(True)
+        always.setEnabled(False)  # sin título no se sabría qué canción es
+        songs.addWidget(always)
+        self.column_boxes: dict[str, QCheckBox] = {}
+        for key, label, _col in SONG_COLUMNS:
+            box = QCheckBox(label)
+            box.setChecked(key in prefs.song_columns)
+            self.column_boxes[key] = box
+            songs.addWidget(box)
+        songs.addWidget(note_label("Vale para todas las listas. También: clic derecho sobre los encabezados de la lista."))
+        songs.addStretch(1)
+
+        # Importación
+        importing = page("Importación", "Al importar música")
+        self.ask_titles = QCheckBox("Preguntar si completo los títulos de las canciones que no tienen")
+        self.ask_titles.setChecked(prefs.ask_titles_on_import)
+        self.detect_artist = QCheckBox("Proponer también el artista si el nombre es «Artista - Título»")
+        self.detect_artist.setChecked(prefs.detect_artist_in_filename)
+        self.detect_artist.setEnabled(self.ask_titles.isChecked())
+        self.ask_titles.toggled.connect(self.detect_artist.setEnabled)
+        importing.addWidget(self.ask_titles)
+        importing.addWidget(self.detect_artist)
+        importing.addWidget(note_label(
+            "El título propuesto sale del nombre del archivo y lo revisas antes de agregarla. "
+            "Se guarda solo en la biblioteca: los archivos no se modifican."
+        ))
+        importing.addStretch(1)
+
+        # Datos en internet
+        online = page("Internet", "Datos en internet")
+        online.addWidget(QLabel("Buscar en:"))
         self.source_boxes: dict[str, QCheckBox] = {}
         for key, source in SOURCES.items():
             box = QCheckBox(f"{source.name} — {source.description}")
             box.setChecked(key in prefs.online_sources)
             self.source_boxes[key] = box
-            online_layout.addWidget(box)
+            online.addWidget(box)
         self.online_covers = QCheckBox("Descargar también la carátula")
         self.online_covers.setChecked(prefs.online_covers)
-        online_layout.addWidget(self.online_covers)
-        layout.addWidget(online)
+        online.addSpacing(6)
+        online.addWidget(self.online_covers)
+        online.addStretch(1)
 
-        group = QGroupBox("Importación de música")
-        group_layout = QVBoxLayout(group)
-        self.ask_titles = QCheckBox(
-            "Al importar, preguntar si quiero completar los títulos de las canciones que no tienen título"
-        )
-        self.ask_titles.setChecked(prefs.ask_titles_on_import)
-        hint = QLabel(
-            "Si una canción no trae el título en sus etiquetas, se te mostrará un título propuesto "
-            "(a partir del nombre del archivo) que podrás revisar y editar antes de agregarla. "
-            "Los títulos se guardan solo en la biblioteca: los archivos no se modifican."
-        )
-        hint.setWordWrap(True)
-        hint.setObjectName("EmptyMessage")
-        self.detect_artist = QCheckBox("Proponer también el artista si el nombre es «Artista - Título»")
-        self.detect_artist.setChecked(prefs.detect_artist_in_filename)
-        self.detect_artist.setEnabled(self.ask_titles.isChecked())
-        self.ask_titles.toggled.connect(self.detect_artist.setEnabled)
-        group_layout.addWidget(self.ask_titles)
-        group_layout.addWidget(hint)
-        group_layout.addSpacing(4)
-        group_layout.addWidget(self.detect_artist)
-        layout.addWidget(group)
-
-        library = QGroupBox("Biblioteca")
-        library_layout = QVBoxLayout(library)
-        self.remove_missing = QCheckBox(
-            "Al abrir el programa, revisar si faltan canciones o carpetas en el disco (y preguntar si quitarlas)"
-        )
+        # Biblioteca y programa
+        library = page("Biblioteca", "Biblioteca")
+        self.remove_missing = QCheckBox("Al abrir, revisar si faltan canciones o carpetas (y preguntar si quitarlas)")
         self.remove_missing.setChecked(prefs.remove_missing_on_start)
-        library_layout.addWidget(self.remove_missing)
+        library.addWidget(self.remove_missing)
+        library.addWidget(note_label(
+            "Solo se quitan de la biblioteca y de las playlists, con respaldo previo; ningún archivo se borra. "
+            "Las de un disco externo o de red desconectado se conservan."
+        ))
+        library.addSpacing(6)
         self.confirm_exit = QCheckBox("Preguntar antes de salir del programa")
         self.confirm_exit.setChecked(prefs.confirm_exit)
-        library_layout.addWidget(self.confirm_exit)
-        library_layout.addWidget(note_label(
-            "Se quitan solo de la biblioteca y de las playlists (no se borra ningún archivo), con un respaldo "
-            "previo. Las de un disco externo o de red desconectado se conservan hasta que vuelva a estar."
-        ))
-        layout.addWidget(library)
+        library.addWidget(self.confirm_exit)
+        library.addStretch(1)
 
-        keyboard = QGroupBox("Teclado")
-        keyboard_layout = QVBoxLayout(keyboard)
-        self.media_keys = QCheckBox("Las teclas multimedia (Reproducir/Pausa, Siguiente…) funcionan aunque la ventana esté minimizada")
+        # Teclado
+        keyboard = page("Teclado", "Teclado")
+        self.media_keys = QCheckBox("Teclas multimedia activas aunque la ventana esté minimizada")
         self.media_keys.setChecked(prefs.global_media_keys)
-        keyboard_layout.addWidget(self.media_keys)
-        keyboard_layout.addWidget(note_label(
-            "Desactívalo si prefieres que esas teclas manejen otro programa (por ejemplo, el navegador) cuando "
-            "el reproductor no es la ventana activa."
-        ))
-        layout.addWidget(keyboard)
-        layout.addStretch(1)
+        keyboard.addWidget(self.media_keys)
+        keyboard.addWidget(note_label("Desactívalo si prefieres que esas teclas manejen otro programa (p. ej. el navegador)."))
+        keyboard.addStretch(1)
+
+        self.nav.setCurrentRow(0)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Guardar")
@@ -393,7 +420,12 @@ class PreferencesDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
+        buttons.setContentsMargins(12, 0, 12, 0)
         outer.addWidget(buttons)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        center_on_screen(self)
 
     def _save(self) -> None:
         # Primero se valida y después se guarda: cada preferencia se escribe al instante, así que
@@ -410,6 +442,7 @@ class PreferencesDialog(QDialog):
         self._prefs.theme = self.theme_picker.selected()
         self._prefs.online_sources = chosen
         self._prefs.online_covers = self.online_covers.isChecked()
+        self._prefs.song_columns = [k for k, box in self.column_boxes.items() if box.isChecked()]
         self.accept()
 
     def reject(self) -> None:
@@ -540,6 +573,18 @@ def confirm_without_backup(parent: QWidget) -> bool:
         "espacio en el disco. La operación se puede deshacer igualmente, pero sin respaldo no se podría "
         "recuperar la biblioteca si algo saliera mal.",
     ) == 1
+
+
+def center_on_screen(window: QWidget) -> None:
+    """Pone la ventana en el centro de la pantalla donde está el programa (sin salirse del área visible)."""
+    parent = window.parentWidget()
+    screen = (parent.screen() if parent is not None else None) or window.screen() or QApplication.primaryScreen()
+    if screen is None:
+        return
+    area = screen.availableGeometry()
+    frame = window.frameGeometry()
+    frame.moveCenter(area.center())
+    window.move(max(area.left(), frame.left()), max(area.top(), frame.top()))
 
 
 def note_label(text: str) -> QLabel:
