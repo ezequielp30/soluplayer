@@ -2,6 +2,16 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.14.1 — 2026-10-30 (barra de reproducción reordenada)
+
+- **Aleatorio y Repetir junto a los controles**, como en Spotify o Apple Music:
+  aleatorio · anterior · reproducir · siguiente · repetir · detener.
+- **El ecualizador va junto al volumen** (los dos ajustan cómo suena).
+- **Panel de la canción más ancho:** el título y el texto se leen completos y la barra de progreso es
+  casi el doble de larga, sin agregar una segunda fila.
+- En ventanas angostas se achica primero el buscador: la barra de progreso y los botones siguen a la vista
+  (antes el panel podía taparlos).
+
 ## 1.14.0 — 2026-10-30 (orden propio en cada lista, qué ver de cada canción, Preferencias nuevas)
 
 - **Cada lista tiene su propio orden, y se conserva al cerrar el programa:** además de «Canciones» y las

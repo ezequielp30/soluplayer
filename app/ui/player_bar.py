@@ -139,16 +139,21 @@ class PlayerBar(QFrame):
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(10)
 
-        # Controles de transporte: el botón reproducir es el único relleno de color.
+        # Controles de transporte, como en Spotify o Apple Music: aleatorio y repetir a los lados de
+        # anterior/reproducir/siguiente. El botón reproducir es el único relleno de color.
+        self.btn_shuffle = _tool_button("shuffle", "Orden aleatorio", 18, checkable=True)
         self.btn_prev = _tool_button("prev", "Anterior", 20)
         self.btn_play = _tool_button("play", "Reproducir (Espacio)", 20)
         self.btn_play.setObjectName("PlayButton")
         self.btn_play.setFixedSize(44, 44)
         self.btn_next = _tool_button("next", "Siguiente", 20)
+        self.btn_repeat = _tool_button("repeat", "Repetición: desactivada", 18)
         self.btn_stop = _tool_button("stop", "Detener", 16)
+        layout.addWidget(self.btn_shuffle)
         layout.addWidget(self.btn_prev)
         layout.addWidget(self.btn_play)
         layout.addWidget(self.btn_next)
+        layout.addWidget(self.btn_repeat)
         layout.addWidget(self.btn_stop)
         layout.addSpacing(10)
 
@@ -156,8 +161,8 @@ class PlayerBar(QFrame):
         now = QFrame()
         now.setObjectName("NowPlaying")
         now.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        now.setMinimumWidth(200)
-        now.setMaximumWidth(260)  # compacta, como en el diseño; el espacio sobrante va al buscador
+        now.setMinimumWidth(240)  # en ventanas angostas cede primero el buscador; el progreso sigue a la vista
+        now.setMaximumWidth(420)  # el espacio que dejan aleatorio/repetir es para el título y el progreso
         now_layout = QHBoxLayout(now)
         now_layout.setContentsMargins(8, 8, 14, 8)
         now_layout.setSpacing(12)
@@ -204,9 +209,7 @@ class PlayerBar(QFrame):
         now_layout.addLayout(info, 1)
         layout.addWidget(now, 3)
 
-        # Modos y volumen
-        self.btn_shuffle = _tool_button("shuffle", "Orden aleatorio", 18, checkable=True)
-        self.btn_repeat = _tool_button("repeat", "Repetición: desactivada", 18)
+        # Sonido: ecualizador junto al volumen (los dos ajustan cómo suena)
         self.btn_eq = _tool_button("equalizer", "Ecualizador (Ctrl+E)", 18)
         self.btn_mute = _tool_button("volume", "Silenciar", 18, checkable=True)
         self.volume = JumpSlider()
@@ -214,10 +217,7 @@ class PlayerBar(QFrame):
         self.volume.setFixedWidth(96)
         self.volume.setToolTip("Volumen")
         layout.addSpacing(10)
-        layout.addWidget(self.btn_shuffle)
-        layout.addWidget(self.btn_repeat)
         layout.addWidget(self.btn_eq)
-        layout.addSpacing(8)
         layout.addWidget(self.btn_mute)
         layout.addWidget(self.volume)
         layout.addSpacing(12)
@@ -229,6 +229,7 @@ class PlayerBar(QFrame):
         self.search.setClearButtonEnabled(True)
         self._search_action = self.search.addAction(icon("search", MUTED, 20), QLineEdit.ActionPosition.LeadingPosition)
         self.search.setMaximumWidth(360)
+        self.search.setMinimumWidth(120)  # en ventanas angostas se achica primero el buscador
         self.search.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         layout.addWidget(self.search, 1)  # se encoge cuando falta espacio (máximo 300 px)
         self._search_timer = QTimer(self)
