@@ -34,7 +34,9 @@ con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
 # Menos de 15 minutos: un álbum entero en un solo MP3 tarda más que el límite de medición de la prueba.
 samples = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.mp3' and duration_ms between 1 and 900000 "
                                      "order by random() limit 4")]
-samples.insert(0, r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
+first = mp3_real()
+samples = [first] + [p for p in samples if p != first and os.path.isfile(p)]  # solo las que existen
 originals = {p: sha(p) for p in samples}  # antes de tocar nada: así se ve si algo escribió en el original
 work = tempfile.mkdtemp(prefix="mp_gain_")
 ok_all = True

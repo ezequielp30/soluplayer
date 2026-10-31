@@ -6,7 +6,8 @@ from PySide6.QtCore import QTimer, QSettings
 QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from PySide6.QtWidgets import QApplication
 import app.application as appmod
-src = [r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3"]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
+src = [mp3_real()]
 lib = os.path.join(work, "m"); os.makedirs(lib)
 copies = [shutil.copy2(p, os.path.join(lib, f"c{i}" + os.path.splitext(p)[1])) for i, p in enumerate(src)]
 def script():

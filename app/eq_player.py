@@ -25,7 +25,7 @@ import time
 
 import numpy as np
 import shiboken6
-from PySide6.QtCore import QCoreApplication, QIODevice, QObject, QTimer, QUrl, Signal
+from PySide6.QtCore import QCoreApplication, QIODevice, QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtMultimedia import (
     QAudio,
     QAudioDecoder,
@@ -40,15 +40,29 @@ from .equalizer import EqProcessor, EqSettings
 
 log = logging.getLogger(__name__)
 
-RAM_BYTES = 160 * 1024 * 1024  # ≈ 14 min a 48 kHz estéreo; en bytes, no en minutos: no depende del dispositivo
+RAM_BYTES = 160 * 1024 * 1024  # ≈ 7 min a 48 kHz estéreo en float; en bytes, no en minutos: no depende del dispositivo
 RAM_STEP_BYTES = 16 * 1024 * 1024  # la memoria crece de a tramos, no duplicándose
 _TEMP_PREFIX = "reproductor-eq-"
 _BUFFER_MS = 250  # audio que tiene la salida por delante: poco, para que pausa y saltos respondan rápido
 _STALL_SECONDS = 20.0
+_FADE_MS = 8  # fundido al empezar, saltar, pausar y reanudar: sin clic por cortar la onda a mitad
+_SAMPLE = np.float32  # el audio decodificado se guarda en float: sin truncar a 16 bits ni recortar picos > 0 dBFS
 
 State = QMediaPlayer.PlaybackState
 Status = QMediaPlayer.MediaStatus
 
+
+def _as_float(raw: bytes, sample_format) -> np.ndarray:
+    """Muestras del decodificador como float32 en [-1, 1] (pueden pasar de 1 en archivos con picos > 0 dBFS).
+    Se pide Float; si la plataforma entrega otro formato, se convierte sin perder lo que trae."""
+    Fmt = QAudioFormat.SampleFormat
+    if sample_format == Fmt.Float:
+        return np.frombuffer(raw, dtype="<f4")
+    if sample_format == Fmt.Int32:
+        return np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+    if sample_format == Fmt.UInt8:
+        return (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
 
 class _PcmStore:
     """Audio decodificado de la canción actual: en memoria hasta RAM_BYTES; más largo, en un archivo
@@ -57,10 +71,10 @@ class _PcmStore:
 
     def __init__(self, rate: int, channels: int) -> None:
         self._channels = channels
-        self._bpf = 2 * channels
+        self._bpf = np.dtype(_SAMPLE).itemsize * channels
         self._limit = RAM_BYTES // self._bpf  # en frames
         self._step = RAM_STEP_BYTES // self._bpf
-        self._ram = np.zeros((0, channels), dtype=np.int16)
+        self._ram = np.zeros((0, channels), dtype=_SAMPLE)
         self._file = None
         self._path = ""
         self._lock = threading.Lock()
@@ -83,7 +97,7 @@ class _PcmStore:
                 self._file.flush()  # que un disco lleno falle aquí y no más tarde, al leer
             else:
                 if need > len(self._ram):
-                    grown = np.zeros((min(self._limit, max(need, len(self._ram) + self._step)), self._channels), dtype=np.int16)
+                    grown = np.zeros((min(self._limit, max(need, len(self._ram) + self._step)), self._channels), dtype=_SAMPLE)
                     grown[: self.frames] = self._ram[: self.frames]
                     self._ram = grown
                 self._ram[self.frames:need] = data
@@ -100,11 +114,11 @@ class _PcmStore:
             except OSError as exc:
                 log.warning("Ecualizador: no se pudo leer el temporal: %s", exc)
                 self.frames = start  # lo que sigue no se puede oír: la canción termina aquí
-                return np.zeros((0, self._channels), dtype=np.int16)
+                return np.zeros((0, self._channels), dtype=_SAMPLE)
             usable = len(raw) - len(raw) % self._bpf
             if usable < count * self._bpf:
                 self.frames = start + usable // self._bpf  # el archivo quedó más corto de lo esperado
-            return np.frombuffer(raw[:usable], dtype=np.int16).reshape(-1, self._channels)
+            return np.frombuffer(raw[:usable], dtype=_SAMPLE).reshape(-1, self._channels)
 
     def _spill(self) -> None:
         """Pasa lo que hay en memoria a un temporal, por tramos (sin duplicar la memoria). Si falla, se
@@ -124,7 +138,7 @@ class _PcmStore:
                 pass
             raise
         self._file, self._path = file, path
-        self._ram = np.zeros((0, self._channels), dtype=np.int16)
+        self._ram = np.zeros((0, self._channels), dtype=_SAMPLE)
         log.info("Ecualizador: canción larga, el audio pasa a %s", self._path)
 
     def close(self) -> None:
@@ -136,7 +150,7 @@ class _PcmStore:
                     os.remove(self._path)
                 except OSError:
                     pass
-            self._ram = np.zeros((0, self._channels), dtype=np.int16)
+            self._ram = np.zeros((0, self._channels), dtype=_SAMPLE)
             self.frames = 0
 
     @staticmethod
@@ -201,6 +215,12 @@ class EqPlayer(QObject):
         self._timer.setInterval(100)
         self._timer.timeout.connect(self._tick)
         self._last_data = time.monotonic()
+        self._gain = 1.0  # volumen del fundido de pausa/reanudar (multiplica al del usuario)
+        self._ramp_target, self._ramp_step, self._ramp_done = 1.0, 0.0, None
+        self._ramp = QTimer(self)
+        self._ramp.setTimerType(Qt.TimerType.PreciseTimer)
+        self._ramp.setInterval(_FADE_MS // 4 or 1)
+        self._ramp.timeout.connect(self._ramp_tick)
         audio.volumeChanged.connect(self._apply_volume)
         audio.mutedChanged.connect(self._apply_volume)
         audio.deviceChanged.connect(self._device_changed)
@@ -231,6 +251,10 @@ class EqPlayer(QObject):
         self._eos_at = 0.0
         self._eq.reset()
         self._skip = self._latency()
+        self._fade_left = self._fade_frames()
+
+    def _fade_frames(self) -> int:
+        return max(1, int(self._rate * _FADE_MS / 1000))
 
     def _latency(self) -> int:
         from .equalizer import LATENCY_FRAMES
@@ -261,18 +285,44 @@ class EqPlayer(QObject):
         if self._status == Status.EndOfMedia:
             self.setPosition(0)
         if self._state == State.PausedState and self._sink is not None:
+            self._ramp.stop()
+            self._gain = 0.0
+            self._apply_volume()
             self._sink.resume()
+            self._ramp_to(1.0)
         else:
+            self._ramp.stop()
+            self._gain = 1.0
             self._start_sink()
         self._set_state(State.PlayingState)
         self._timer.start()
 
     def pause(self) -> None:
         if self._state == State.PlayingState and self._sink is not None:
-            self._sink.suspend()
             self._set_state(State.PausedState)
+            sink = self._sink
+            self._ramp_to(0.0, lambda: sink.suspend() if sink is self._sink and self._state == State.PausedState else None)
+
+    def _ramp_to(self, target: float, done=None) -> None:
+        """Lleva el volumen de la salida hasta `target` en unos milisegundos (fundido de pausa/reanudar)."""
+        self._ramp_target, self._ramp_done = target, done
+        self._ramp_step = (target - self._gain) / 4
+        self._ramp.start()
+
+    def _ramp_tick(self) -> None:
+        self._gain += self._ramp_step
+        if (self._ramp_step >= 0 and self._gain >= self._ramp_target) or (self._ramp_step < 0 and self._gain <= self._ramp_target):
+            self._gain = self._ramp_target
+            self._ramp.stop()
+        self._apply_volume()
+        if not self._ramp.isActive() and self._ramp_done is not None:
+            done, self._ramp_done = self._ramp_done, None
+            done()
 
     def stop(self) -> None:
+        self._ramp.stop()  # detener es inmediato: suelta el archivo en el acto (Papelera, mover, renombrar)
+        self._ramp_done = None
+        self._gain = 1.0
         self._stop_sink()
         self._seek_frames(0)
         self._set_state(State.StoppedState)
@@ -319,7 +369,7 @@ class EqPlayer(QObject):
         fmt = QAudioFormat()
         fmt.setSampleRate(self._rate)
         fmt.setChannelCount(self._channels)
-        fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        fmt.setSampleFormat(QAudioFormat.SampleFormat.Float)
         decoder.setAudioFormat(fmt)
         decoder.bufferReady.connect(self._on_buffer)
         decoder.finished.connect(self._on_decoded)
@@ -362,7 +412,7 @@ class EqPlayer(QObject):
         if self._decoder is None:
             return
         buffer = self._decoder.read()
-        data = np.frombuffer(bytes(buffer.constData()), dtype=np.int16)
+        data = _as_float(bytes(buffer.constData()), buffer.format().sampleFormat())
         frames = len(data) // self._channels
         if not frames:
             return
@@ -443,7 +493,7 @@ class EqPlayer(QObject):
 
     def _apply_volume(self, *_args) -> None:
         if self._sink is not None:
-            self._sink.setVolume(0.0 if self._audio.isMuted() else self._audio.volume())
+            self._sink.setVolume(0.0 if self._audio.isMuted() else self._audio.volume() * self._gain)
 
     def _on_sink_state(self, sink: QAudioSink, state) -> None:
         """La salida se detuvo sola con un error (auriculares USB o Bluetooth desconectados, vuelta de la
@@ -479,6 +529,7 @@ class EqPlayer(QObject):
         self._eos = False
         self._eq.reset()
         self._skip = self._latency()
+        self._fade_left = self._fade_frames()
 
     def _source_frame(self) -> int:
         buffered = 0
@@ -493,7 +544,7 @@ class EqPlayer(QObject):
         while len(self._fifo) < want and not self._flushed:
             available = self._store.frames - self._cursor
             if available > 0:
-                chunk = self._store.read(self._cursor, 8192).astype(np.float32) / 32768.0
+                chunk = self._store.read(self._cursor, 8192)
                 if not len(chunk):
                     break  # el temporal no pudo dar datos (se recortó lo ilegible): sin bucle infinito
                 self._cursor += len(chunk)
@@ -517,8 +568,14 @@ class EqPlayer(QObject):
                 return b""
             return bytes(min(maxlen, int(self._rate * 0.02) * bpf))  # 20 ms de silencio mientras carga
         take = min(want, len(self._fifo))
-        frames, self._fifo = self._fifo[:take], self._fifo[take:]
+        frames, self._fifo = self._fifo[:take].copy(), self._fifo[take:]
         self._delivered += take
+        if self._fade_left:  # después de empezar o saltar: entra con un fundido, no a mitad de onda
+            total = self._fade_frames()
+            n = min(self._fade_left, take)
+            done = total - self._fade_left
+            frames[:n] *= ((np.arange(done, done + n, dtype=np.float32) + 1) / total)[:, None]
+            self._fade_left -= n
         if self._format.sampleFormat() == QAudioFormat.SampleFormat.Int16:
             return (np.clip(frames, -1.0, 1.0) * 32767).astype("<i2").tobytes()
         return frames.astype("<f4").tobytes()

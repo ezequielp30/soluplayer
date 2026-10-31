@@ -5,8 +5,10 @@ logarítmica de frecuencia) y de ella un filtro FIR de fase lineal de 8192 coefi
 filtra por bloques con FFT y «solapar y sumar» (overlap-add): numpy hace todo el cálculo, rápido y sin
 dependencias nuevas. Fase lineal = no deforma el sonido, solo añade 85 ms de retardo fijo.
 
-Saturación: subir bandas puede pasar de 0 dBFS. Con «evitar saturación» (por defecto) el nivel general
-baja lo que sube la banda más alta, y un limitador suave atrapa los picos que aún sobren.
+Saturación: subir bandas o el nivel general puede pasar de 0 dBFS. Con «evitar saturación» (por defecto)
+el nivel general baja lo que sube la parte más alta de la curva (bandas + nivel general), y un limitador
+suave atrapa los picos que aún pasarían de 1.0. Lo que no satura sale intacto: con la curva plana el
+sonido es idéntico al original.
 """
 
 from __future__ import annotations
@@ -52,8 +54,12 @@ class EqSettings:
 
     @property
     def total_preamp_db(self) -> float:
-        headroom = max(0.0, max(self.gains)) if self.prevent_clipping else 0.0
-        return self.preamp - headroom
+        """Nivel general que se aplica. Con «evitar saturación» la curva nunca sube de 0 dB: se descuenta lo
+        que suba su parte más alta, contando el nivel general (antes solo las bandas: un nivel general
+        positivo saturaba y todo lo cargaba el limitador, con distorsión clara)."""
+        if not self.prevent_clipping:
+            return self.preamp
+        return self.preamp - max(0.0, max(self.gains) + self.preamp)
 
 
 def response_db(settings: EqSettings, freqs: np.ndarray) -> np.ndarray:
@@ -81,16 +87,26 @@ class EqProcessor:
         self.channels = channels
         self._tail = np.zeros((FFT_SIZE - BLOCK, channels))
         self._pending = np.zeros((0, channels), dtype=np.float32)
+        self._spectrum: np.ndarray | None = None
+        self._previous: np.ndarray | None = None  # filtro anterior, mientras dura el fundido cruzado
+        self._last_input: np.ndarray | None = None  # espectro del bloque anterior (para el fundido cruzado)
         self.set_settings(settings or EqSettings())
 
     def set_settings(self, settings: EqSettings) -> None:
+        """Cambia la curva. El siguiente bloque pasa del filtro anterior al nuevo con un fundido cruzado:
+        cambiarlo de golpe a mitad de la señal sonaba como un clic."""
         self.settings = settings.clamped()
-        self._spectrum = np.fft.rfft(design_fir(self.settings, self.rate), n=FFT_SIZE)
+        spectrum = np.fft.rfft(design_fir(self.settings, self.rate), n=FFT_SIZE)
+        if self._spectrum is not None and self._previous is None:
+            self._previous = self._spectrum
+        self._spectrum = spectrum
 
     def reset(self) -> None:
         """Tras un salto (buscar otra posición): se descarta la «cola» del filtro para no mezclar audios."""
         self._tail[:] = 0
         self._pending = np.zeros((0, self.channels), dtype=np.float32)
+        self._previous = None  # no hay sonido anterior con el que fundir
+        self._last_input = None
 
     def process(self, frames: np.ndarray) -> np.ndarray:
         """Entrada (n, canales) float. Devuelve los frames listos (múltiplos de BLOCK; el resto queda
@@ -118,19 +134,33 @@ class EqProcessor:
     def _block(self, block: np.ndarray) -> np.ndarray:
         spectrum = np.fft.rfft(block, n=FFT_SIZE, axis=0)
         full = np.fft.irfft(spectrum * self._spectrum[:, None], n=FFT_SIZE, axis=0)
-        full[: FFT_SIZE - BLOCK] += self._tail
+        if self._previous is None:
+            full[: FFT_SIZE - BLOCK] += self._tail
+            out = full[:BLOCK]
+        else:
+            # Fundido cruzado de un bloque entre dos salidas completas: todo con el filtro anterior (con su
+            # cola) y todo con el nuevo (su cola se recalcula con el bloque anterior). Mezclar la cola vieja
+            # con el filtro nuevo dejaba un escalón a mitad del bloque.
+            old = np.fft.irfft(spectrum * self._previous[:, None], n=FFT_SIZE, axis=0)[:BLOCK] + self._tail[:BLOCK]
+            if self._last_input is not None:
+                full[:BLOCK] += np.fft.irfft(self._last_input * self._spectrum[:, None], n=FFT_SIZE, axis=0)[BLOCK:]
+            ramp = (np.arange(BLOCK, dtype=np.float64) + 0.5)[:, None] / BLOCK
+            out = old * (1.0 - ramp) + full[:BLOCK] * ramp
+            self._previous = None
+        self._last_input = spectrum
         self._tail = full[BLOCK:].copy()
         self._tail = np.concatenate([self._tail, np.zeros((FFT_SIZE - BLOCK - len(self._tail), self.channels))]) \
             if len(self._tail) < FFT_SIZE - BLOCK else self._tail[: FFT_SIZE - BLOCK]
-        return soft_limit(full[:BLOCK]).astype(np.float32)
+        return soft_limit(out).astype(np.float32)
 
 
-def soft_limit(x: np.ndarray, threshold: float = 0.95) -> np.ndarray:
-    """Limitador suave: deja intacto lo que está por debajo del umbral y redondea lo que lo supera, sin
-    pasar nunca de 1.0 (en vez de un recorte duro, que suena a distorsión)."""
-    over = np.abs(x) > threshold
-    if not over.any():
+def soft_limit(x: np.ndarray, threshold: float = 0.99) -> np.ndarray:
+    """Limitador suave: solo actúa si algo pasaría de 1.0 (lo demás sale intacto: antes redondeaba todo lo
+    que superaba 0,95 aunque no saturara, y la música masterizada cerca de 0 dBFS salía distorsionada).
+    Cuando actúa, redondea lo que supera el umbral sin pasar nunca de 1.0, en vez de un recorte duro."""
+    if not (np.abs(x) > 1.0).any():
         return x
+    over = np.abs(x) > threshold
     y = x.copy()
     room = 1.0 - threshold
     excess = np.abs(x[over]) - threshold

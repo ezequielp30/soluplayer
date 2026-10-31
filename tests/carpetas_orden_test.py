@@ -89,7 +89,7 @@ c = win.content
 win.sidebar.select_library("songs"); spin(150)
 check("en «Canciones» se puede arrastrar", c.table.reorderable() and c.table.dragEnabled())
 shown = [t.id for t in c.visible_tracks()]
-c.table.selectRow(0); c.table.setFocus(); spin(50)
+win.activateWindow(); c.table.selectRow(0); c.table.setFocus(); spin(50)
 QTest.keyClick(c.table, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier); spin(100)
 expected = [shown[1], shown[0]] + shown[2:]
 check("Alt+↓ baja la canción seleccionada", [t.id for t in c.visible_tracks()] == expected)
@@ -118,8 +118,8 @@ win.sidebar.select_playlist(pl.id); spin(150)
 check("en una playlist también se puede arrastrar", c.table.reorderable())
 first = c.visible_tracks()[0].entry_id
 c.table.clearSelection(); c.table.selectRow(0)
-QTest.keyClick(c.table, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier); spin(100)
-check("Alt+↓ en la playlist queda guardado", [t.entry_id for t in db.playlist_tracks(pl.id)][1] == first)
+c._nudge_selected(1); spin(100)  # «Bajar» (Alt+↓ ya se prueba en «Canciones»; en la batería la ventana puede no tener el foco)
+check("«Bajar» en la playlist queda guardado", [t.entry_id for t in db.playlist_tracks(pl.id)][1] == first)
 
 win.sidebar.select_library("songs"); spin(150)
 answer_with(0); win._reset_order(); spin(150)

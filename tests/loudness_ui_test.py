@@ -43,8 +43,9 @@ def click(label):
         raise AssertionError([b.text() for b in box.buttons()])
     return h
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
 real = {
-    "track1": r"D:\Musica Cristiana\Padre Celestial (Variado)\01 - Track 1.mp3",
+    "track1": mp3_real(),
 }
 con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
 for key, like in (("belen", "%Tu amor me hace fuerte%"), ("vasijas", "%Vasijas Rotas%"), ("hossana", "%Hossana - Marcela%"), ("wma", "%.wma")):
@@ -130,7 +131,8 @@ check("  aplicar modifica solo los MP3 marcados", set(changed) == {os.path.split
 check("  guarda la ganancia aplicada", any(g > 0 for g in state.get("gains_after_apply", {}).values()), state.get("gains_after_apply"))
 check("  respaldo de la biblioteca antes de ajustar", any("antes-de-ajustar-volumen" in f.name for f in backup.list_backups()))
 check("  la canción que sonaba se soltó y se ajustó", "track1" in changed)
-check("Revertir: vuelven byte a byte a como estaban", all(sha(p) == copy_hashes[k] for k, p in copies.items()), state.get("revert"))
+differ = [k for k, p in copies.items() if sha(p) != copy_hashes[k]]
+check("Revertir: vuelven byte a byte a como estaban", not differ, (differ, state.get("revert")))
 check("  y la biblioteca queda sin ajustes", all(t.norm_gain_db == 0 for t in win.library))
 check("Tus archivos originales no se tocaron", all(sha(p) == real_hashes[k] for k, p in real.items()))
 check("todos los diálogos esperados aparecieron", not pending, pending)

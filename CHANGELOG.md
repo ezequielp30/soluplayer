@@ -2,6 +2,23 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.15.0 — 2026-10-30 (sonido más fiel con el ecualizador)
+
+Etapa 1 de la auditoría de calidad de sonido. Todo es al reproducir: los archivos no se tocan.
+
+- **El ecualizador ya no altera lo que no debe:** con la curva plana el sonido sale idéntico al original.
+  El limitador solo actúa si algo pasaría de 0 dBFS (antes redondeaba todo lo que superaba 0,95 y la
+  música masterizada cerca de 0 dBFS salía con distorsión).
+- **«Evitar saturación» cuenta también el nivel general:** subir el nivel general ya no satura
+  (antes, con +6 dB, la distorsión era clara).
+- **Sin perder resolución:** el audio se decodifica en float. Los archivos de 24 bits no se truncan a 16
+  y los picos por encima de 0 dBFS ya no se recortan antes del ecualizador.
+- **Sin clics:** cambiar el ecualizador mientras suena hace un fundido cruzado; saltar a otra posición y
+  reanudar entran con un fundido corto; pausar baja el volumen en unos milisegundos antes de detenerse.
+  Detener sigue siendo inmediato (suelta el archivo en el acto).
+- Pruebas en `tests/audio_transparencia_test.py` (señales sintéticas; no usa tu música). Las pruebas que
+  usaban una canción de una carpeta que ya no existe ahora toman otro MP3 real de la biblioteca.
+
 ## 1.14.1 — 2026-10-30 (barra de reproducción reordenada)
 
 - **Aleatorio y Repetir junto a los controles**, como en Spotify o Apple Music:
