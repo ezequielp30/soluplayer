@@ -8,8 +8,8 @@ from PySide6.QtWidgets import QApplication
 import app.application as appmod
 from app.ui import main_window as mw
 mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
-src = [mp3_real()]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import audio_sintetico as sint  # audio generado, igual en cualquier PC
+src = [sint.mp3(os.path.join(work, "gen", "cancion.mp3"), 30, peak=0.9, seed=7)]
 lib = os.path.join(work, "m"); os.makedirs(lib)
 copies = [shutil.copy2(p, os.path.join(lib, f"c{i}" + os.path.splitext(p)[1])) for i, p in enumerate(src)]
 def script():

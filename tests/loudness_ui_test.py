@@ -1,4 +1,4 @@
-"""Prueba de «Analizar y ajustar volumen» de punta a punta, sobre COPIAS de canciones reales."""
+"""Prueba de «Analizar y ajustar volumen» de punta a punta, con canciones generadas (fuertes, baja y WAV)."""
 import hashlib, math, os, shutil, sqlite3, struct, sys, tempfile, time, traceback, wave
 sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_loud_")
@@ -44,15 +44,12 @@ def click(label):
         raise AssertionError([b.text() for b in box.buttons()])
     return h
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
-real = {
-    "track1": mp3_real(),
-}
-con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
-for key, like in (("belen", "%Tu amor me hace fuerte%"), ("vasijas", "%Vasijas Rotas%"), ("hossana", "%Hossana - Marcela%"), ("wma", "%.wma")):
-    rows = con.execute("select path from tracks where path like ?", (like,)).fetchall()
-    found = next((r[0] for r in rows if os.path.isfile(r[0])), None)  # solo archivos que existen
-    if found: real[key] = found
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import audio_sintetico as sint  # audio generado, igual en cualquier PC
+# «Originales»: canciones fuertes generadas (como un master comercial), en una carpeta aparte; la biblioteca
+# trabaja sobre copias y al final se comprueba que estos no cambiaron.
+originales = os.path.join(work, "originales")
+real = {f"fuerte{n}": sint.mp3(os.path.join(originales, f"fuerte{n}.mp3"), 20, peak=peak, seed=n)
+        for n, peak in ((1, 0.98), (2, 0.95), (3, 0.9))}
 real_hashes = {k: sha(p) for k, p in real.items()}
 lib = os.path.join(work, "musica"); os.makedirs(lib)
 copies = {}

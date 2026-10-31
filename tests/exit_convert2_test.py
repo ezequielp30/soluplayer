@@ -10,17 +10,21 @@ import app.application as appmod
 from app.ui import main_window as mw
 mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 import app.ui.convert_dialog as cd
-con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
 def _real_originals(ext):
     """Archivos reales de ese formato: de la biblioteca o, si ya se convirtieron, de «_Originales convertidos»."""
     import glob as _glob
+    # Solo con MUSICPLAYER_PRUEBA_REAL=1: abre la biblioteca del usuario solo para leer.
+    con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
     found = [r[0] for r in con.execute("select path from tracks where lower(path) like ?", ("%" + ext,)) if os.path.isfile(r[0])]
     for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
         found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
     return found
 lib = os.path.join(work, "m"); os.makedirs(lib)
 # Originales reales si quedan (WMA/M4A); si ya no hay en la máquina, tonos WAV generados (también se convierten).
-src = [found[0] for found in (_real_originals(ext) for ext in (".wma", ".m4a")) if found]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import audio_sintetico as sint  # audio generado, igual en cualquier PC
+src = [sint.wav(os.path.join(work, "gen", "a.wav"), 40, seed=1), sint.wav(os.path.join(work, "gen", "b.wav"), 40, seed=2)]
+if sint.usar_reales():  # opcional: también WMA/M4A reales de la biblioteca (copias)
+    src = [found[0] for found in (_real_originals(ext) for ext in (".wma", ".m4a")) if found] or src
 copies = [shutil.copy2(p, os.path.join(lib, f"c{i}{os.path.splitext(p)[1]}")) for i, p in enumerate(src)]
 if len(copies) < 2:
     import math, struct, wave

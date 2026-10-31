@@ -58,11 +58,12 @@ def measure(path):
     r = m.result(); dec.stop(); dec.setSource(QUrl()); dec.deleteLater(); app.processEvents()
     return r
 
-con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
 from app.review_folder import audio_quality
 def _real_originals(ext):
     """Archivos reales de ese formato: de la biblioteca o, si ya se convirtieron, de «_Originales convertidos»."""
     import glob as _glob
+    # Solo con MUSICPLAYER_PRUEBA_REAL=1: abre la biblioteca del usuario solo para leer.
+    con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
     found = [r[0] for r in con.execute("select path from tracks where lower(path) like ?", ("%" + ext,)) if os.path.isfile(r[0])]
     for root in (r"D:\Musica Cristiana", os.path.expanduser("~\\Music")):
         found += _glob.glob(os.path.join(root, "**", "_Originales convertidos", "**", "*" + ext), recursive=True)
@@ -75,13 +76,15 @@ def _tone(path, rate, channels, secs=6):
     return path
 # Originales reales (WMA de 20 y 128 kbps, M4A) si quedan en el equipo; si no, tonos WAV generados en su
 # lugar: se prueba igual toda la conversión, salvo el códec WMA en sí.
-wmas, m4as = _real_originals(".wma"), _real_originals(".m4a")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import audio_sintetico as sint  # audio generado, igual en cualquier PC
+wmas, m4as = (_real_originals(".wma"), _real_originals(".m4a")) if sint.usar_reales() else ([], [])
 w20 = next((p for p in wmas if audio_quality(p).kbps == 20), None)
 w128 = next((p for p in wmas if audio_quality(p).kbps == 128), None)
 REAL_WMA = bool(w20 and w128)
 gen = os.path.join(work, "generados"); os.makedirs(gen)
 if not REAL_WMA:
-    print("AVISO: no hay WMA reales en este equipo: se usan tonos WAV generados (no se prueba el códec WMA)")
+    print("AVISO: se usan tonos WAV generados en lugar de WMA reales (no se prueba el códec WMA; "
+          "MUSICPLAYER_PRUEBA_REAL=1 para probar con copias de tu biblioteca)")
     w20 = _tone(os.path.join(gen, "wma20.wav"), 22050, 1)  # mono 22 kHz → 128 kbps
     w128 = _tone(os.path.join(gen, "wma128.wav"), 44100, 2)  # sin pérdida estéreo → 320 kbps
 m4a = m4as[0] if m4as else _tone(os.path.join(gen, "m4a.wav"), 44100, 2)

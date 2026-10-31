@@ -29,14 +29,18 @@ def measure(path):
 
 def sha(p): return hashlib.sha1(open(p, "rb").read()).hexdigest()
 
-db = os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db")
-con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-# Menos de 15 minutos: un álbum entero en un solo MP3 tarda más que el límite de medición de la prueba.
-samples = [r[0] for r in con.execute("select path from tracks where lower(path) like '%.mp3' and duration_ms between 1 and 900000 "
-                                     "order by random() limit 4")]
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
-first = mp3_real()
-samples = [first] + [p for p in samples if p != first and os.path.isfile(p)]  # solo las que existen
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import audio_sintetico as sint  # audio generado, igual en cualquier PC
+gen = tempfile.mkdtemp(prefix="mp_gain_gen_")
+# Variedad: baja y fuerte, estéreo y mono, 128 y 320 kbps, 44,1 y 48 kHz (todas con etiquetas).
+samples = [sint.mp3(os.path.join(gen, "baja.mp3"), 15, peak=0.15, seed=1),
+           sint.mp3(os.path.join(gen, "media_mono.mp3"), 15, peak=0.5, seed=2, channels=1, bitrate=128),
+           sint.mp3(os.path.join(gen, "fuerte_320.mp3"), 15, peak=0.6, seed=3, bitrate=320),
+           sint.mp3(os.path.join(gen, "media_48k.mp3"), 15, peak=0.4, seed=4, rate=48000)]
+if sint.usar_reales():  # opcional: también copias de MP3 reales de la biblioteca
+    from muestra_real import mp3_existentes
+    samples += mp3_existentes(3)
+else:
+    print("(sin archivos reales: MUSICPLAYER_PRUEBA_REAL=1 para probar también con copias de tu biblioteca)")
 originals = {p: sha(p) for p in samples}  # antes de tocar nada: así se ve si algo escribió en el original
 work = tempfile.mkdtemp(prefix="mp_gain_")
 ok_all = True
