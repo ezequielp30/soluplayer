@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import random
 from enum import IntEnum
@@ -30,6 +31,27 @@ class RepeatMode(IntEnum):
     OFF = 0
     ALL = 1
     ONE = 2
+
+
+VOLUME_RANGE_DB = 50.0  # el deslizador recorre 50 dB: 0,5 dB por paso (en la escala lineal, del 1 % al 2 % eran 6 dB)
+
+
+def volume_gain(percent: int) -> float:
+    """Ganancia lineal del volumen elegido (0–100) en escala de decibeles, como el oído: cada paso del
+    deslizador cambia lo mismo, también a volumen bajo. 0 = silencio; 100 = sin atenuar."""
+    percent = max(0, min(100, int(percent)))
+    if percent == 0:
+        return 0.0
+    return 10 ** (VOLUME_RANGE_DB * (percent - 100) / 100 / 20)
+
+
+def percent_from_linear(old: int) -> int:
+    """Un volumen guardado con la escala anterior (lineal) en la escala de decibeles, para que al actualizar
+    suene igual que antes (no más fuerte ni más bajo)."""
+    if old <= 0:
+        return 0
+    db = 20 * math.log10(min(100, old) / 100)
+    return max(1, min(100, round(100 + db * 100 / VOLUME_RANGE_DB)))
 
 
 class PlaybackController(QObject):
@@ -77,6 +99,10 @@ class PlaybackController(QObject):
         self._norm_target = -14.0
         self._measurements: dict[int, Track] = {}  # mediciones al día (la cola puede tener copias viejas)
         self._track_gain_db = 0.0
+        # Sin silencios entre canciones: el motor propio prepara la siguiente y pasa a ella sin cerrar la
+        # salida. Si un archivo no se puede decodificar así, ese archivo suena con el motor de Qt.
+        self._gapless = True
+        self._qt_only: set[str] = set()
 
         self._wire(self._qt_player)
 
@@ -93,26 +119,42 @@ class PlaybackController(QObject):
 
     @property
     def eq_active(self) -> bool:
-        """True si la canción actual suena por el ecualizador."""
-        return self._player is not self._qt_player
+        """True si la canción actual suena con el ecualizador (el motor propio también se usa sin él: para
+        pasar sin silencio entre canciones o igualar el volumen)."""
+        return self._player is self._eq_player and self._eq_player is not None and self._eq_enabled
 
     def set_equalizer(self, enabled: bool, settings) -> None:
         """Activa, desactiva o cambia el ecualizador. Si cambia el motor, la canción sigue en el mismo
         punto (y sonando, si sonaba)."""
         self._eq_enabled = enabled
         self._eq_settings = settings
-        if self._eq_player is not None and settings is not None:
-            self._eq_player.set_settings(settings)
+        if self._eq_player is not None:
+            self._eq_player.set_settings(self._effective_eq())
         self._use_engine(self._wanted_engine(self.current_track), keep_position=True)
 
+    def _effective_eq(self):
+        """Curva que usa el motor: la elegida si el ecualizador está encendido; si solo se usa para igualar
+        el volumen, plana (el sonido sale idéntico)."""
+        from .equalizer import EqSettings
+
+        return (self._eq_settings or EqSettings()) if self._eq_enabled else EqSettings()
+
     def _wanted_engine(self, track: Track | None):
-        if not self._eq_enabled or track is None:
+        # Igualar el volumen también usa el motor propio: así puede SUBIR una canción baja aunque el volumen
+        # esté al 100 % (la salida de Windows no pasa del 100 %).
+        if track is None or not (self._eq_enabled or self._normalize or self._gapless):
             return self._qt_player
+        if track.path in self._qt_only and not (self._eq_enabled or self._normalize):
+            return self._qt_player  # el motor propio no pudo con este archivo: suena como antes
         from .eq_player import EqPlayer
 
         if self._eq_player is None:
-            self._eq_player = EqPlayer(self._audio, self._eq_settings, self)
+            self._eq_player = EqPlayer(self._audio, self._effective_eq(), self)
             self._wire(self._eq_player)
+            self._eq_player.need_next.connect(self._offer_next)
+            self._eq_player.advanced.connect(self._on_advanced)
+        else:
+            self._eq_player.set_settings(self._effective_eq())
         return self._eq_player
 
     def _use_engine(self, engine, keep_position: bool) -> None:
@@ -209,6 +251,7 @@ class PlaybackController(QObject):
         if self._shuffle:
             random.shuffle(added)
         self._order.extend(added)
+        self._offer_next()
 
     def follow_order(self, tracks: list[Track]) -> bool:
         """Si la cola es esta misma lista en otro orden (se reordenó a mano), la siguiente canción sigue el
@@ -227,6 +270,7 @@ class PlaybackController(QObject):
         else:
             self._order = list(range(len(self._queue)))
             self._pos = new_index[key(current)]
+        self._offer_next()
         return True
 
     def update_track(self, track: Track) -> None:
@@ -284,6 +328,7 @@ class PlaybackController(QObject):
             return
         if not removing_current:
             self._pos = self._order.index(remap[old_order[old_pos]]) if current is not None else -1
+            self._offer_next()
             return
         # La siguiente en el orden que todavía exista.
         following = [remap[i] for i in old_order[old_pos + 1:] if i in remap]
@@ -309,10 +354,8 @@ class PlaybackController(QObject):
         if self._player.source().isEmpty():
             # El archivo se soltó (para moverlo, convertirlo o ajustarlo): se vuelve a cargar, sin
             # contarla otra vez como reproducida.
-            pending = self._started_pending
             self._auto_loaded = False  # la pidió el usuario: si falla, se le avisa
-            self._load_current(autoplay=True)
-            self._started_pending = pending
+            self._load_current(autoplay=True, count=self._started_pending)
             return
         self._player.play()
 
@@ -334,8 +377,57 @@ class PlaybackController(QObject):
         else:
             self._player.setPosition(position)
 
+    def set_gapless(self, enabled: bool) -> None:
+        """Sin silencios entre canciones (motor propio). Apagado: como antes (Qt), salvo con ecualizador o
+        igualar volumen. Se aplica en la canción siguiente, sin cortar la que suena."""
+        self._gapless = bool(enabled)
+        if self._player is self._eq_player:
+            self._offer_next()
+
+    # ------------------------------------------------------------------ sin silencios entre canciones
+
+    def _peek_next(self) -> tuple[int, Track] | None:
+        """La que sonaría a continuación si esta termina sola (None: ninguna, o la decide el final de la cola)."""
+        if not self._order or self.current_track is None:
+            return None
+        if self._repeat == RepeatMode.ONE:
+            return self._pos, self.current_track
+        new_pos = self._pos + 1
+        if new_pos >= len(self._order):
+            if self._repeat != RepeatMode.ALL or self._shuffle:
+                return None  # fin de la cola, o vuelta nueva en aleatorio: lo resuelve el camino de siempre
+            new_pos = 0
+        track = self._queue[self._order[new_pos]]
+        if not track.check_available() or (track.path in self._qt_only and not (self._eq_enabled or self._normalize)):
+            return None
+        return new_pos, track
+
+    def _offer_next(self) -> None:
+        """Le dice al motor propio qué canción preparar (o ninguna)."""
+        if self._eq_player is None or self._player is not self._eq_player:
+            return
+        following = self._peek_next() if (self._gapless or self._eq_enabled or self._normalize) else None
+        self._eq_player.preload(QUrl.fromLocalFile(following[1].path) if following else None)
+
+    def _on_advanced(self, url: QUrl) -> None:
+        """El motor ya pasó, sin silencio, a la canción preparada: se actualiza la cola como si hubiera
+        terminado la anterior (sin volver a cargar nada)."""
+        following = self._peek_next()
+        if following is None or QUrl.fromLocalFile(following[1].path) != url:
+            log.warning("Sin silencios: la canción preparada ya no es la siguiente; se sigue con la cola")
+            self._advance(1, user=False)
+            return
+        self._pos, track = following
+        self._auto_loaded = True
+        self._failed_in_row = 0
+        self._started_pending = False
+        self._update_track_gain(track)  # el volumen igualado cambia justo cuando empieza la canción
+        self.current_track_changed.emit(track)
+        self.track_started.emit(track)
+        self._offer_next()
+
     def set_volume(self, percent: int) -> None:
-        self._user_volume = max(0, min(100, percent)) / 100
+        self._user_volume = volume_gain(percent)
         self._apply_volume()
 
     def set_normalization(self, enabled: bool, target: float, measurements: dict[int, Track] | None = None,
@@ -348,6 +440,7 @@ class PlaybackController(QObject):
         if measurements is not None:
             self._measurements = measurements
         if now:
+            self._use_engine(self._wanted_engine(self.current_track), keep_position=True)
             self._update_track_gain(self.current_track)
 
     @property
@@ -363,8 +456,12 @@ class PlaybackController(QObject):
         self._apply_volume()
 
     def _apply_volume(self) -> None:
-        # Windows no pasa del 100 %: una canción muy baja sube solo lo que deja libre el volumen elegido.
-        self._audio.setVolume(min(1.0, self._user_volume * 10 ** (self._track_gain_db / 20)))
+        # La salida de Windows no pasa del 100 %: lo que falte para subir una canción baja lo pone el motor
+        # propio dentro del audio (con su limitador, que nunca deja pasar de 0 dBFS).
+        total = self._user_volume * 10 ** (self._track_gain_db / 20)
+        self._audio.setVolume(min(1.0, total))
+        if self._eq_player is not None:
+            self._eq_player.set_boost(max(1.0, total) if self._player is self._eq_player else 1.0)
 
     def set_muted(self, muted: bool) -> None:
         self._audio.setMuted(muted)
@@ -379,10 +476,12 @@ class PlaybackController(QObject):
             else:
                 self._build_order(0)
                 self._pos = -1  # sin canción actual: reordenar no debe «elegir» una sin cargarla
+        self._offer_next()
         self.shuffle_changed.emit(enabled)
 
     def set_repeat(self, mode: RepeatMode | int) -> None:
         self._repeat = RepeatMode(mode)
+        self._offer_next()
         self.repeat_changed.emit(int(self._repeat))
 
     def cycle_repeat(self) -> RepeatMode:
@@ -423,8 +522,9 @@ class PlaybackController(QObject):
         self._pos = new_pos
         self._load_current(autoplay=True, direction=1 if step >= 0 else -1)
 
-    def _load_current(self, autoplay: bool, direction: int = 1) -> None:
-        """Carga la pista actual, saltando las que ya no existen en disco."""
+    def _load_current(self, autoplay: bool, direction: int = 1, count: bool = True) -> None:
+        """Carga la pista actual, saltando las que ya no existen en disco. `count`: contarla como
+        reproducida cuando empiece a sonar (no, si solo se vuelve a cargar la misma)."""
         dead: set[str] = set()  # discos o servidores que no responden: no se consultan canción por canción
         self._pending_seek = 0  # un salto que quedó esperando era para la canción anterior
         for _ in range(len(self._order)):
@@ -439,7 +539,7 @@ class PlaybackController(QObject):
                     self._player.setSource(QUrl())  # el mismo archivo otra vez (playlist que lo repite): Qt no lo recargaría
                 self._player.setSource(url)
                 log.debug("Reproduciendo: %s", track.path)  # privacidad: el registro no guarda qué se escucha
-                self._started_pending = True  # se cuenta como reproducida cuando realmente empiece a sonar
+                self._started_pending = count  # se cuenta como reproducida cuando realmente empiece a sonar
                 self._update_track_gain(track)  # antes de que suene: sin salto de volumen al empezar
                 self.current_track_changed.emit(track)
                 if autoplay:
@@ -490,16 +590,27 @@ class PlaybackController(QObject):
 
     def _on_state_changed(self, state) -> None:
         playing = state == QMediaPlayer.PlaybackState.PlayingState
-        if playing and self._started_pending and self.current_track is not None:
+        if playing:
+            self._maybe_started()
+        self.playing_changed.emit(playing)
+
+    def _maybe_started(self) -> None:
+        """La canción empezó a sonar de verdad: está «reproduciendo» y ya hay audio (el motor propio dice
+        «reproduciendo» en el acto, antes de saber si el archivo se puede leer: un archivo dañado no cuenta
+        como escuchado ni corta la cuenta de fallos seguidos)."""
+        loading = (QMediaPlayer.MediaStatus.NoMedia, QMediaPlayer.MediaStatus.LoadingMedia,
+                   QMediaPlayer.MediaStatus.InvalidMedia)
+        if self._started_pending and self.current_track is not None and self._player.mediaStatus() not in loading:
             self._started_pending = False
             self._failed_in_row = 0
             self.track_started.emit(self.current_track)
-        self.playing_changed.emit(playing)
 
     def _on_media_status(self, status) -> None:
         if self._pending_seek and status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia):
             position, self._pending_seek = self._pending_seek, 0
             self._player.setPosition(position)
+        if status in (QMediaPlayer.MediaStatus.LoadedMedia, QMediaPlayer.MediaStatus.BufferedMedia) and self.is_playing:
+            self._maybe_started()
         if status in (QMediaPlayer.MediaStatus.InvalidMedia, QMediaPlayer.MediaStatus.StalledMedia):
             track = self.current_track
             log.warning("Estado de reproducción %s en %s", status.name, track.path if track else "-")
@@ -516,6 +627,13 @@ class PlaybackController(QObject):
             return
         message = _ERROR_MESSAGES.get(error) or f"No se pudo reproducir el archivo. {error_string}".strip()
         track = self.current_track
+        if (track is not None and self._player is self._eq_player and not (self._eq_enabled or self._normalize)
+                and track.path not in self._qt_only):
+            # Solo el motor propio (sin ecualizador ni igualar volumen) no pudo: se prueba con el de Qt.
+            log.info("Sin silencios: el motor propio no pudo con %s; se usa el de Qt", os.path.basename(track.path))
+            self._qt_only.add(track.path)
+            QTimer.singleShot(0, lambda: self.current_track is track and self._load_current(autoplay=True))
+            return
         log.error("Error de reproducción (%s: %s) en %s", error.name, error_string, track.path if track else "-")
         if self._auto_loaded and track is not None and self._failed_in_row < len(self._order) - 1:
             # Llegó sola (la música iba sonando sin nadie delante): se informa y se sigue con la próxima.

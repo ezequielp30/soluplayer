@@ -34,7 +34,7 @@ db.add_tracks([scan_file(p)[0] for p in (a, b)])
 win = mw.MainWindow(db); win.show(); spin(200)
 check("al empezar el ecualizador está apagado (motor de siempre)", not win.player.eq_active)
 win._on_play_requested(list(win.library), 0); spin(1500)
-before = win.player.position()
+before = win.player.position(); t_before = time.time()
 
 print("[Activar a mitad de canción]")
 win._open_equalizer(); spin(200)
@@ -42,7 +42,8 @@ d = win._eq_dialog
 check("la ventana no bloquea el programa", not d.isModal() and d.isVisible())
 d.enabled.setChecked(True); spin(500)
 check("al activarlo cambia al motor con ecualizador", win.player.eq_active and isinstance(win.player._player, EqPlayer))
-check("  sigue sonando en el mismo punto", win.player.is_playing and abs(win.player.position() - before) < 700, (before, win.player.position()))
+expected = before + (time.time() - t_before) * 1000  # siguió sonando mientras tanto: no salta ni vuelve atrás
+check("  sigue sonando en el mismo punto", win.player.is_playing and abs(win.player.position() - expected) < 400, (round(expected), win.player.position()))
 check("  el botón de la barra lo muestra activo", "activado" in win.player_bar.btn_eq.toolTip())
 d.preset.setCurrentIndex(d.preset.findText("Rock")); d._preset_chosen(0); spin(300)
 check("elegir un preset cambia el sonido en vivo", tuple(win.player._eq_player._settings.gains) == (5, 4, 2, -1, -2, -1, 2, 3, 4, 4))

@@ -504,6 +504,17 @@ class PreferencesDialog(QDialog):
         library.addWidget(self.confirm_exit)
         library.addStretch(1)
 
+        # Reproducción
+        playback = page("Reproducción", "Reproducción")
+        self.gapless = QCheckBox("Pasar a la siguiente canción sin silencio entre una y otra")
+        self.gapless.setChecked(prefs.gapless)
+        playback.addWidget(self.gapless)
+        playback.addWidget(note_label(
+            "La siguiente canción se prepara antes de que termine la actual, como en los álbumes en vivo o "
+            "mezclados. Desactívalo solo si algún archivo no suena bien así."
+        ))
+        playback.addStretch(1)
+
         # Teclado
         keyboard = page("Teclado", "Teclado")
         self.media_keys = QCheckBox("Teclas multimedia activas aunque la ventana esté minimizada")
@@ -543,6 +554,7 @@ class PreferencesDialog(QDialog):
         self._prefs.online_sources = chosen
         self._prefs.online_covers = self.online_covers.isChecked()
         self._prefs.song_columns = [k for k, box in self.column_boxes.items() if box.isChecked()]
+        self._prefs.gapless = self.gapless.isChecked()
         self.accept()
 
     def reject(self) -> None:

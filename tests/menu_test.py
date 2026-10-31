@@ -259,7 +259,8 @@ def t_volume():
     up.trigger(); check("Subir volumen (+5)", bar.volume.value() == 95)
     up.trigger(); up.trigger(); check("  límite en 100", bar.volume.value() == 100)
     down.trigger(); check("Bajar volumen (−5)", bar.volume.value() == 95)
-    check("  volumen aplicado al audio", abs(win.player._audio.volume() - 0.95) < 0.01, win.player._audio.volume())
+    from app.player import volume_gain
+    check("  volumen aplicado al audio (escala en dB)", abs(win.player._audio.volume() - volume_gain(95)) < 0.01, win.player._audio.volume())
     bar.btn_mute.click(); check("Silenciar", win.player._audio.isMuted()); bar.btn_mute.click()
     check("  quitar silencio", not win.player._audio.isMuted())
 

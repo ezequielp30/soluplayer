@@ -43,7 +43,7 @@ from ..folders import build_folder_tree, display_name, folder_key, tracks_in_fol
 from ..loudness import TARGET_LUFS
 from ..importer import ImportWorker, ScannedTrack, ScanResult, collect_folder, in_skipped_folder, scan_file
 from ..models import Track
-from ..player import PlaybackController, RepeatMode
+from ..player import PlaybackController, RepeatMode, percent_from_linear
 from ..preferences import Preferences
 from ..titles import suggest_from_filename
 from ..utils import normalize_text, path_key, plural
@@ -150,6 +150,7 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar()
         self.content = ContentPanel(self.covers)
         self.content.set_columns(self.prefs.song_columns)
+        self.player.set_gapless(self.prefs.gapless)
         # La barra lateral ocupa toda la altura (más espacio para Playlists y Carpetas); la barra del
         # reproductor va solo encima del panel principal.
         right = QWidget()
@@ -379,6 +380,12 @@ class MainWindow(QMainWindow):
         elif splitter is not None:
             s.remove("window/splitter")
         volume = _setting_int(s, "player/volume", 70, 0, 100)  # un valor dañado no impide abrir
+        if s.value("player/volume_scale") != "db":
+            # Antes el deslizador era lineal; ahora va en decibeles. El volumen guardado se convierte una vez
+            # para que suene igual que antes de actualizar.
+            if _setting_int(s, "player/volume", -1, 0, 100) == volume:  # había un valor válido guardado
+                volume = percent_from_linear(volume)
+            s.setValue("player/volume_scale", "db")
         muted = s.value("player/muted", False, type=bool)
         shuffle = s.value("player/shuffle", False, type=bool)
         repeat = _setting_int(s, "player/repeat", 0, 0, 2)
@@ -1649,6 +1656,7 @@ class MainWindow(QMainWindow):
         if self._run_dialog(PreferencesDialog(self.prefs, self)):
             self._apply_media_keys()
             self.content.set_columns(self.prefs.song_columns)
+            self.player.set_gapless(self.prefs.gapless)
             if self.prefs.theme != theme.mode():
                 theme.apply(QApplication.instance(), self.prefs.theme)
             state = "activada" if self.prefs.ask_titles_on_import else "desactivada"

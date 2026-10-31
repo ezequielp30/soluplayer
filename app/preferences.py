@@ -139,6 +139,17 @@ class Preferences:
     def song_columns(self, keys: list[str]) -> None:
         self._s.setValue(self.SONG_COLUMNS, ",".join(keys))
 
+    GAPLESS = "preferences/gapless"
+
+    @property
+    def gapless(self) -> bool:
+        """Pasar de una canción a la siguiente sin silencio (motor propio). Encendido de fábrica."""
+        return self._s.value(self.GAPLESS, True, type=bool)
+
+    @gapless.setter
+    def gapless(self, value: bool) -> None:
+        self._s.setValue(self.GAPLESS, bool(value))
+
     MEDIA_KEYS = "preferences/global_media_keys"
 
     @property

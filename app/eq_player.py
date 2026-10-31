@@ -36,14 +36,15 @@ from PySide6.QtMultimedia import (
     QMediaPlayer,
 )
 
-from .equalizer import EqProcessor, EqSettings
+from .equalizer import BLOCK, LATENCY_FRAMES, EqProcessor, EqSettings, soft_limit
 
 log = logging.getLogger(__name__)
 
 RAM_BYTES = 160 * 1024 * 1024  # ≈ 7 min a 48 kHz estéreo en float; en bytes, no en minutos: no depende del dispositivo
 RAM_STEP_BYTES = 16 * 1024 * 1024  # la memoria crece de a tramos, no duplicándose
 _TEMP_PREFIX = "reproductor-eq-"
-_BUFFER_MS = 250  # audio que tiene la salida por delante: poco, para que pausa y saltos respondan rápido
+_BUFFER_MS = 750  # audio que tiene la salida por delante: aguanta 3/4 s con la ventana ocupada sin cortarse
+# (pausa, saltos y cambio de canción siguen siendo inmediatos: se suspende o se rehace la salida)
 _STALL_SECONDS = 20.0
 _FADE_MS = 8  # fundido al empezar, saltar, pausar y reanudar: sin clic por cortar la onda a mitad
 _SAMPLE = np.float32  # el audio decodificado se guarda en float: sin truncar a 16 bits ni recortar picos > 0 dBFS
@@ -183,12 +184,93 @@ class _Pull(QIODevice):
         return 1 << 20
 
 
+class _Preload(QObject):
+    """La canción siguiente, decodificada de antemano (en su propio almacén) para pasar a ella sin silencio."""
+
+    def __init__(self, url: QUrl, rate: int, channels: int, parent: QObject) -> None:
+        super().__init__(parent)
+        self.url = QUrl(url)
+        self._channels = channels
+        self._rate = rate
+        self.store = _PcmStore(rate, channels)
+        self.done = False
+        self.failed = False
+        self.duration_ms = 0
+        self._in_signal = False
+        decoder = QAudioDecoder(self)
+        fmt = QAudioFormat()
+        fmt.setSampleRate(rate)
+        fmt.setChannelCount(channels)
+        fmt.setSampleFormat(QAudioFormat.SampleFormat.Float)
+        decoder.setAudioFormat(fmt)
+        decoder.bufferReady.connect(lambda: self._guarded(self._on_buffer))
+        decoder.finished.connect(lambda: self._guarded(self._on_finished))
+        decoder.error.connect(lambda _code: self._guarded(self._on_error))
+        decoder.durationChanged.connect(lambda ms: setattr(self, "duration_ms", int(ms)) if ms and ms > 0 else None)
+        decoder.setSource(self.url)
+        self._decoder: QAudioDecoder | None = decoder
+        decoder.start()
+
+    def _guarded(self, handler) -> None:
+        self._in_signal = True
+        try:
+            handler()
+        finally:
+            self._in_signal = False
+
+    def _on_buffer(self) -> None:
+        if self._decoder is None:
+            return
+        buffer = self._decoder.read()
+        data = _as_float(bytes(buffer.constData()), buffer.format().sampleFormat())
+        frames = len(data) // self._channels
+        if not frames:
+            return
+        try:
+            self.store.append(data[: frames * self._channels].reshape(frames, self._channels))
+        except (OSError, MemoryError) as exc:
+            log.warning("Sin silencios: no se pudo preparar %s: %s", self.url.toLocalFile(), exc)
+            self._finish(failed=self.store.frames == 0)
+
+    def _on_finished(self) -> None:
+        if self.store.frames == 0:
+            self._finish(failed=True)  # sin audio: la siguiente se carga como siempre (y avisa su error)
+            return
+        self.duration_ms = int(self.store.frames * 1000 / self._rate)
+        self._finish(failed=False)
+
+    def _on_error(self) -> None:
+        self._finish(failed=self.store.frames == 0)
+
+    def _finish(self, failed: bool) -> None:
+        self.done = True
+        self.failed = failed
+        self._release_decoder()
+
+    def _release_decoder(self) -> None:
+        decoder, self._decoder = self._decoder, None
+        if decoder is None:
+            return
+        decoder.blockSignals(True)
+        if self._in_signal:
+            QTimer.singleShot(0, lambda d=decoder: EqPlayer._dispose_decoder(d))
+        else:
+            EqPlayer._dispose_decoder(decoder)  # suelta el archivo en el acto
+
+    def discard(self) -> None:
+        self._release_decoder()
+        self.store.close()
+        self.deleteLater()
+
+
 class EqPlayer(QObject):
     positionChanged = Signal("qlonglong")
     durationChanged = Signal("qlonglong")
     playbackStateChanged = Signal(QMediaPlayer.PlaybackState)
     mediaStatusChanged = Signal(QMediaPlayer.MediaStatus)
     errorOccurred = Signal(QMediaPlayer.Error, str)
+    need_next = Signal()  # la canción actual ya está decodificada: se puede preparar la siguiente (preload)
+    advanced = Signal(QUrl)  # empezó a sonar la canción preparada, sin silencio y sin cerrar la salida
 
     def __init__(self, audio: QAudioOutput, settings: EqSettings | None = None, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -199,6 +281,11 @@ class EqPlayer(QObject):
         self._status = Status.NoMedia
         self._decoder: QAudioDecoder | None = None
         self._in_decoder_signal = False  # dentro de una señal del decodificador: no se lo puede borrar ahí
+        self._next: _Preload | None = None  # la canción siguiente, preparada para pasar sin silencio
+        self._feeding: _Preload | None = None  # la preparada que ya suena pero todavía se decodifica
+        self._old_frames = 0  # frames de la canción anterior que siguen en la cola de salida
+        self._announce = False  # avisar (advanced) cuando la canción nueva empiece a oírse
+        self._waiting_start = False  # «reproducir» pedido: la salida se abre cuando haya audio decodificado
         self._sink: QAudioSink | None = None
         self._device: _Pull | None = None
         self._format = self._choose_format()
@@ -216,6 +303,7 @@ class EqPlayer(QObject):
         self._timer.timeout.connect(self._tick)
         self._last_data = time.monotonic()
         self._gain = 1.0  # volumen del fundido de pausa/reanudar (multiplica al del usuario)
+        self._boost = 1.0  # ganancia extra dentro del audio (igualar volumen que sube por encima del 100 %)
         self._ramp_target, self._ramp_step, self._ramp_done = 1.0, 0.0, None
         self._ramp = QTimer(self)
         self._ramp.setTimerType(Qt.TimerType.PreciseTimer)
@@ -252,6 +340,8 @@ class EqPlayer(QObject):
         self._eq.reset()
         self._skip = self._latency()
         self._fade_left = self._fade_frames()
+        self._old_frames = 0
+        self._announce = False
 
     def _fade_frames(self) -> int:
         return max(1, int(self._rate * _FADE_MS / 1000))
@@ -266,7 +356,28 @@ class EqPlayer(QObject):
     def source(self) -> QUrl:
         return self._source
 
+    def preload(self, url: QUrl | None) -> None:
+        """Prepara la canción que sigue (None = ninguna). Al terminar la actual se pasa a ella sin silencio."""
+        if self._next is not None and url is not None and self._next.url == url and not self._next.failed:
+            return
+        self._drop_next()
+        if url is not None and not url.isEmpty():
+            self._next = _Preload(url, self._rate, self._channels, self)
+
+    def _drop_next(self) -> None:
+        if self._next is not None:
+            self._next.discard()
+            self._next = None
+
+    def _drop_feeding(self) -> None:
+        if self._feeding is not None:
+            self._feeding._release_decoder()
+            self._feeding.deleteLater()  # su almacén ya es el de la canción actual: se cierra con ella
+            self._feeding = None
+
     def setSource(self, url: QUrl) -> None:  # noqa: N802
+        self._drop_next()
+        self._drop_feeding()
         self._teardown_decoder()
         self._stop_sink()
         self._set_state(State.StoppedState)
@@ -293,15 +404,39 @@ class EqPlayer(QObject):
         else:
             self._ramp.stop()
             self._gain = 1.0
-            self._start_sink()
+            self._start_sink_when_ready()
         self._set_state(State.PlayingState)
         self._timer.start()
 
+    def _ready_to_start(self) -> bool:
+        """Ya está decodificado lo que llena la salida entera (más el retardo del filtro): así no se rellena
+        con trozos de silencio mientras el decodificador termina, que se oían como cortes al empezar."""
+        need = int(self._rate * _BUFFER_MS / 1000) + LATENCY_FRAMES + BLOCK
+        return self._decode_done or self._store.frames - self._cursor >= need
+
+    def _start_sink_when_ready(self) -> None:
+        self._waiting_start = not self._ready_to_start()
+        if not self._waiting_start:
+            self._start_sink()
+
+    def _start_if_waiting(self) -> None:
+        if self._waiting_start and self._state == State.PlayingState and self._ready_to_start():
+            self._waiting_start = False
+            self._start_sink()
+
     def pause(self) -> None:
+        if self._waiting_start:  # todavía no sonaba: no hay salida que suspender
+            self._waiting_start = False
+            self._set_state(State.PausedState)
+            return
         if self._state == State.PlayingState and self._sink is not None:
             self._set_state(State.PausedState)
             sink = self._sink
             self._ramp_to(0.0, lambda: sink.suspend() if sink is self._sink and self._state == State.PausedState else None)
+
+    def set_boost(self, gain: float) -> None:
+        """Ganancia (lineal, ≥ 1) que se aplica dentro del audio cuando el volumen pedido pasa del 100 %."""
+        self._boost = max(1.0, float(gain))
 
     def _ramp_to(self, target: float, done=None) -> None:
         """Lleva el volumen de la salida hasta `target` en unos milisegundos (fundido de pausa/reanudar)."""
@@ -320,6 +455,7 @@ class EqPlayer(QObject):
             done()
 
     def stop(self) -> None:
+        self._waiting_start = False
         self._ramp.stop()  # detener es inmediato: suelta el archivo en el acto (Papelera, mover, renombrar)
         self._ramp_done = None
         self._gain = 1.0
@@ -343,7 +479,7 @@ class EqPlayer(QObject):
         if self._status == Status.EndOfMedia:
             self._set_status(Status.BufferedMedia)
         if playing:
-            self._start_sink()
+            self._start_sink_when_ready()
         self.positionChanged.emit(self.position())
 
     def playbackState(self) -> QMediaPlayer.PlaybackState:  # noqa: N802
@@ -427,6 +563,7 @@ class EqPlayer(QObject):
         if self._status == Status.LoadingMedia:
             self._set_status(Status.LoadedMedia)
             self._set_status(Status.BufferedMedia)
+        self._start_if_waiting()
 
     def _on_duration(self, ms) -> None:
         if ms and ms > 0:
@@ -450,6 +587,9 @@ class EqPlayer(QObject):
             self._set_status(Status.InvalidMedia)
             self.errorOccurred.emit(QMediaPlayer.Error.FormatError, "el archivo no tiene audio")
         self._teardown_decoder()  # todo decodificado: el archivo original queda libre
+        self._start_if_waiting()
+        if self._status != Status.InvalidMedia:
+            QTimer.singleShot(0, self.need_next.emit)  # ya se puede preparar la siguiente
 
     def _on_decode_error(self, _code) -> None:
         self._in_decoder_signal = True
@@ -530,6 +670,8 @@ class EqPlayer(QObject):
         self._eq.reset()
         self._skip = self._latency()
         self._fade_left = self._fade_frames()
+        self._old_frames = 0
+        self._announce = False
 
     def _source_frame(self) -> int:
         buffered = 0
@@ -542,6 +684,10 @@ class EqPlayer(QObject):
         bpf = self._format.bytesPerFrame()
         want = max(1, maxlen // bpf)
         while len(self._fifo) < want and not self._flushed:
+            if self._feeding is not None and self._feeding.done:
+                self._decode_done = True  # la canción preparada terminó de decodificarse mientras sonaba
+                self._duration_ms = self._feeding.duration_ms or self._duration_ms
+                self._drop_feeding()
             available = self._store.frames - self._cursor
             if available > 0:
                 chunk = self._store.read(self._cursor, 8192)
@@ -549,6 +695,9 @@ class EqPlayer(QObject):
                     break  # el temporal no pudo dar datos (se recortó lo ilegible): sin bucle infinito
                 self._cursor += len(chunk)
                 out = self._eq.process(chunk)
+            elif self._decode_done and self._next is not None and not self._next.failed:
+                self._switch_to_next()  # sin vaciar el filtro: el sonido sigue de corrido
+                continue
             elif self._decode_done:
                 out = self._eq.flush()
                 self._flushed = True
@@ -569,7 +718,11 @@ class EqPlayer(QObject):
             return bytes(min(maxlen, int(self._rate * 0.02) * bpf))  # 20 ms de silencio mientras carga
         take = min(want, len(self._fifo))
         frames, self._fifo = self._fifo[:take].copy(), self._fifo[take:]
-        self._delivered += take
+        old = min(take, self._old_frames)  # lo que aún era de la canción anterior no cuenta para la nueva
+        self._old_frames -= old
+        self._delivered += take - old
+        if self._boost != 1.0:
+            frames = soft_limit(frames * self._boost)  # nunca pasa de 0 dBFS
         if self._fade_left:  # después de empezar o saltar: entra con un fundido, no a mitad de onda
             total = self._fade_frames()
             n = min(self._fade_left, take)
@@ -580,7 +733,34 @@ class EqPlayer(QObject):
             return (np.clip(frames, -1.0, 1.0) * 32767).astype("<i2").tobytes()
         return frames.astype("<f4").tobytes()
 
+    def _switch_to_next(self) -> None:
+        """La canción actual se acabó y la siguiente está preparada: se sigue con ella en la misma salida."""
+        nxt, self._next = self._next, None
+        self._teardown_decoder()
+        self._store.close()
+        self._store = nxt.store
+        self._source = QUrl(nxt.url)
+        self._decode_done = nxt.done
+        self._feeding = None if nxt.done else nxt
+        if nxt.done:
+            nxt._release_decoder()
+            nxt.deleteLater()
+        self._duration_ms = nxt.duration_ms
+        self._cursor = 0
+        self._origin = 0
+        self._old_frames = len(self._fifo)  # lo que queda en la cola es todavía de la anterior
+        self._delivered = 0
+        self._announce = True
+
     def _tick(self) -> None:
+        if self._announce and self._sink is not None:
+            buffered = max(0, self._sink.bufferSize() - self._sink.bytesFree()) // self._format.bytesPerFrame()
+            if self._old_frames == 0 and self._delivered > buffered:  # ya se oye la canción nueva
+                self._announce = False
+                self.durationChanged.emit(self._duration_ms)
+                self.advanced.emit(QUrl(self._source))
+                if self._decode_done:
+                    self.need_next.emit()
         if self._decoder is not None and not self._decode_done and time.monotonic() - self._last_data > _STALL_SECONDS:
             log.warning("Ecualizador: el archivo no responde: %s", self._source.toLocalFile())
             self._teardown_decoder()

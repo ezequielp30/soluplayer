@@ -2,6 +2,30 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.17.0 — 2026-10-30 (sin silencio entre canciones, volumen en dB)
+
+Etapa 2 de la auditoría de calidad de sonido.
+
+- **Sin silencio entre canciones:** la siguiente canción se prepara mientras suena la actual y se pasa a
+  ella sin cerrar la salida de audio (antes había ~¼ s de silencio). Funciona también sin ecualizador: la
+  reproducción usa el motor propio, que con la curva plana deja el sonido idéntico al original. Si un
+  archivo no se puede leer así, ese archivo suena con el motor de siempre. Se puede apagar en
+  **Preferencias → Reproducción**.
+- **Volumen en decibeles:** cada paso del deslizador cambia lo mismo (0,5 dB), también a volumen bajo
+  (antes del 1 % al 2 % subía 6 dB). Al actualizar, tu volumen se convierte una vez para que suene igual
+  (por ejemplo, 30 % pasa a verse como 79 %).
+- **«Igualar volumen al reproducir» también sube:** una canción baja puede sonar más fuerte aunque el
+  volumen esté al 100 % (la salida de Windows queda al máximo y el resto lo pone el motor, sin saturar).
+- **Más margen contra cortes:** la salida tiene ¾ s de audio por delante (antes ¼ s), así que aguanta
+  más si la ventana está ocupada. Pausar, saltar y cambiar de canción siguen siendo inmediatos.
+- **Comienzo limpio:** la salida se abre cuando ya hay audio para llenarla (sin trozos de silencio al
+  empezar una canción).
+- **Correcciones:** un archivo dañado ya no cuenta como escuchado ni corta la cuenta de fallos seguidos;
+  reanudar después de soltar un archivo no cuenta la canción dos veces; un volumen dañado en el registro
+  abre con el de fábrica.
+- Pruebas en `tests/audio_etapa2_test.py` (22). Batería completa: 46 de 47 (la restante depende de
+  canciones de la biblioteca ya ajustadas de volumen).
+
 ## 1.16.1 — 2026-10-30 (corrección: herramientas con carpetas que aún no estaban en la biblioteca)
 
 - **Elegir una carpeta lee todo su contenido:** en Herramientas, al seleccionar una carpeta principal (por
