@@ -2,6 +2,20 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.19.0 — 2026-10-31 (saltar el silencio grabado entre canciones)
+
+- **Sin silencios largos entre canciones:** muchas canciones traen segundos de silencio grabado al
+  principio y sobre todo al final (en tu biblioteca, en promedio 0,7 s al empezar y 3,3 s al terminar;
+  entre dos canciones seguidas se oían 4 s, hasta 9). Ahora la reproducción salta ese silencio: empieza en
+  el primer sonido y pasa a la siguiente apenas termina el último (deja 0,15 s para la cola de la nota).
+  Por ejemplo, de «12 Visitanos» a «13 La Venida Del Rey» pasa de 8,8 s de silencio a 0,35 s.
+- Un silencio a mitad de canción (o antes de una pista «oculta») se respeta; si saltas a un punto, empieza
+  ahí. «Desde el principio» vuelve a saltar el silencio inicial.
+- Los archivos no se modifican. Se apaga en **Preferencias → Reproducción** («Saltar el silencio grabado
+  al principio y al final de cada canción», encendido de fábrica). Funciona con «Pasar a la siguiente
+  canción sin silencio» encendido (de fábrica).
+- Pruebas en `tests/saltar_silencio_test.py` (10).
+
 ## 1.18.0 — 2026-10-30 (graves precisos, dither, cambio de salida)
 
 Etapa 3 de la auditoría de calidad de sonido.

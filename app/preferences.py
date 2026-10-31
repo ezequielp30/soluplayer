@@ -150,6 +150,17 @@ class Preferences:
     def gapless(self, value: bool) -> None:
         self._s.setValue(self.GAPLESS, bool(value))
 
+    SKIP_SILENCE = "preferences/skip_silence"
+
+    @property
+    def skip_silence(self) -> bool:
+        """Saltar el silencio grabado al principio y al final de cada canción. Encendido de fábrica."""
+        return self._s.value(self.SKIP_SILENCE, True, type=bool)
+
+    @skip_silence.setter
+    def skip_silence(self, value: bool) -> None:
+        self._s.setValue(self.SKIP_SILENCE, bool(value))
+
     MEDIA_KEYS = "preferences/global_media_keys"
 
     @property

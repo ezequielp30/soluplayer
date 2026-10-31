@@ -48,6 +48,10 @@ _BUFFER_MS = 750  # audio que tiene la salida por delante: aguanta 3/4 s con la 
 _STALL_SECONDS = 20.0
 _FADE_MS = 8  # fundido al empezar, saltar, pausar y reanudar: sin clic por cortar la onda a mitad
 _SAMPLE = np.float32  # el audio decodificado se guarda en float: sin truncar a 16 bits ni recortar picos > 0 dBFS
+# Saltar el silencio grabado al principio y al final de cada canción (muchas traen segundos de silencio):
+_SILENCE = 10 ** (-50 / 20)  # por debajo de −50 dBFS se considera silencio
+_KEEP_START_MS = 20  # antes del primer sonido (que la primera nota no empiece cortada)
+_KEEP_END_MS = 150  # después del último sonido (la cola de la última nota)
 
 State = QMediaPlayer.PlaybackState
 Status = QMediaPlayer.MediaStatus
@@ -287,6 +291,9 @@ class EqPlayer(QObject):
         self._announce = False  # avisar (advanced) cuando la canción nueva empiece a oírse
         self._waiting_start = False  # «reproducir» pedido: la salida se abre cuando haya audio decodificado
         self.paused_by_device = False  # en pausa porque la salida se cayó (no porque lo pidió el usuario)
+        self._skip_silence = True  # saltar el silencio grabado al principio y al final de cada canción
+        self._trim_start_pending = True  # al empezar la canción: buscar el primer sonido
+        self._end_limit: int | None = None  # dónde termina el sonido (None: hasta el final del archivo)
         self._sink: QAudioSink | None = None
         self._device: _Pull | None = None
         self._format = self._choose_format()
@@ -344,6 +351,8 @@ class EqPlayer(QObject):
         self._fade_left = self._fade_frames()
         self._old_frames = 0
         self._announce = False
+        self._trim_start_pending = True
+        self._end_limit = None
 
     def _fade_frames(self) -> int:
         return max(1, int(self._rate * _FADE_MS / 1000))
@@ -409,9 +418,68 @@ class EqPlayer(QObject):
         self._set_state(State.PlayingState)
         self._timer.start()
 
+    def set_skip_silence(self, enabled: bool) -> None:
+        """Saltar el silencio grabado al principio y al final de cada canción (desde la próxima que empiece)."""
+        self._skip_silence = bool(enabled)
+        if not enabled:
+            self._end_limit = None
+
+    @staticmethod
+    def _first_sound(store: _PcmStore) -> int | None:
+        """Primer frame con sonido (None si todo lo decodificado hasta ahora es silencio)."""
+        pos = 0
+        while pos < store.frames:
+            chunk = store.read(pos, 65536)
+            if not len(chunk):
+                return None
+            loud = np.flatnonzero(np.abs(chunk).max(axis=1) > _SILENCE)
+            if len(loud):
+                return pos + int(loud[0])
+            pos += len(chunk)
+        return None
+
+    @staticmethod
+    def _last_sound(store: _PcmStore) -> int | None:
+        """Último frame con sonido, buscando desde el final (None si no hay sonido)."""
+        end = store.frames
+        while end > 0:
+            start = max(0, end - 65536)
+            chunk = store.read(start, end - start)
+            if not len(chunk):
+                return None
+            loud = np.flatnonzero(np.abs(chunk).max(axis=1) > _SILENCE)
+            if len(loud):
+                return start + int(loud[-1])
+            end = start
+        return None
+
+    def _trim_start(self, store: _PcmStore, decoded: bool) -> bool:
+        """Empieza en el primer sonido (sin el silencio grabado al principio). False: falta decodificar para
+        saberlo (todavía no hay sonido en lo decodificado)."""
+        if not (self._skip_silence and self._trim_start_pending):
+            return True
+        first = self._first_sound(store)
+        if first is None and not decoded:
+            return False
+        self._trim_start_pending = False
+        if first:
+            start = max(0, first - int(self._rate * _KEEP_START_MS / 1000))
+            self._cursor = self._origin = start
+        return True
+
+    def _find_end(self) -> None:
+        """La canción ya está decodificada: dónde termina el sonido (sin el silencio grabado al final)."""
+        self._end_limit = None
+        if self._skip_silence and self._decode_done:
+            last = self._last_sound(self._store)
+            if last is not None:
+                self._end_limit = min(self._store.frames, last + 1 + int(self._rate * _KEEP_END_MS / 1000))
+
     def _ready_to_start(self) -> bool:
         """Ya está decodificado lo que llena la salida entera (más el retardo del filtro): así no se rellena
         con trozos de silencio mientras el decodificador termina, que se oían como cortes al empezar."""
+        if not self._trim_start(self._store, self._decode_done):
+            return False
         need = int(self._rate * _BUFFER_MS / 1000) + self._eq.latency + self._eq.block
         return self._decode_done or self._store.frames - self._cursor >= need
 
@@ -459,6 +527,7 @@ class EqPlayer(QObject):
     def stop(self) -> None:
         self._waiting_start = False
         self.paused_by_device = False
+        self._trim_start_pending = True
         self._ramp.stop()  # detener es inmediato: suelta el archivo en el acto (Papelera, mover, renombrar)
         self._ramp_done = None
         self._gain = 1.0
@@ -479,6 +548,7 @@ class EqPlayer(QObject):
         if self._sink is not None:
             self._stop_sink()
         self._seek_frames(frame)
+        self._trim_start_pending = frame == 0  # «desde el principio» salta otra vez el silencio inicial
         if self._status == Status.EndOfMedia:
             self._set_status(Status.BufferedMedia)
         if playing:
@@ -590,6 +660,7 @@ class EqPlayer(QObject):
             self._set_status(Status.InvalidMedia)
             self.errorOccurred.emit(QMediaPlayer.Error.FormatError, "el archivo no tiene audio")
         self._teardown_decoder()  # todo decodificado: el archivo original queda libre
+        self._find_end()
         self._start_if_waiting()
         if self._status != Status.InvalidMedia:
             QTimer.singleShot(0, self.need_next.emit)  # ya se puede preparar la siguiente
@@ -725,9 +796,11 @@ class EqPlayer(QObject):
                 self._decode_done = True  # la canción preparada terminó de decodificarse mientras sonaba
                 self._duration_ms = self._feeding.duration_ms or self._duration_ms
                 self._drop_feeding()
-            available = self._store.frames - self._cursor
+                self._find_end()
+            end = self._end_limit if self._end_limit is not None else self._store.frames
+            available = end - self._cursor
             if available > 0:
-                chunk = self._store.read(self._cursor, 8192)
+                chunk = self._store.read(self._cursor, min(8192, available))
                 if not len(chunk):
                     break  # el temporal no pudo dar datos (se recortó lo ilegible): sin bucle infinito
                 self._cursor += len(chunk)
@@ -785,6 +858,10 @@ class EqPlayer(QObject):
         self._duration_ms = nxt.duration_ms
         self._cursor = 0
         self._origin = 0
+        self._trim_start_pending = True
+        self._trim_start(self._store, True)  # lo que esté decodificado alcanza: si es todo silencio, desde 0
+        self._trim_start_pending = False
+        self._find_end()
         self._old_frames = len(self._fifo)  # lo que queda en la cola es todavía de la anterior
         self._delivered = 0
         self._announce = True

@@ -102,6 +102,7 @@ class PlaybackController(QObject):
         # Sin silencios entre canciones: el motor propio prepara la siguiente y pasa a ella sin cerrar la
         # salida. Si un archivo no se puede decodificar así, ese archivo suena con el motor de Qt.
         self._gapless = True
+        self._skip_silence = True  # saltar el silencio grabado al principio y al final (motor propio)
         self._qt_only: set[str] = set()
 
         self._wire(self._qt_player)
@@ -150,6 +151,7 @@ class PlaybackController(QObject):
 
         if self._eq_player is None:
             self._eq_player = EqPlayer(self._audio, self._effective_eq(), self)
+            self._eq_player.set_skip_silence(self._skip_silence)
             self._wire(self._eq_player)
             self._eq_player.need_next.connect(self._offer_next)
             self._eq_player.advanced.connect(self._on_advanced)
@@ -383,6 +385,12 @@ class PlaybackController(QObject):
         self._gapless = bool(enabled)
         if self._player is self._eq_player:
             self._offer_next()
+
+    def set_skip_silence(self, enabled: bool) -> None:
+        """Saltar el silencio grabado al principio y al final de cada canción (no toca los archivos)."""
+        self._skip_silence = bool(enabled)
+        if self._eq_player is not None:
+            self._eq_player.set_skip_silence(enabled)
 
     # ------------------------------------------------------------------ sin silencios entre canciones
 

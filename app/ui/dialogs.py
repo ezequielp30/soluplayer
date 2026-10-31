@@ -513,6 +513,14 @@ class PreferencesDialog(QDialog):
             "La siguiente canción se prepara antes de que termine la actual, como en los álbumes en vivo o "
             "mezclados. Desactívalo solo si algún archivo no suena bien así."
         ))
+        playback.addSpacing(6)
+        self.skip_silence = QCheckBox("Saltar el silencio grabado al principio y al final de cada canción")
+        self.skip_silence.setChecked(prefs.skip_silence)
+        playback.addWidget(self.skip_silence)
+        playback.addWidget(note_label(
+            "Muchas canciones traen varios segundos de silencio al terminar: así pasa a la siguiente apenas "
+            "termina la música. Un silencio a mitad de canción se respeta. Los archivos no se modifican."
+        ))
         playback.addStretch(1)
 
         # Teclado
@@ -555,6 +563,7 @@ class PreferencesDialog(QDialog):
         self._prefs.online_covers = self.online_covers.isChecked()
         self._prefs.song_columns = [k for k, box in self.column_boxes.items() if box.isChecked()]
         self._prefs.gapless = self.gapless.isChecked()
+        self._prefs.skip_silence = self.skip_silence.isChecked()
         self.accept()
 
     def reject(self) -> None:

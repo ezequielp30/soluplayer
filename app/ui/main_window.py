@@ -151,6 +151,7 @@ class MainWindow(QMainWindow):
         self.content = ContentPanel(self.covers)
         self.content.set_columns(self.prefs.song_columns)
         self.player.set_gapless(self.prefs.gapless)
+        self.player.set_skip_silence(self.prefs.skip_silence)
         # La barra lateral ocupa toda la altura (más espacio para Playlists y Carpetas); la barra del
         # reproductor va solo encima del panel principal.
         right = QWidget()
@@ -1657,6 +1658,7 @@ class MainWindow(QMainWindow):
             self._apply_media_keys()
             self.content.set_columns(self.prefs.song_columns)
             self.player.set_gapless(self.prefs.gapless)
+            self.player.set_skip_silence(self.prefs.skip_silence)
             if self.prefs.theme != theme.mode():
                 theme.apply(QApplication.instance(), self.prefs.theme)
             state = "activada" if self.prefs.ask_titles_on_import else "desactivada"
