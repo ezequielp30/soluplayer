@@ -585,6 +585,9 @@ class PlaybackController(QObject):
             self._audio.setDevice(default)
             log.info("La salida de audio cambió a: %s", default.description())
             self.output_changed.emit(default.description())
+        elif self._eq_player is not None:
+            # La misma salida volvió (p. ej. el Bluetooth se reconectó): si la música se pausó por la caída, sigue.
+            self._eq_player.resume_after_device()
 
     # ------------------------------------------------------------------ eventos de Qt
 

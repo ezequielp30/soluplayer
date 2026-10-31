@@ -36,7 +36,7 @@ from PySide6.QtMultimedia import (
     QMediaPlayer,
 )
 
-from .equalizer import BLOCK, LATENCY_FRAMES, EqProcessor, EqSettings, soft_limit
+from .equalizer import EqProcessor, EqSettings, soft_limit, to_pcm16
 
 log = logging.getLogger(__name__)
 
@@ -286,6 +286,7 @@ class EqPlayer(QObject):
         self._old_frames = 0  # frames de la canción anterior que siguen en la cola de salida
         self._announce = False  # avisar (advanced) cuando la canción nueva empiece a oírse
         self._waiting_start = False  # «reproducir» pedido: la salida se abre cuando haya audio decodificado
+        self.paused_by_device = False  # en pausa porque la salida se cayó (no porque lo pidió el usuario)
         self._sink: QAudioSink | None = None
         self._device: _Pull | None = None
         self._format = self._choose_format()
@@ -304,6 +305,7 @@ class EqPlayer(QObject):
         self._last_data = time.monotonic()
         self._gain = 1.0  # volumen del fundido de pausa/reanudar (multiplica al del usuario)
         self._boost = 1.0  # ganancia extra dentro del audio (igualar volumen que sube por encima del 100 %)
+        self._rng = np.random.default_rng()  # dither al pasar a 16 bits
         self._ramp_target, self._ramp_step, self._ramp_done = 1.0, 0.0, None
         self._ramp = QTimer(self)
         self._ramp.setTimerType(Qt.TimerType.PreciseTimer)
@@ -347,9 +349,7 @@ class EqPlayer(QObject):
         return max(1, int(self._rate * _FADE_MS / 1000))
 
     def _latency(self) -> int:
-        from .equalizer import LATENCY_FRAMES
-
-        return LATENCY_FRAMES
+        return self._eq.latency
 
     # ------------------------------------------------------------------ API como QMediaPlayer
 
@@ -376,6 +376,7 @@ class EqPlayer(QObject):
             self._feeding = None
 
     def setSource(self, url: QUrl) -> None:  # noqa: N802
+        self.paused_by_device = False
         self._drop_next()
         self._drop_feeding()
         self._teardown_decoder()
@@ -411,7 +412,7 @@ class EqPlayer(QObject):
     def _ready_to_start(self) -> bool:
         """Ya está decodificado lo que llena la salida entera (más el retardo del filtro): así no se rellena
         con trozos de silencio mientras el decodificador termina, que se oían como cortes al empezar."""
-        need = int(self._rate * _BUFFER_MS / 1000) + LATENCY_FRAMES + BLOCK
+        need = int(self._rate * _BUFFER_MS / 1000) + self._eq.latency + self._eq.block
         return self._decode_done or self._store.frames - self._cursor >= need
 
     def _start_sink_when_ready(self) -> None:
@@ -425,6 +426,7 @@ class EqPlayer(QObject):
             self._start_sink()
 
     def pause(self) -> None:
+        self.paused_by_device = False
         if self._waiting_start:  # todavía no sonaba: no hay salida que suspender
             self._waiting_start = False
             self._set_state(State.PausedState)
@@ -456,6 +458,7 @@ class EqPlayer(QObject):
 
     def stop(self) -> None:
         self._waiting_start = False
+        self.paused_by_device = False
         self._ramp.stop()  # detener es inmediato: suelta el archivo en el acto (Papelera, mover, renombrar)
         self._ramp_done = None
         self._gain = 1.0
@@ -643,15 +646,25 @@ class EqPlayer(QObject):
             return  # una salida que ya se cambió o se detuvo a propósito
         if self._state != State.PlayingState:
             return
-        log.warning("La salida de audio se detuvo (%s): el ecualizador queda en pausa", sink.error().name)
+        log.warning("La salida de audio se detuvo (%s): queda en pausa hasta que vuelva una salida", sink.error().name)
         position = self.position()
         self._stop_sink()
         self._seek_frames(int(position * self._rate / 1000))
         self._set_state(State.PausedState)
+        self.paused_by_device = True  # al volver una salida, sigue sola (si el usuario no hizo otra cosa)
 
     def _device_changed(self) -> None:
-        """La salida de Windows cambió (auriculares, Bluetooth…): se sigue sonando por la nueva."""
+        """La salida de Windows cambió (auriculares, Bluetooth…): se sigue sonando por la nueva, en el formato
+        que ella prefiere. Si la música se había pausado porque la salida anterior se cayó, sigue sola."""
+        resume = self.paused_by_device and self._state == State.PausedState
+        self.paused_by_device = False
+        new = self._choose_format()
+        if new.sampleRate() != self._rate or new.sampleFormat() != self._format.sampleFormat():
+            self._renegotiate(new, resume)
+            return
         if self._sink is None:
+            if resume:
+                self.play()
             return
         position = self.position()
         playing = self._state == State.PlayingState
@@ -659,6 +672,30 @@ class EqPlayer(QObject):
         self._seek_frames(int(position * self._rate / 1000))
         if playing:
             self._start_sink()
+
+    def resume_after_device(self) -> None:
+        """Apareció una salida de audio (p. ej. volvió el Bluetooth): si la pausa la causó la caída, sigue."""
+        if self.paused_by_device:
+            self._device_changed()
+
+    def _renegotiate(self, fmt: QAudioFormat, resume: bool) -> None:
+        """La salida nueva trabaja a otra frecuencia o formato: se vuelve a decodificar a esa frecuencia desde
+        el mismo punto (sin que Windows tenga que convertir, ni la salida rechace el formato)."""
+        url, position = QUrl(self._source), self.position()
+        playing = self._state == State.PlayingState or resume
+        log.info("Salida nueva: %d Hz, %s (antes %d Hz)", fmt.sampleRate(), fmt.sampleFormat().name, self._rate)
+        self._stop_sink()
+        self._format = fmt
+        if fmt.sampleRate() != self._rate:
+            self._rate = fmt.sampleRate()
+            self._eq = EqProcessor(self._rate, self._channels, self._eq.settings)
+        if url.isEmpty():
+            return
+        self.setSource(url)
+        if position:
+            self.setPosition(position)
+        if playing:
+            self.play()
 
     def _seek_frames(self, frame: int) -> None:
         self._cursor = frame
@@ -729,8 +766,8 @@ class EqPlayer(QObject):
             done = total - self._fade_left
             frames[:n] *= ((np.arange(done, done + n, dtype=np.float32) + 1) / total)[:, None]
             self._fade_left -= n
-        if self._format.sampleFormat() == QAudioFormat.SampleFormat.Int16:
-            return (np.clip(frames, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        if self._format.sampleFormat() == QAudioFormat.SampleFormat.Int16:  # salida que no acepta float
+            return to_pcm16(frames, self._rng)
         return frames.astype("<f4").tobytes()
 
     def _switch_to_next(self) -> None:

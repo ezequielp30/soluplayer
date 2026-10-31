@@ -2,6 +2,31 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.18.0 — 2026-10-30 (graves precisos, dither, cambio de salida)
+
+Etapa 3 de la auditoría de calidad de sonido.
+
+- **Ecualizador con graves precisos:** las bandas de 31 y 62 Hz dan lo que marcan (±0,5 dB a 44,1/48 kHz,
+  ±1 dB a 96 kHz; antes hasta 2 y 4 dB menos). Responde igual de rápido (bloques de ~90 ms) y usa poco
+  procesador (6–7 % de un núcleo).
+- **Por debajo de 20 Hz no refuerza:** subir los graves ya no empuja frecuencias que no se oyen (antes
+  +12 dB a 10 Hz, que solo gastaban parlante). Bajarlos sigue funcionando.
+- **Dither al pasar a 16 bits** (salidas que no aceptan float y la conversión a MP3): los pasajes muy suaves
+  (fundidos, colas de reverberación) ya no salen con distorsión; queda un ruido de fondo parejo e inaudible.
+  La conversión da siempre el mismo MP3 para el mismo original.
+- **Cambiar de parlantes o auriculares:** si la salida nueva trabaja a otra frecuencia, la canción se vuelve
+  a preparar a esa frecuencia y sigue en el mismo punto. Si la música se pausó porque la salida se cayó
+  (Bluetooth), sigue sola cuando vuelve; si la pausaste vos, no.
+- **Convertir a MP3 algo ya comprimido** (WMA, AAC, OGG…): la ventana lo marca y lo avisa antes de
+  convertir (es una segunda compresión, no mejora y puede perder algo). Los M4A en ALAC (sin pérdida) no
+  se marcan.
+- **Pico real:** se verificó que la medición es exacta (0,0 dBTP con entrada suave); el «exceso» en agudos
+  que se había reportado es el sobrepico real de un comienzo brusco, que también produce el conversor. Se
+  dejó una prueba que lo fija.
+- **Pruebas:** ya no usan tu música (audio generado, mismo resultado en cualquier PC); `codec_test` prueba
+  cada formato con los dos motores, variantes (24 bits, 96 kHz, mono, 5.1) y archivos dañados; nueva
+  `tests/audio_etapa3_test.py` (19).
+
 ## 1.17.0 — 2026-10-30 (sin silencio entre canciones, volumen en dB)
 
 Etapa 2 de la auditoría de calidad de sonido.

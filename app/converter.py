@@ -29,6 +29,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtMultimedia import QAudioFormat
 
 from .audio_decode import decode_file
+from .equalizer import to_pcm16
 from . import journal, mp3gain
 from .metadata import MetadataError, read_metadata
 from .models import Track
@@ -443,10 +444,11 @@ class ConvertWorker(QObject):
         # Paso 2: codificar con LAME.
         temp = temp_beside(item.mp3, ".convirtiendo.tmp")
         writer = Mp3Writer(temp, bitrate, rate, channels)
+        rng = np.random.default_rng(0)  # dither con semilla fija: el mismo original da siempre el mismo MP3
 
         def on_buffer(buffer) -> None:
             samples = np.frombuffer(bytes(buffer.constData()), dtype=np.float32)
-            writer.write((np.clip(samples * scale, -1.0, 1.0) * 32767).astype("<i2").tobytes())
+            writer.write(to_pcm16(samples * scale, rng))
 
         failure = decode_file(item.original, fmt, on_buffer)  # suelta el original al terminar
         error = [failure] if failure else []

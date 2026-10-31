@@ -10,6 +10,7 @@ import os
 import sqlite3
 from typing import Callable
 
+import mutagen
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QDialog,
@@ -40,13 +41,28 @@ COL_USE, COL_SONG, COL_NOW, COL_MP3, COL_STATE = range(5)
 _TRACK = Qt.ItemDataRole.UserRole
 
 _DETAILS = (
-    "Convierte con LAME, el codificador de referencia, al doble de kbps que el original (entre 128 y 320; "
-    "320 para formatos sin pérdida) para no añadir pérdida audible.\n"
+    "Convierte con LAME, el codificador de referencia. Desde formatos sin pérdida (FLAC, WAV…) usa 320 kbps, "
+    "transparente. Desde otro formato ya comprimido (WMA, AAC, OGG…) es una SEGUNDA compresión: usa el doble "
+    "de kbps para que la pérdida extra sea mínima, pero puede sumar algo; conviértelos solo si tu equipo "
+    "(auto, celular) no los reproduce.\n"
     "Título, artista, álbum, género y carátula pasan al MP3, y las playlists lo usan solas.\n"
     "Convertir no mejora la calidad que ya tiene un archivo.\n"
     f"Los originales no se borran: se guardan en «{converter.ORIGINALS_FOLDER_NAME}» y la conversión se puede "
     "deshacer en Herramientas → Historial de cambios en archivos."
 )
+
+
+def is_lossy(path: str) -> bool:
+    """El original ya viene comprimido con pérdida (WMA, AAC, OGG…): convertirlo es comprimir dos veces."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext in converter.LOSSLESS:
+        return False
+    if ext in (".m4a", ".m4b", ".mp4"):  # puede ser AAC (con pérdida) o ALAC (Apple Lossless, sin pérdida)
+        try:
+            return not str(getattr(mutagen.File(path).info, "codec", "")).lower().startswith("alac")
+        except Exception:
+            return True
+    return True
 
 
 class ConvertDialog(QDialog):
@@ -175,7 +191,14 @@ class ConvertDialog(QDialog):
             track = use.data(_TRACK)
             ext = os.path.splitext(track.path)[1].lstrip(".").upper()
             quality = audio_quality(track.path)
-            self.table.item(row, COL_NOW).setText(f"{ext} {quality.kbps} kbps" if quality and quality.kbps else ext)
+            lossy = is_lossy(track.path)
+            now = f"{ext} {quality.kbps} kbps" if quality and quality.kbps else ext
+            self.table.item(row, COL_NOW).setText(now + (" · ya comprimido" if lossy else ""))
+            if lossy:
+                self.table.item(row, COL_NOW).setToolTip(
+                    "Ya está comprimido: pasarlo a MP3 es una segunda compresión (no mejora y puede perder algo de "
+                    "calidad). Conviértelo solo si tu equipo no reproduce este formato."
+                )
             self.table.item(row, COL_MP3).setText(f"MP3 {converter.target_bitrate(track.path, quality)} kbps")
             if quality:
                 self.table.item(row, COL_SONG).setToolTip(f"{track.path}\n{ext} · {quality.text()}")
@@ -214,6 +237,12 @@ class ConvertDialog(QDialog):
             return
         tracks = [t for _, t in checked]
         session = converter.new_session(tracks, self._ops.db.known_path_keys())
+        lossy = sum(1 for t in tracks if is_lossy(t.path))
+        lossy_note = (
+            f"{plural(lossy, 'canción ya está comprimida', 'canciones ya están comprimidas')} (WMA, AAC, OGG…): "
+            "pasarlas a MP3 es una segunda compresión, que no mejora y puede perder algo de calidad.\n\n"
+            if lossy else ""
+        )
         while True:  # carpeta destino de los originales: la propuesta, o la que se elija
             choice = ask(
                 self,
@@ -223,8 +252,8 @@ class ConvertDialog(QDialog):
                  ("Elegir otra carpeta…", QMessageBox.ButtonRole.ActionRole),
                  ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
                 QMessageBox.Icon.Question,
-                f"Los MP3 nuevos quedan junto a cada original. Los originales se guardarán en:\n{session.originals_root}"
-                "\n\nSe puede deshacer desde el Historial.",
+                f"{lossy_note}Los MP3 nuevos quedan junto a cada original. Los originales se guardarán en:\n"
+                f"{session.originals_root}\n\nSe puede deshacer desde el Historial.",
             )
             if choice == 1:
                 parent = QFileDialog.getExistingDirectory(self, "¿Dónde guardar los originales?",
