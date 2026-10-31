@@ -497,19 +497,17 @@ class FileOperations:
             self._on_changed()
         return fixed
 
-    def set_aside(self, items: list[tuple[Track, str]], library: list[Track]) -> SetAsideOutcome:
+    def set_aside(self, items: list[tuple[Track, str]], library: list[Track], folder: str | None = None) -> SetAsideOutcome:
         """Mueve las canciones que no se pueden igualar a «_Volumen sin igualar» en la carpeta principal de
         la música, con un LEEME.txt que dice qué es cada una. Mover seguro: respaldo previo, nunca pisa nada,
         las playlists se conservan y se deshace desde el Historial."""
-        from .loudness import SET_ASIDE_FOLDER
-
-        root = library_root(library)
-        if not root:
-            raise file_manager.FileManagerError(
-                "No hay una carpeta principal clara para tu música (las canciones están repartidas en la raíz del "
-                "disco o en carpetas del sistema): no se apartó nada."
-            )
-        folder = os.path.join(root, SET_ASIDE_FOLDER)
+        if folder is None:  # sin carpeta elegida: «_Volumen sin igualar» en la carpeta principal
+            folder = self.set_aside_folder(library)
+            if not folder:
+                raise file_manager.FileManagerError(
+                    "No hay una carpeta principal clara para tu música (las canciones están repartidas en la raíz del "
+                    "disco o en carpetas del sistema): no se apartó nada."
+                )
         created = not os.path.isdir(folder)
         os.makedirs(folder, exist_ok=True)
         reasons = {t.path: reason for t, reason in items}

@@ -2,6 +2,18 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.16.0 — 2026-10-30 (herramientas: carpeta origen y destino)
+
+- **Elegir qué analizar:** Datos en internet, Canciones repetidas, Analizar y ajustar volumen y Convertir
+  a MP3 preguntan primero «¿Qué canciones quieres analizar?»: toda la biblioteca o una carpeta (con sus
+  subcarpetas), con **«Seleccionar carpeta…»**. Si estás viendo una carpeta, la propone. El título de la
+  herramienta dice qué carpeta analiza.
+- **Elegir la carpeta destino** donde la herramienta crea o mueve archivos: la carpeta de revisión de
+  repetidas (ahora se propone dentro de la carpeta analizada), dónde guardar los originales al convertir a
+  MP3 y dónde crear «_Volumen sin igualar» al apartar. Se cambia con «Elegir otra carpeta…» antes de
+  confirmar.
+- Pruebas en `tests/herramientas_carpeta_test.py`.
+
 ## 1.15.0 — 2026-10-30 (sonido más fiel con el ecualizador)
 
 Etapa 1 de la auditoría de calidad de sonido. Todo es al reproducir: los archivos no se tocan.

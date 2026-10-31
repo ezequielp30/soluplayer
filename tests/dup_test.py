@@ -12,6 +12,7 @@ from mutagen.wave import WAVE
 from app.config import database_path
 from app.database import Database
 from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 from app.ui.dialogs import FolderImportDialog, ImportReportDialog
 from app.ui.duplicates_dialog import DuplicatesDialog
 

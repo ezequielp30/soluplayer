@@ -15,6 +15,7 @@ from app.database import Database
 from app.duplicates import find_duplicates
 from app.importer import scan_file
 from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 from app.ui.duplicates_dialog import DuplicatesDialog
 from app.ui.history_dialog import HistoryDialog
 

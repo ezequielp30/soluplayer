@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -142,7 +143,8 @@ class LoudnessDialog(QDialog):
         close = QPushButton("Cerrar")
         close.clicked.connect(self.reject)
         self.btn_aside = QPushButton("Apartar…")
-        self.btn_aside.setToolTip(f"Mueve las que no se pueden igualar a «{SET_ASIDE_FOLDER}», en la carpeta principal de tu música")
+        self.btn_aside.setToolTip(f"Mueve las que no se pueden igualar a «{SET_ASIDE_FOLDER}», en la carpeta principal de tu música\n"
+                                    "(antes de mover puedes elegir otra carpeta destino)")
         self.btn_aside.clicked.connect(self._set_aside)
         bottom.addWidget(self.btn_aside)
         bottom.addWidget(self.btn_revert)
@@ -345,17 +347,28 @@ class LoudnessDialog(QDialog):
             return
         kinds = Counter(reason.split(":")[0].split(" (")[0] for _t, reason in items)
         detail = "\n".join(f"  · {name}: {count}" for name, count in kinds.items())
-        if ask(
-            self, "Apartar canciones",
-            f"¿Mover {plural(len(items), 'canción', 'canciones')} que no se pueden igualar a:\n{destination}?",
-            [("Apartar", QMessageBox.ButtonRole.DestructiveRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
-            QMessageBox.Icon.Question,
-            f"{detail}\n\nSiguen en tu biblioteca y en tus playlists, con un LEEME.txt que explica cada una. "
-            "Se puede deshacer desde el Historial.",
-        ) != 0:
-            return
+        while True:  # carpeta destino: la propuesta, o la que se elija
+            choice = ask(
+                self, "Apartar canciones",
+                f"¿Mover {plural(len(items), 'canción', 'canciones')} que no se pueden igualar a:\n{destination}?",
+                [("Apartar", QMessageBox.ButtonRole.DestructiveRole),
+                 ("Elegir otra carpeta…", QMessageBox.ButtonRole.ActionRole),
+                 ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+                QMessageBox.Icon.Question,
+                f"{detail}\n\nSiguen en tu biblioteca y en tus playlists, con un LEEME.txt que explica cada una. "
+                "Se puede deshacer desde el Historial.",
+            )
+            if choice == 1:
+                parent = QFileDialog.getExistingDirectory(self, "¿Dónde crear la carpeta de las apartadas?",
+                                                          os.path.dirname(destination))
+                if parent:
+                    destination = os.path.join(os.path.normpath(parent), SET_ASIDE_FOLDER)
+                continue
+            if choice != 0:
+                return
+            break
         try:
-            outcome = self._ops.set_aside(items, self._tracks())
+            outcome = self._ops.set_aside(items, self._tracks(), destination)
         except Exception as exc:  # carpeta sin permiso, disco lleno…
             self.banner.show_result(f"No se pudieron apartar: {exc}", ok=False)
             return

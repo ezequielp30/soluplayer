@@ -16,6 +16,7 @@ from app.database import Database
 from app.importer import scan_file
 from app.loudness import RATE, LoudnessMeter
 from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 from app.ui.convert_dialog import COL_MP3, COL_STATE, COL_USE, ConvertDialog
 
 results, errors = [], []

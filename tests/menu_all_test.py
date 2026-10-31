@@ -18,6 +18,7 @@ from app.config import database_path
 from app.database import Database
 from app.importer import scan_file
 from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 from app.ui.convert_dialog import ConvertDialog
 from app.ui.dialogs import PlaylistNameDialog, PreferencesDialog
 from app.ui.duplicates_dialog import DuplicatesDialog

@@ -6,6 +6,8 @@ from PySide6.QtCore import QTimer, QSettings
 QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from PySide6.QtWidgets import QApplication
 import app.application as appmod
+from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); from muestra_real import mp3_real  # la de siempre o, si ya no está, otro MP3 real
 src = [mp3_real()]
 lib = os.path.join(work, "m"); os.makedirs(lib)

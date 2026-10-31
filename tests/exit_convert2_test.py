@@ -7,6 +7,8 @@ from PySide6.QtCore import QTimer, QSettings
 QSettings("ReproductorMusicaTest", "ReproductorMusica").setValue("preferences/confirm_exit", False)  # esta prueba no es sobre la pregunta de salir (ver confirmaciones_test)
 from PySide6.QtWidgets import QApplication, QMessageBox
 import app.application as appmod
+from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 import app.ui.convert_dialog as cd
 con = sqlite3.connect("file:" + os.path.expandvars(r"%LOCALAPPDATA%\ReproductorMusica\biblioteca.db") + "?mode=ro", uri=True)
 def _real_originals(ext):

@@ -17,6 +17,7 @@ from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
     QFileDialog,
     QInputDialog,
     QLineEdit,
@@ -58,6 +59,7 @@ from .content_panel import (
 from .covers import CoverProvider
 from .dialogs import (
     FolderImportDialog,
+    FolderScopeDialog,
     ImportReportDialog,
     PlaylistNameDialog,
     PlaylistRestoreDialog,
@@ -213,7 +215,7 @@ class MainWindow(QMainWindow):
             "act_delete_playlist": self._delete_selected_playlist,
             "act_save_playlists": self._save_playlists_copy,
             "act_restore_playlists": self._restore_playlists,
-            "act_online": lambda: self._open_online(self.library),
+            "act_online": self._open_online_from_menu,
             "act_duplicates": self._open_duplicates,
             "act_loudness": self._open_loudness,
             "act_convert": self._open_convert,
@@ -1137,21 +1139,68 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, title, "La biblioteca está vacía. Importa música primero.")
         return True
 
-    def _open_duplicates(self) -> None:
-        if not self._library_is_empty("Canciones repetidas"):
-            self._run_dialog(DuplicatesDialog(lambda: self.library, self._apply_duplicates_plan, self, gather=self._gather_for_review))
+    def _choose_scope(self, tool: str):
+        """Primer paso de las herramientas: toda la biblioteca o una carpeta. Devuelve (función que da las
+        canciones a analizar, carpeta o None), o None si se canceló. La función se vuelve a llamar después de
+        cada cambio, así que la herramienta siempre ve la biblioteca al día dentro de esa carpeta."""
+        if self._library_is_empty(tool):
+            return None
+        current = self.sidebar.current_folder()
+        dialog = FolderScopeDialog(
+            tool,
+            lambda folder: len(self.library) if folder is None else len(self.ops.tracks_in(folder, self.library)),
+            current,
+            current or self._import_start_dir(),
+            self,
+        )
+        if self._run_dialog(dialog) != QDialog.DialogCode.Accepted:
+            return None
+        folder = dialog.folder()
+        if folder is None:
+            return (lambda: self.library), None
+        return (lambda: self.ops.tracks_in(folder, self.library)), folder
 
-    def _open_loudness(self, initial_filter: str = FILTER_NEED) -> None:
-        if not self._library_is_empty("Volumen"):
-            self._run_dialog(LoudnessDialog(self.ops, lambda: self.library, self, initial_filter))
+    @staticmethod
+    def _scoped_title(dialog, folder: str | None):
+        """En el título de la herramienta, qué se está analizando."""
+        if folder is not None:
+            dialog.setWindowTitle(f"{dialog.windowTitle()} — carpeta «{display_name(folder)}»")
+        return dialog
+
+    def _open_online_from_menu(self) -> None:
+        scope = self._choose_scope("Datos en internet")
+        if scope is not None:
+            self._open_online(scope[0]())
+
+    def _open_duplicates(self) -> None:
+        scope = self._choose_scope("Canciones repetidas")
+        if scope is not None:
+            tracks, folder = scope
+            self._run_dialog(self._scoped_title(
+                DuplicatesDialog(tracks, self._apply_duplicates_plan, self, gather=self._gather_for_review), folder
+            ))
+
+    def _open_loudness(self, initial_filter: str = FILTER_NEED, ask_scope: bool = True) -> None:
+        if not ask_scope:  # desde el Historial («ver las ajustadas»): toda la biblioteca, sin preguntar
+            if not self._library_is_empty("Volumen"):
+                self._run_dialog(LoudnessDialog(self.ops, lambda: self.library, self, initial_filter))
+            return
+        scope = self._choose_scope("Analizar y ajustar volumen")
+        if scope is not None:
+            tracks, folder = scope
+            self._run_dialog(self._scoped_title(LoudnessDialog(self.ops, tracks, self, initial_filter), folder))
 
     def _open_convert(self) -> None:
-        if not self._library_is_empty("Convertir a MP3"):
-            self._run_dialog(ConvertDialog(self.ops, lambda: self.library, self, open_history=self._open_history))
+        scope = self._choose_scope("Convertir a MP3")
+        if scope is not None:
+            tracks, folder = scope
+            self._run_dialog(self._scoped_title(
+                ConvertDialog(self.ops, tracks, self, open_history=self._open_history), folder
+            ))
 
     def _open_history(self) -> None:
         self._run_dialog(HistoryDialog(
-            self.ops, lambda: self.library, lambda: self._open_loudness(FILTER_DONE), self
+            self.ops, lambda: self.library, lambda: self._open_loudness(FILTER_DONE, ask_scope=False), self
         ))
 
     def _apply_duplicates_plan(self, plan: list[tuple[int, list[Track]]], trash: bool) -> str:
@@ -1163,8 +1212,10 @@ class MainWindow(QMainWindow):
         return outcome.message
 
     def _gather_for_review(self, groups) -> str:
-        """Mueve las copias de cada canción repetida a una subcarpeta con su nombre."""
-        destination = review_folder.default_destination(self.library)
+        """Mueve las copias de cada canción repetida a una subcarpeta con su nombre. La carpeta de revisión
+        se propone junto a las canciones analizadas (la carpeta elegida al abrir la herramienta) y se puede
+        cambiar con «Elegir otra carpeta…»."""
+        destination = review_folder.default_destination([t for group in groups for t in group.tracks] or self.library)
         while True:
             choice = ask(
                 self,

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -292,6 +294,81 @@ class PlaylistRestoreDialog(QDialog):
 
     def selected(self) -> list:
         return [plan for i, plan in enumerate(self._plans) if self.list.item(i).checkState() == Qt.CheckState.Checked]
+
+
+class FolderScopeDialog(QDialog):
+    """Primer paso de cada herramienta: qué canciones analizar, toda la biblioteca o una carpeta.
+    `count(carpeta o None)` dice cuántas canciones de la biblioteca hay ahí. Tras aceptar, `folder()` es la
+    carpeta elegida (con sus subcarpetas) o None para toda la biblioteca."""
+
+    def __init__(self, tool: str, count: Callable[[str | None], int], folder: str | None, start_dir: str,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tool)
+        self.setMinimumWidth(500)
+        self._count = count
+        self._start_dir = start_dir
+        self._folder = folder if folder and os.path.isdir(folder) else None
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        heading = QLabel("¿Qué canciones quieres analizar?")
+        heading.setObjectName("EmptyTitle")
+        layout.addWidget(heading)
+        self.all_songs = QRadioButton(f"Toda la biblioteca ({plural(count(None), 'canción', 'canciones')})")
+        self.one_folder = QRadioButton("Una carpeta (con sus subcarpetas):")
+        layout.addWidget(self.all_songs)
+        layout.addWidget(self.one_folder)
+        row = QHBoxLayout()
+        row.setContentsMargins(24, 0, 0, 0)
+        self.path = QLineEdit()
+        self.path.setReadOnly(True)
+        self.path.setPlaceholderText("Ninguna carpeta elegida")
+        self.btn_choose = QPushButton("Seleccionar carpeta…")
+        self.btn_choose.clicked.connect(self._choose)
+        row.addWidget(self.path, 1)
+        row.addWidget(self.btn_choose)
+        layout.addLayout(row)
+        self.detail = note_label("")
+        layout.addWidget(self.detail)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.btn_ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self.btn_ok.setText("Continuar")
+        self.btn_ok.setObjectName("PrimaryButton")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.all_songs.toggled.connect(lambda _on: self._refresh())
+        (self.one_folder if self._folder else self.all_songs).setChecked(True)
+        self._refresh()
+
+    def folder(self) -> str | None:
+        return self._folder if self.one_folder.isChecked() else None
+
+    def _choose(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta", self._folder or self._start_dir)
+        if chosen:
+            self._folder = os.path.normpath(chosen)
+            self.one_folder.setChecked(True)
+            self._refresh()
+
+    def _refresh(self) -> None:
+        self.path.setText(self._folder or "")
+        if self.all_songs.isChecked():
+            self.detail.setText("Se analiza toda la biblioteca.")
+            self.btn_ok.setEnabled(self._count(None) > 0)
+            return
+        if not self._folder:
+            self.detail.setText("Pulsa «Seleccionar carpeta…» y elige la carpeta a analizar.")
+            self.btn_ok.setEnabled(False)
+            return
+        n = self._count(self._folder)
+        self.detail.setText(
+            f"Se analizan {plural(n, 'canción', 'canciones')} de esta carpeta." if n else
+            "Esta carpeta no tiene canciones en la biblioteca. Impórtala primero (Archivo → Importar carpeta…) "
+            "o elige otra."
+        )
+        self.btn_ok.setEnabled(n > 0)
 
 
 class PreferencesDialog(QDialog):

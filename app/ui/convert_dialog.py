@@ -13,6 +13,7 @@ from typing import Callable
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -213,15 +214,27 @@ class ConvertDialog(QDialog):
             return
         tracks = [t for _, t in checked]
         session = converter.new_session(tracks, self._ops.db.known_path_keys())
-        if ask(
-            self,
-            "Convertir a MP3",
-            f"¿Convertir {plural(len(tracks), 'canción', 'canciones')} a MP3?",
-            [("Convertir", QMessageBox.ButtonRole.AcceptRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
-            QMessageBox.Icon.Question,
-            f"Los originales se guardarán en:\n{session.originals_root}\n\nSe puede deshacer desde el Historial.",
-        ) != 0:
-            return
+        while True:  # carpeta destino de los originales: la propuesta, o la que se elija
+            choice = ask(
+                self,
+                "Convertir a MP3",
+                f"¿Convertir {plural(len(tracks), 'canción', 'canciones')} a MP3?",
+                [("Convertir", QMessageBox.ButtonRole.AcceptRole),
+                 ("Elegir otra carpeta…", QMessageBox.ButtonRole.ActionRole),
+                 ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+                QMessageBox.Icon.Question,
+                f"Los MP3 nuevos quedan junto a cada original. Los originales se guardarán en:\n{session.originals_root}"
+                "\n\nSe puede deshacer desde el Historial.",
+            )
+            if choice == 1:
+                parent = QFileDialog.getExistingDirectory(self, "¿Dónde guardar los originales?",
+                                                          os.path.dirname(session.originals_root))
+                if parent:
+                    session.originals_root = os.path.join(os.path.normpath(parent), converter.ORIGINALS_FOLDER_NAME)
+                continue
+            if choice != 0:
+                return
+            break
         if not self._ops.begin_conversion(session):
             return
         self.banner.clear()

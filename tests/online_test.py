@@ -16,6 +16,7 @@ from app.database import Database
 from app.importer import scan_file
 from app.ui import theme
 from app.ui import main_window as mw
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 from app.ui.dialogs import PreferencesDialog
 from app.ui.online_dialog import COL_PROPOSAL, COL_SCORE, COL_USE, OnlineLookupDialog
 theme.apply(app, "auto")

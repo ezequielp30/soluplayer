@@ -12,6 +12,7 @@ QSettings("ReproductorMusicaTest", "ReproductorMusica").clear()
 from app.config import database_path
 from app.database import Database
 from app.ui import main_window as mw, menu_loader
+mw.MainWindow._choose_scope = lambda self, tool: ((lambda: self.library), None)  # primer paso «¿qué analizar?»: toda la biblioteca (se prueba en herramientas_carpeta_test)
 
 results = []
 def check(name, ok, detail=""):
