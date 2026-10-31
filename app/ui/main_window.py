@@ -11,7 +11,7 @@ import sys
 import time
 from functools import partial
 
-from PySide6.QtCore import QByteArray, QPoint, QSettings, Qt, QThread, QTimer, QUrl, Slot
+from PySide6.QtCore import QByteArray, QEventLoop, QPoint, QSettings, Qt, QThread, QTimer, QUrl, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -41,7 +41,7 @@ from ..file_operations import FileOperations
 from ..folders import breadcrumb as folder_breadcrumb
 from ..folders import build_folder_tree, display_name, folder_key, tracks_in_folder
 from ..loudness import TARGET_LUFS
-from ..importer import ImportWorker, ScannedTrack, ScanResult, in_skipped_folder, scan_file
+from ..importer import ImportWorker, ScannedTrack, ScanResult, collect_folder, in_skipped_folder, scan_file
 from ..models import Track
 from ..player import PlaybackController, RepeatMode
 from ..preferences import Preferences
@@ -137,6 +137,8 @@ class MainWindow(QMainWindow):
         )
         self._import_thread: QThread | None = None
         self._import_worker: ImportWorker | None = None
+        self._after_import = None  # qué hacer al terminar una importación pedida por una herramienta
+        self._quiet_import = False  # importación para una herramienta: sin el resumen final si todo salió bien
         self._progress: QProgressDialog | None = None
 
         self.setWindowTitle(APP_NAME)
@@ -1038,9 +1040,14 @@ class MainWindow(QMainWindow):
             f"{'nueva' if len(added) == 1 else 'nuevas'}.",
             8000,
         )
-        self._run_dialog(ImportReportDialog(
-            len(added), duplicates, result.failures, result.ignored_count, result.cancelled, self
-        ))
+        if not (self._quiet_import and not result.failures):
+            self._run_dialog(ImportReportDialog(
+                len(added), duplicates, result.failures, result.ignored_count, result.cancelled, self
+            ))
+        after = self._after_import
+        if after is not None:
+            self._after_import = None
+            after()
 
     def _review_missing_titles(self, tracks: list[ScannedTrack]) -> None:
         """Pregunta si se completan los títulos de las canciones que no traen etiqueta de título."""
@@ -1145,6 +1152,8 @@ class MainWindow(QMainWindow):
         cada cambio, así que la herramienta siempre ve la biblioteca al día dentro de esa carpeta."""
         if self._library_is_empty(tool):
             return None
+        if self._busy_importing():
+            return None
         current = self.sidebar.current_folder()
         dialog = FolderScopeDialog(
             tool,
@@ -1152,13 +1161,38 @@ class MainWindow(QMainWindow):
             current,
             current or self._import_start_dir(),
             self,
+            missing=self._audio_not_in_library,
         )
         if self._run_dialog(dialog) != QDialog.DialogCode.Accepted:
             return None
         folder = dialog.folder()
         if folder is None:
             return (lambda: self.library), None
+        if dialog.to_import():
+            # Se lee TODO el contenido de la carpeta elegida (todas sus subcarpetas): lo que falta en la
+            # biblioteca se agrega antes de abrir la herramienta.
+            self._import_then_continue(folder)
+            if not self.ops.tracks_in(folder, self.library):
+                return None  # se canceló la importación antes de agregar nada
         return (lambda: self.ops.tracks_in(folder, self.library)), folder
+
+    def _audio_not_in_library(self, folder: str) -> int:
+        """Archivos de audio de la carpeta y TODAS sus subcarpetas que todavía no están en la biblioteca."""
+        files, _failures, _ignored = collect_folder(folder, recursive=True)
+        known = self.db.known_path_keys()
+        return sum(1 for f in files if not in_skipped_folder(f) and path_key(f) not in known)
+
+    def _import_then_continue(self, folder: str) -> None:
+        """Importa la carpeta (con subcarpetas) y espera a que termine. Sin el resumen final si todo salió bien:
+        la herramienta se abre a continuación."""
+        loop = QEventLoop(self)
+        self._after_import = loop.quit
+        self._quiet_import = True
+        self._start_import(folder=folder, recursive=True)
+        if self._import_worker is not None:
+            loop.exec()
+        self._after_import = None
+        self._quiet_import = False
 
     @staticmethod
     def _scoped_title(dialog, folder: str | None):

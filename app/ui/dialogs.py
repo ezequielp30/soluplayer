@@ -298,15 +298,19 @@ class PlaylistRestoreDialog(QDialog):
 
 class FolderScopeDialog(QDialog):
     """Primer paso de cada herramienta: qué canciones analizar, toda la biblioteca o una carpeta.
-    `count(carpeta o None)` dice cuántas canciones de la biblioteca hay ahí. Tras aceptar, `folder()` es la
-    carpeta elegida (con sus subcarpetas) o None para toda la biblioteca."""
+    `count(carpeta o None)` dice cuántas canciones de la biblioteca hay ahí; `missing(carpeta)`, cuántos
+    archivos de audio de esa carpeta y TODAS sus subcarpetas todavía no están en la biblioteca (se agregan
+    antes de analizar). Tras aceptar, `folder()` es la carpeta elegida o None para toda la biblioteca, y
+    `to_import()` cuántos archivos hay que agregar primero."""
 
     def __init__(self, tool: str, count: Callable[[str | None], int], folder: str | None, start_dir: str,
-                 parent: QWidget | None = None) -> None:
+                 parent: QWidget | None = None, missing: Callable[[str], int] | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tool)
         self.setMinimumWidth(500)
         self._count = count
+        self._missing = missing or (lambda _folder: 0)
+        self._counts: tuple[int, int] | None = None  # (en la biblioteca, por agregar) de la carpeta elegida
         self._start_dir = start_dir
         self._folder = folder if folder and os.path.isdir(folder) else None
         layout = QVBoxLayout(self)
@@ -345,10 +349,24 @@ class FolderScopeDialog(QDialog):
     def folder(self) -> str | None:
         return self._folder if self.one_folder.isChecked() else None
 
+    def to_import(self) -> int:
+        """Archivos de audio de la carpeta (y sus subcarpetas) que se agregan a la biblioteca antes de analizar."""
+        return self._folder_counts()[1] if self.folder() else 0
+
+    def _folder_counts(self) -> tuple[int, int]:
+        if self._counts is None:  # se lee el disco una vez por carpeta elegida, no en cada cambio de opción
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self._counts = (self._count(self._folder), self._missing(self._folder))
+            finally:
+                QApplication.restoreOverrideCursor()
+        return self._counts
+
     def _choose(self) -> None:
         chosen = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta", self._folder or self._start_dir)
         if chosen:
             self._folder = os.path.normpath(chosen)
+            self._counts = None
             self.one_folder.setChecked(True)
             self._refresh()
 
@@ -362,13 +380,18 @@ class FolderScopeDialog(QDialog):
             self.detail.setText("Pulsa «Seleccionar carpeta…» y elige la carpeta a analizar.")
             self.btn_ok.setEnabled(False)
             return
-        n = self._count(self._folder)
-        self.detail.setText(
-            f"Se analizan {plural(n, 'canción', 'canciones')} de esta carpeta." if n else
-            "Esta carpeta no tiene canciones en la biblioteca. Impórtala primero (Archivo → Importar carpeta…) "
-            "o elige otra."
-        )
-        self.btn_ok.setEnabled(n > 0)
+        known, new = self._folder_counts()
+        if new:
+            self.detail.setText(
+                f"Esta carpeta y sus subcarpetas tienen {plural(new, 'archivo de audio', 'archivos de audio')} que "
+                "todavía no están en tu biblioteca: se agregan primero (los archivos no se modifican) y después se "
+                f"analizan las {known + new}."
+            )
+        elif known:
+            self.detail.setText(f"Se analizan {plural(known, 'canción', 'canciones')} de esta carpeta y sus subcarpetas.")
+        else:
+            self.detail.setText("No hay archivos de audio en esta carpeta ni en sus subcarpetas. Elige otra.")
+        self.btn_ok.setEnabled(known + new > 0)
 
 
 class PreferencesDialog(QDialog):

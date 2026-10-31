@@ -2,6 +2,16 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.16.1 — 2026-10-30 (corrección: herramientas con carpetas que aún no estaban en la biblioteca)
+
+- **Elegir una carpeta lee todo su contenido:** en Herramientas, al seleccionar una carpeta principal (por
+  ejemplo `D:\Audiolibro`, con todo en subcarpetas) se cuentan los archivos de audio de esa carpeta y de
+  TODAS sus subcarpetas. Antes solo contaba lo que ya estaba en la biblioteca: si la carpeta no se había
+  importado decía «no tiene canciones» y no dejaba continuar hasta elegir una subcarpeta.
+- Lo que todavía no está en la biblioteca se agrega primero (los archivos no se modifican; se ve la barra
+  de importación) y después la herramienta analiza todo. Vale para las cuatro herramientas.
+- Pruebas en `tests/herramientas_carpeta_test.py` (24).
+
 ## 1.16.0 — 2026-10-30 (herramientas: carpeta origen y destino)
 
 - **Elegir qué analizar:** Datos en internet, Canciones repetidas, Analizar y ajustar volumen y Convertir

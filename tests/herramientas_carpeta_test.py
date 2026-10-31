@@ -55,8 +55,8 @@ check("al seleccionar una carpeta: la muestra, cuenta sus canciones y deja conti
       d.folder() == os.path.normpath(rock) and "3 canciones" in d.detail.text() and d.btn_ok.isEnabled(), d.detail.text())
 QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: otra)
 d.btn_choose.click()
-check("una carpeta sin canciones en la biblioteca: lo explica y no deja continuar",
-      not d.btn_ok.isEnabled() and "no tiene canciones" in d.detail.text())
+check("una carpeta sin archivos de audio (ni en sus subcarpetas): lo explica y no deja continuar",
+      not d.btn_ok.isEnabled() and "No hay archivos de audio" in d.detail.text(), d.detail.text())
 d.deleteLater()
 d = FolderScopeDialog("Convertir a MP3", count, pop, work, win)
 check("si estás viendo una carpeta, la propone", d.one_folder.isChecked() and d.folder() == pop)
@@ -91,6 +91,26 @@ class Fake(QDialog):
 fake = Fake(); fake.setWindowTitle("Canciones repetidas")
 check("el título de la herramienta dice qué carpeta analiza",
       win._scoped_title(fake, rock).windowTitle() == "Canciones repetidas — carpeta «Rock»", fake.windowTitle())
+
+print("[Carpeta con subcarpetas que no está en la biblioteca]")
+libro = os.path.join(work, "Audiolibro")
+nested = [tone(os.path.join(libro, "Libro A", f"0{n}.wav"), 200 + n * 30) for n in range(2)] +          [tone(os.path.join(libro, "Libro B", "Parte 1", "01.wav"), 500)]
+d = FolderScopeDialog("Analizar y ajustar volumen", count, None, work, win, missing=win._audio_not_in_library)
+QFileDialog.getExistingDirectory = staticmethod(lambda *a, **k: libro)
+d.btn_choose.click()
+check("la carpeta principal (sin audio propio, todo en subcarpetas) cuenta TODO su contenido y deja continuar",
+      d.btn_ok.isEnabled() and d.to_import() == 3 and "3 archivos de audio" in d.detail.text(), d.detail.text())
+d.deleteLater()
+before = len(db.all_tracks())
+answer_scope(libro)
+scope = win._choose_scope("Analizar y ajustar volumen")
+got = sorted(t.path for t in scope[0]()) if scope else []
+check("al continuar se agregan a la biblioteca y la herramienta recibe las de todas las subcarpetas",
+      scope is not None and got == sorted(nested) and len(db.all_tracks()) == before + 3, [os.path.basename(p) for p in got])
+check("  los archivos no se modificaron ni movieron", all(os.path.isfile(p) for p in nested))
+answer_scope(libro)
+scope = win._choose_scope("Canciones repetidas")
+check("  la segunda vez ya no hay nada que agregar y las analiza igual", scope is not None and len(scope[0]()) == 3)
 
 opened = []
 orig_run = win._run_dialog
