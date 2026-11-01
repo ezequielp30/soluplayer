@@ -328,6 +328,8 @@ QHeaderView::section {{
     font-size: 9pt;
     font-weight: 600;
 }}
+QHeaderView::section:vertical {{ background: transparent; border: none; padding: 0 6px; font-weight: 400; }}
+QTableCornerButton::section {{ background: transparent; border: none; border-bottom: 1px solid {p.border}; }}
 QHeaderView::up-arrow, QHeaderView::down-arrow {{ width: 10px; height: 10px; }}
 #GroupList {{
     background: {p.bg};

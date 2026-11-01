@@ -2,6 +2,22 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.20.0 — 2026-11-01 (el orden se ve y se controla)
+
+- **Selector «Orden:»** en cada lista, junto al resumen: dice en qué orden está y permite cambiarlo: *Mi
+  orden*, el predeterminado de esa lista (por ejemplo *Alfabético* en «Canciones», *Por nombre de archivo* en
+  una carpeta), *Título*, *Artista*, *Álbum* (A–Z y Z–A), *Duración* o *Aleatorio*. Cada lista recuerda el
+  suyo, también al cerrar el programa. Si la lista está sonando, la siguiente canción ya sigue el orden nuevo.
+- **Número en cada fila** (1, 2, 3…): la secuencia que va a sonar. Se puede ocultar en Preferencias → Canciones.
+- **Aviso de cómo suena:** «Suena de arriba abajo» o, si el botón aleatorio de la barra está encendido, que
+  suena al azar y no en ese orden. Al elegir un orden, ese botón se apaga.
+- Mover una canción pasa a *Mi orden*; elegir otro orden no lo borra (se puede volver a él). Hacer clic en un
+  encabezado también queda reflejado en el selector.
+- Reproducir una carpeta o playlist desde el panel izquierdo sigue el orden que se ve.
+- En *Aleatorio*, la mezcla se conserva mientras la lista sea la misma (refrescarla no cambia el orden);
+  elegir *Aleatorio* otra vez hace otra mezcla. «Reproducir carpeta» sale de la mezcla.
+- Pruebas en `tests/orden_visible_test.py` (29).
+
 ## 1.19.0 — 2026-10-31 (saltar el silencio grabado entre canciones)
 
 - **Sin silencios largos entre canciones:** muchas canciones traen segundos de silencio grabado al

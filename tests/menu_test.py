@@ -437,7 +437,8 @@ def t_missing_and_explorer():
     QTest.mouseDClick(c.table.viewport(), Qt.MouseButton.LeftButton, pos=dpos); spin(300)
     check("  el diálogo de archivo faltante apareció", not pending, len(pending))
     check("Doble clic en canción faltante → mensaje útil, no se reproduce", not win.player.is_playing)
-    file_answers.append(os.path.join(moved, "B tono.wav"))
+    # La primera faltante EN EL ORDEN QUE SE VE (esta lista pudo quedar mezclada por el botón Aleatorio).
+    file_answers.append(os.path.join(moved, os.path.basename(c.first_missing_track().path)))
     expect(msgbox_with("No se encuentra el archivo"), click_msg("Localizar archivo…"))
     expect(msgbox_with("otras"), click_msg("Actualizar también"))
     c.btn_missing.click(); spin(300)

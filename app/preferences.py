@@ -150,6 +150,29 @@ class Preferences:
     def gapless(self, value: bool) -> None:
         self._s.setValue(self.GAPLESS, bool(value))
 
+    ORDER_MODES = "preferences/order_modes"
+
+    def order_mode(self, view: str) -> str | None:
+        """Orden elegido para una lista («songs», «folder:…», «playlist:3»…): cada una recuerda el suyo."""
+        try:
+            modes = json.loads(self._s.value(self.ORDER_MODES, "{}"))
+        except (TypeError, ValueError):
+            return None
+        value = modes.get(view) if isinstance(modes, dict) else None
+        return value if isinstance(value, str) else None
+
+    def set_order_mode(self, view: str, mode: str | None) -> None:
+        try:
+            modes = json.loads(self._s.value(self.ORDER_MODES, "{}"))
+        except (TypeError, ValueError):
+            modes = {}
+        modes = modes if isinstance(modes, dict) else {}
+        if mode is None:
+            modes.pop(view, None)
+        else:
+            modes[view] = mode
+        self._s.setValue(self.ORDER_MODES, json.dumps(modes))
+
     SKIP_SILENCE = "preferences/skip_silence"
 
     @property

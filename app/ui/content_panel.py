@@ -11,6 +11,7 @@ from PySide6.QtCore import QItemSelectionModel, QPoint, QSize, Qt, QTimer, Signa
 from PySide6.QtGui import QAction, QFont, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -42,6 +43,11 @@ from .track_model import (
     COL_GENRE,
     COL_TITLE,
     DEFAULT_SONG_COLUMNS,
+    ORDER_COLUMNS,
+    ORDER_DEFAULT,
+    ORDER_MANUAL,
+    ORDER_OTHER,
+    ORDER_RANDOM,
     SONG_COLUMNS,
     ROW_COVER_SIZE,
     TRACK_ROLE,
@@ -187,6 +193,7 @@ class ContentPanel(QFrame):
     reorder_requested = Signal(object)  # list[Track] en el orden nuevo (arrastradas o Alt+↑/↓)
     reset_order_requested = Signal()
     columns_changed = Signal(list)  # datos visibles elegidos con clic derecho en los encabezados
+    order_mode_changed = Signal(str, bool)  # orden elegido; True si hay que volver a armar la lista
 
     def __init__(self, covers: CoverProvider, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -194,6 +201,10 @@ class ContentPanel(QFrame):
         self._covers = covers
         self._mode = MODE_LIBRARY
         self._reset_label: str | None = None
+        self._order_mode = ORDER_DEFAULT
+        self._player_shuffle = False  # el botón aleatorio de la barra: suena al azar, sea cual sea el orden
+        self._mixes: dict[frozenset, list] = {}  # la mezcla de cada lista: refrescarla no vuelve a mezclar
+        self._new_mix = False
         self._groups: list[Group] = []
         self._group_noun = ("", "")
 
@@ -227,7 +238,23 @@ class ContentPanel(QFrame):
         self.subtitle.setObjectName("HeaderSubtitle")
         self.subtitle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         titles.addWidget(self.title)
-        titles.addWidget(self.subtitle)
+        # Siempre a la vista, junto al resumen: en qué orden está la lista y cómo va a sonar (y desde aquí se cambia).
+        self.order_label = QLabel("Orden:")
+        self.order_combo = QComboBox()
+        self.order_combo.setToolTip("En qué orden está esta lista y en cuál va a sonar. Cada lista recuerda el suyo.")
+        self.order_combo.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.order_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.order_combo.activated.connect(self._on_order_chosen)
+        self.order_note = QLabel()
+        self.order_note.setObjectName("DialogNote")
+        summary = QHBoxLayout()
+        summary.setSpacing(8)
+        summary.addWidget(self.subtitle, 1)
+        summary.addWidget(self.order_note)
+        summary.addSpacing(4)
+        summary.addWidget(self.order_label)
+        summary.addWidget(self.order_combo)
+        titles.addLayout(summary)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         self.btn_play = QPushButton(" Reproducir")
@@ -310,8 +337,9 @@ class ContentPanel(QFrame):
         self.table.setSortingEnabled(True)
         self.table.setWordWrap(False)
         self.table.setIconSize(QSize(ROW_COVER_SIZE, ROW_COVER_SIZE))
-        self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(ROW_COVER_SIZE + 14)
+        self.table.verticalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table.verticalHeader().setSectionsClickable(False)
         self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self.table.horizontalHeader().setHighlightSections(False)
@@ -330,6 +358,7 @@ class ContentPanel(QFrame):
         hh.resizeSection(COL_FILE, 220)
         hh.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         hh.customContextMenuRequested.connect(self._header_menu)
+        hh.sortIndicatorChanged.connect(self._on_header_sort)
         self._columns: list[str] = []
         self.set_columns(DEFAULT_SONG_COLUMNS)
         hh.resizeSection(COL_DURATION, 80)
@@ -389,12 +418,18 @@ class ContentPanel(QFrame):
         breadcrumb: list[tuple[str, str]] | None = None,
         reorderable: bool = False,
         reset_label: str | None = None,
+        order_mode: str = ORDER_DEFAULT,
+        has_manual: bool = False,
+        default_label: str | None = "Predeterminado",
     ) -> None:
         """Muestra una lista de canciones. 'empty' = (icono, título, mensaje, acciones).
 
         `breadcrumb` = [(nombre, ruta)] de carpetas; cada tramo salvo el último es un enlace.
         `reorderable`: se puede ordenar a mano (arrastrar o Alt+↑/↓); el orden nuevo llega por reorder_requested.
         `reset_label`: texto de la opción del clic derecho que vuelve al orden de siempre (reset_order_requested).
+        `order_mode`: orden elegido para esta lista; `tracks` viene en «Mi orden» o en el predeterminado, y las
+        columnas o el aleatorio se aplican aquí. `has_manual`: hay un orden a mano guardado («Mi orden»).
+        `default_label`: cómo se llama el orden predeterminado de esta lista (None: no tiene).
         """
         self._mode = mode
         self.table.set_reorderable(reorderable)
@@ -406,7 +441,9 @@ class ContentPanel(QFrame):
         self.title.setText(title)
         self.subtitle.setText(subtitle if subtitle is not None else describe_tracks(tracks))
         self._set_header_cover(show_cover, cover_hash)
+        self._fill_order_combo(order_mode, has_manual, default_label)
         self._set_table(tracks)
+        self._apply_order_mode()
         self._show_body(bool(tracks), empty)
 
     def set_title(self, title: str) -> None:
@@ -429,6 +466,9 @@ class ContentPanel(QFrame):
         keep_selection: bool = True,
         reorderable: bool = False,
         reset_label: str | None = None,
+        order_mode: str = ORDER_DEFAULT,
+        has_manual: bool = False,
+        default_label: str | None = "Predeterminado",
     ) -> None:
         """Vista agrupada (Artistas, Álbumes) con lista de grupos a la izquierda. Con `reorderable`, las
         canciones de cada grupo se ordenan a mano (current_group_label() dice de cuál es el orden nuevo)."""
@@ -442,6 +482,7 @@ class ContentPanel(QFrame):
         self.title.setText(title)
         self._set_breadcrumb(None)
         self._set_header_cover(False, None)
+        self._fill_order_combo(order_mode, has_manual, default_label)
         self.group_list.blockSignals(True)
         self.group_list.clear()
         for group in groups:
@@ -483,16 +524,126 @@ class ContentPanel(QFrame):
     def shuffle_visible(self) -> list[Track]:
         """«Aleatorio»: mezcla a la vista las canciones mostradas y devuelve la lista en ese orden. No se guarda
         como orden manual hasta que se mueva alguna (entonces se guarda lo que se ve)."""
-        tracks = self.visible_tracks()
-        random.shuffle(tracks)
-        self.proxy.sort(-1)
-        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
-        self.model.set_tracks(tracks)
+        tracks = self._shuffle_table()
         self.table.clearSelection()
         self.table.scrollToTop()
         if tracks and "mezcladas al azar" not in self.subtitle.text():
             self.add_subtitle_note("mezcladas al azar")
+        self.set_order_mode(ORDER_RANDOM)
+        self.order_mode_changed.emit(ORDER_RANDOM, False)
         return tracks
+
+    @staticmethod
+    def _mix_key(track: Track) -> tuple:
+        return track.id, track.entry_id  # en una playlist, cada repetición es otra entrada
+
+    def _shuffle_table(self, keep: bool = False) -> list[Track]:
+        """Mezcla lo que se ve. Con `keep`, la misma lista de canciones conserva la mezcla que ya tenía (cada
+        refresco, p. ej. al renombrar un archivo, no debe cambiar el orden mientras suena)."""
+        tracks = self.visible_tracks()
+        songs = frozenset(self._mix_key(t) for t in tracks)
+        previous = self._mixes.get(songs) if keep else None
+        if previous is not None:
+            place = {key: i for i, key in enumerate(previous)}
+            tracks.sort(key=lambda t: place[self._mix_key(t)])
+        else:
+            random.shuffle(tracks)
+            self._mixes[songs] = [self._mix_key(t) for t in tracks]
+        self._clear_header_sort()
+        self.model.set_tracks(tracks)
+        return tracks
+
+    def _clear_header_sort(self) -> None:
+        header = self.table.horizontalHeader()
+        header.blockSignals(True)  # no es un clic del usuario
+        self.proxy.sort(-1)
+        header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        header.blockSignals(False)
+        header.viewport().update()
+
+    # ------------------------------------------------------------------ orden de la lista
+
+    def order_mode(self) -> str:
+        return self._order_mode
+
+    def _fill_order_combo(self, mode: str, has_manual: bool, default_label: str | None) -> None:
+        combo = self.order_combo
+        combo.blockSignals(True)
+        combo.clear()
+        if has_manual:
+            combo.addItem("Mi orden", ORDER_MANUAL)
+        if default_label:
+            combo.addItem(default_label, ORDER_DEFAULT)
+        for key, label, _col, _desc in ORDER_COLUMNS:
+            combo.addItem(label, key)
+        combo.addItem("Aleatorio", ORDER_RANDOM)
+        combo.blockSignals(False)
+        self.set_order_mode(mode)
+
+    def set_order_mode(self, mode: str) -> None:
+        """Muestra en el selector en qué orden está la lista (no reordena nada)."""
+        combo = self.order_combo
+        if combo.findData(mode) < 0:
+            labels = {ORDER_MANUAL: "Mi orden", ORDER_OTHER: "Por la columna elegida"}
+            if mode in labels:
+                combo.blockSignals(True)
+                combo.insertItem(0, labels[mode], mode)
+                combo.blockSignals(False)
+            else:
+                mode = combo.itemData(0)
+        self._order_mode = mode
+        combo.blockSignals(True)
+        combo.setCurrentIndex(combo.findData(mode))
+        combo.blockSignals(False)
+        self._update_order_note()
+
+    def set_player_shuffle(self, enabled: bool) -> None:
+        """El botón aleatorio de la barra: mientras esté encendido, lo que suena no sigue el orden de la lista."""
+        self._player_shuffle = enabled
+        self._update_order_note()
+
+    def _update_order_note(self) -> None:
+        if self._player_shuffle:
+            self.order_note.setText("⚠ Aleatorio de la barra encendido: suena al azar, no en este orden")
+            self.order_note.setToolTip("Elige un orden aquí, o apaga el botón aleatorio de la barra de arriba.")
+        else:
+            self.order_note.setText("Suena de arriba abajo")
+            self.order_note.setToolTip("Las canciones suenan en el orden en que se ven, siguiendo los números.")
+
+    def _apply_order_mode(self) -> None:
+        """La lista ya está cargada: aplica la columna o el aleatorio elegidos para ella."""
+        if self._order_mode == ORDER_RANDOM:
+            self._shuffle_table(keep=not self._new_mix)
+            self._new_mix = False
+            return
+        for key, _label, column, descending in ORDER_COLUMNS:
+            if key == self._order_mode:
+                order = Qt.SortOrder.DescendingOrder if descending else Qt.SortOrder.AscendingOrder
+                header = self.table.horizontalHeader()
+                header.blockSignals(True)
+                self.proxy.sort(column, order)
+                header.setSortIndicator(column, order)
+                header.blockSignals(False)
+                header.viewport().update()
+                return
+
+    def _on_order_chosen(self, _index: int) -> None:
+        mode = self.order_combo.currentData()
+        if mode == self._order_mode and mode != ORDER_RANDOM:
+            return
+        self._new_mix = mode == ORDER_RANDOM  # elegir «Aleatorio» otra vez es pedir otra mezcla
+        self._order_mode = mode
+        self._update_order_note()
+        self.order_mode_changed.emit(mode, True)
+
+    def _on_header_sort(self, column: int, order: Qt.SortOrder) -> None:
+        """Clic en un encabezado: la lista queda ordenada por esa columna y el selector lo dice."""
+        if column < 0:
+            return
+        descending = order == Qt.SortOrder.DescendingOrder
+        mode = next((k for k, _l, c, d in ORDER_COLUMNS if c == column and d == descending), ORDER_OTHER)
+        self.set_order_mode(mode)
+        self.order_mode_changed.emit(mode, False)
 
     def columns(self) -> list[str]:
         return list(self._columns)
@@ -503,6 +654,7 @@ class ContentPanel(QFrame):
         for key, _label, col in SONG_COLUMNS:
             if col is not None:
                 self.table.setColumnHidden(col, key not in self._columns)
+        self.table.verticalHeader().setVisible("number" in self._columns)
         covers = "cover" in self._columns
         self.model.set_show_covers(covers)
         self.table.setIconSize(QSize(ROW_COVER_SIZE, ROW_COVER_SIZE) if covers else QSize(18, 18))
@@ -584,8 +736,7 @@ class ContentPanel(QFrame):
             self.header_cover.setPixmap(self._covers.pixmap(cover_hash, HEADER_COVER))
 
     def _set_table(self, tracks: list[Track]) -> None:
-        self.proxy.sort(-1)
-        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._clear_header_sort()
         self.model.set_tracks(tracks)
         self.table.scrollToTop()
         self._update_missing_banner()
@@ -602,8 +753,9 @@ class ContentPanel(QFrame):
     def _update_buttons(self) -> None:
         # Sin canciones se ocultan: el estado vacío ya ofrece las acciones útiles (importar, etc.).
         has_tracks = self.stack.currentWidget() is self.splitter and self.model.rowCount() > 0
-        for button in (self.btn_play, self.btn_shuffle, self.btn_add, self.btn_online):
-            button.setVisible(has_tracks)
+        for widget in (self.btn_play, self.btn_shuffle, self.btn_add, self.btn_online,
+                       self.order_label, self.order_combo, self.order_note):
+            widget.setVisible(has_tracks)
         selected = len(self.table.selectionModel().selectedRows())
         self.btn_online.setText(f" Datos en internet ({selected})" if selected > 1 else " Datos en internet")
         count = len(self.table.selectionModel().selectedRows())
@@ -640,6 +792,7 @@ class ContentPanel(QFrame):
             f"{count} {singular if count == 1 else plural_noun}  ·  {group.label}: {describe_tracks(group.tracks)}"
         )
         self._set_table(group.tracks)
+        self._apply_order_mode()
 
     def _play_all(self) -> None:
         tracks = self.visible_tracks()
@@ -685,8 +838,7 @@ class ContentPanel(QFrame):
             return
         moved = {id(visible[r]) for r in rows if 0 <= r < len(visible)}
         scroll = self.table.verticalScrollBar().value()
-        self.proxy.sort(-1)
-        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        self._clear_header_sort()
         self.model.set_tracks(ordered)
         self.table.verticalScrollBar().setValue(scroll)
         selection = self.table.selectionModel()

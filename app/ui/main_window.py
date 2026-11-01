@@ -57,6 +57,7 @@ from .content_panel import (
     describe_tracks,
 )
 from .covers import CoverProvider
+from .track_model import ORDER_DEFAULT, ORDER_MANUAL, ORDER_OTHER, ORDER_RANDOM
 from .dialogs import (
     FolderImportDialog,
     FolderScopeDialog,
@@ -103,6 +104,11 @@ def _in_order(tracks: list[Track], order: dict[int, int], new_first: bool = Fals
         return list(tracks)
     unplaced = -1 if new_first else 1
     return sorted(tracks, key=lambda t: (0, order[t.id]) if t.id in order else (unplaced, 0))
+
+
+def _natural_order(tracks: list[Track]) -> list[Track]:
+    """El orden de siempre de «Canciones»: artista, álbum, título."""
+    return sorted(tracks, key=lambda t: (t.artist.casefold(), t.album.casefold(), t.title.casefold()))
 
 
 def _folder_view(path: str) -> str:
@@ -344,6 +350,7 @@ class MainWindow(QMainWindow):
         c.reorder_requested.connect(self._save_order)
         c.reset_order_requested.connect(self._reset_order)
         c.columns_changed.connect(self._columns_changed)
+        c.order_mode_changed.connect(self._on_order_mode_changed)
 
     # ================================================================== ajustes
 
@@ -615,31 +622,43 @@ class MainWindow(QMainWindow):
             self._render_folder(playlist_id)
         elif kind == "recent":
             order = self.db.view_order("recent")
+            mode = self._order_mode_for("recent", bool(order))
+            recent = self.db.recent_tracks()
             self.content.show_tracks(
                 "Recientes",
-                _in_order(self.db.recent_tracks(), order, new_first=True),
+                _in_order(recent, order, new_first=True) if mode == ORDER_MANUAL else recent,
                 MODE_LIBRARY,
                 self._library_empty_state(),
                 reorderable=True,
                 reset_label="Volver al orden de siempre (la más reciente primero)",
+                order_mode=mode,
+                has_manual=bool(order),
+                default_label="La más reciente primero",
             )
             if self.library:
-                self.content.add_subtitle_note("orden personalizado" if order else "reproducidas o agregadas recientemente")
+                self.content.add_subtitle_note("orden personalizado" if mode == ORDER_MANUAL else "reproducidas o agregadas recientemente")
         elif kind in ("artists", "albums"):
             attr, noun, group_icon = {
                 "artists": ("artist", ("artista", "artistas"), "artist"),
                 "albums": ("album", ("álbum", "álbumes"), "cover"),
             }[kind]
+            has_manual = bool(self.db.view_orders(f"{attr}:"))
+            mode = self._order_mode_for(kind, has_manual)
             self.content.show_groups(
-                _VIEW_TITLES[kind], self._groups_by(attr), noun, self._library_empty_state(), group_icon,
-                reorderable=True, reset_label="Volver al orden de siempre (como en «Canciones»)",
+                _VIEW_TITLES[kind], self._groups_by(attr, manual=mode == ORDER_MANUAL), noun, self._library_empty_state(),
+                group_icon, reorderable=True, reset_label="Volver al orden de siempre (como en «Canciones»)",
+                order_mode=mode, has_manual=has_manual, default_label="Como en «Canciones»",
             )
         else:
+            has_manual = self.db.has_library_order()
+            mode = self._order_mode_for("songs", has_manual)
             self.content.show_tracks(
-                "Canciones", self.library, MODE_LIBRARY, self._library_empty_state(), reorderable=True,
+                "Canciones", self.library if mode == ORDER_MANUAL else _natural_order(self.library), MODE_LIBRARY,
+                self._library_empty_state(), reorderable=True,
                 reset_label="Volver al orden de siempre (artista, álbum, título)",
+                order_mode=mode, has_manual=has_manual, default_label="Alfabético (artista, álbum, título)",
             )
-            if self.library and self.db.has_library_order():
+            if self.library and mode == ORDER_MANUAL:
                 self.content.add_subtitle_note("orden personalizado")
         self._sync_current_track()
 
@@ -659,7 +678,8 @@ class MainWindow(QMainWindow):
             [EmptyAction("Ir a Canciones", lambda: self.sidebar.select_library("songs"), primary=True)],
         )
         self.content.show_tracks(
-            playlist.name, tracks, MODE_PLAYLIST, empty, cover_hash=cover, show_cover=True, reorderable=True
+            playlist.name, tracks, MODE_PLAYLIST, empty, cover_hash=cover, show_cover=True, reorderable=True,
+            order_mode=self._order_mode_for(f"playlist:{playlist_id}", True), has_manual=True, default_label=None,
         )
         self._sync_current_track()
 
@@ -671,7 +691,9 @@ class MainWindow(QMainWindow):
         return _in_order(tracks_in_folder(self.library, path), self.db.view_order(_folder_view(path)))
 
     def _render_folder(self, path: str) -> None:
-        tracks = self._folder_tracks(path)
+        order = self.db.view_order(_folder_view(path))
+        mode = self._order_mode_for(_folder_view(path), bool(order))
+        tracks = self._folder_tracks(path) if mode == ORDER_MANUAL else tracks_in_folder(self.library, path)
         empty = (
             "folder",
             "Esta carpeta no tiene canciones en la biblioteca",
@@ -691,8 +713,11 @@ class MainWindow(QMainWindow):
             breadcrumb=folder_breadcrumb(path, self.folder_roots),
             reorderable=True,
             reset_label="Volver al orden de siempre (por nombre de archivo)",
+            order_mode=mode,
+            has_manual=bool(order),
+            default_label="Por nombre de archivo",
         )
-        if tracks and self.db.view_order(_folder_view(path)):
+        if tracks and mode == ORDER_MANUAL:
             self.content.add_subtitle_note("orden personalizado")
         self.content.set_title_tooltip(path)
         self._sync_current_track()
@@ -706,6 +731,14 @@ class MainWindow(QMainWindow):
             self.sidebar.select_folder(path)
             self._on_shuffle_play(self.content.shuffle_visible())
         else:
+            shown = (current := self.sidebar.current_folder()) is not None and folder_key(current) == folder_key(path)
+            if self.prefs.order_mode(_folder_view(path)) == ORDER_RANDOM:
+                # «Reproducir carpeta» (y no «en aleatorio»): sale de la mezcla y vuelve a su orden.
+                self.prefs.set_order_mode(_folder_view(path), None)
+                if shown:
+                    self._refresh_view()
+            if shown:
+                tracks = self.content.visible_tracks()  # la que se ve: en el orden elegido para ella
             self._on_play_requested(tracks, 0)
 
     def _add_folder_to_playlist(self, path: str, pos: QPoint) -> None:
@@ -803,6 +836,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ordenar canciones", f"No se pudo guardar el orden nuevo:\n{exc}")
             self._refresh_view()
             return
+        self.prefs.set_order_mode(self._order_view(), ORDER_MANUAL)  # lo que se mueve a mano pasa a ser «Mi orden»
+        self.content.set_order_mode(ORDER_MANUAL)
         if kind == "playlist":
             self._playlists_changed()
         elif kind not in ("artists", "albums") and "orden personalizado" not in self.content.subtitle.text():
@@ -811,6 +846,34 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Orden guardado. La reproducción sigue el orden nuevo.", 4000)
         else:
             self.statusBar().showMessage("Orden guardado.", 3000)
+
+    def _order_view(self) -> str:
+        """Nombre de la lista que se ve, para recordar el orden elegido en ella."""
+        if self.player_bar.search.text().strip():
+            return "search"
+        kind, ident = self.sidebar.current_view()
+        if kind == "playlist" and ident is not None:
+            return f"playlist:{ident}"
+        if kind == "folder" and ident is not None:
+            return _folder_view(ident)
+        return kind
+
+    def _order_mode_for(self, view: str, has_manual: bool) -> str:
+        """Orden de una lista: el elegido, o «Mi orden» si tiene uno guardado, o el predeterminado."""
+        mode = self.prefs.order_mode(view)
+        if mode in (None, ORDER_OTHER) or (mode == ORDER_MANUAL and not has_manual):
+            return ORDER_MANUAL if has_manual else ORDER_DEFAULT
+        if mode == ORDER_DEFAULT and view.startswith("playlist:"):
+            return ORDER_MANUAL  # una playlist no tiene otro orden propio que el suyo
+        return mode
+
+    def _on_order_mode_changed(self, mode: str, rebuild: bool) -> None:
+        """Se eligió un orden: esa lista lo recuerda y lo que suena lo sigue."""
+        self.prefs.set_order_mode(self._order_view(), mode)
+        self.player.set_shuffle(False)  # quien elige un orden quiere ese orden, no el azar de la barra
+        if rebuild:
+            self._refresh_view()
+        self.player.follow_order(self.content.visible_tracks())
 
     def _current_order_view(self) -> str | None:
         """Clave del orden manual de la vista que se ve (para view_order); None en «Canciones» y las playlists,
@@ -851,6 +914,7 @@ class MainWindow(QMainWindow):
             "playlists conservan el suyo.",
         ) != 0:
             return
+        self.prefs.set_order_mode(self._order_view(), ORDER_DEFAULT)
         if view is not None:
             self.db.clear_view_order(view)
         else:
@@ -859,11 +923,11 @@ class MainWindow(QMainWindow):
         self._refresh_view()
         self.player.follow_order(self.content.visible_tracks())
 
-    def _groups_by(self, attr: str) -> list[Group]:
+    def _groups_by(self, attr: str, manual: bool = True) -> list[Group]:
         buckets: dict[str, list[Track]] = {}
         for track in self.library:
             buckets.setdefault(getattr(track, attr), []).append(track)
-        orders = self.db.view_orders(f"{attr}:")  # el orden manual de cada artista o álbum, en una consulta
+        orders = self.db.view_orders(f"{attr}:") if manual else {}  # el orden manual de cada uno, en una consulta
         groups = []
         for label in sorted(buckets, key=normalize_text):
             tracks = _in_order(buckets[label], orders.get(f"{attr}:{normalize_text(label)}", {}))
@@ -904,6 +968,8 @@ class MainWindow(QMainWindow):
             empty,
             subtitle=f"{plural(len(results), 'canción', 'canciones')} para «{text}»  ·  "
             "pulsa + en una canción para agregarla a una playlist",
+            order_mode=self._order_mode_for("search", False),
+            default_label="Como en «Canciones»",
         )
         self._sync_current_track()
 
@@ -1753,6 +1819,8 @@ class MainWindow(QMainWindow):
         if not tracks:
             self.statusBar().showMessage("La playlist está vacía.", 4000)
             return
+        if self.sidebar.current_view() == ("playlist", playlist_id):
+            tracks = self.content.visible_tracks()  # la que se ve: en el orden elegido para ella
         start = random.randrange(len(tracks)) if self.player.shuffle else 0
         self._on_play_requested(tracks, start)
 
@@ -2087,6 +2155,7 @@ class MainWindow(QMainWindow):
 
     def _on_shuffle_changed(self, enabled: bool) -> None:
         self.player_bar.set_shuffle(enabled)
+        self.content.set_player_shuffle(enabled)
         self.act_shuffle.blockSignals(True)
         self.act_shuffle.setChecked(enabled)
         self.act_shuffle.blockSignals(False)

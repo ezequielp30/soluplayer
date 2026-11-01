@@ -19,6 +19,7 @@ HEADERS = ["Título", "Artista", "Álbum", "Género", "Archivo", "Duración", ""
 # Datos que se pueden mostrar u ocultar (Preferencias → Canciones, o clic derecho en los encabezados).
 # El título se ve siempre. "cover" no es una columna: la carátula pequeña junto al título.
 SONG_COLUMNS = [
+    ("number", "Número de orden (1, 2, 3…)", None),
     ("artist", "Artista", COL_ARTIST),
     ("album", "Álbum", COL_ALBUM),
     ("genre", "Género", COL_GENRE),
@@ -26,7 +27,20 @@ SONG_COLUMNS = [
     ("duration", "Duración", COL_DURATION),
     ("cover", "Carátula", None),
 ]
-DEFAULT_SONG_COLUMNS = ["artist", "album", "duration", "cover"]
+DEFAULT_SONG_COLUMNS = ["number", "artist", "album", "duration", "cover"]
+
+# En qué orden está (y suena) una lista: el selector «Orden:» del panel.
+ORDER_MANUAL, ORDER_DEFAULT, ORDER_RANDOM, ORDER_OTHER = "manual", "default", "random", "other"
+ORDER_COLUMNS = [  # (clave, texto, columna, descendente)
+    ("title_asc", "Título (A–Z)", COL_TITLE, False),
+    ("title_desc", "Título (Z–A)", COL_TITLE, True),
+    ("artist_asc", "Artista (A–Z)", COL_ARTIST, False),
+    ("artist_desc", "Artista (Z–A)", COL_ARTIST, True),
+    ("album_asc", "Álbum (A–Z)", COL_ALBUM, False),
+    ("album_desc", "Álbum (Z–A)", COL_ALBUM, True),
+    ("duration_asc", "Duración (cortas primero)", COL_DURATION, False),
+    ("duration_desc", "Duración (largas primero)", COL_DURATION, True),
+]
 ROW_COVER_SIZE = 40
 
 TRACK_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -197,3 +211,9 @@ class TrackSortProxy(QSortFilterProxyModel):
         super().__init__(parent)
         self.setSortRole(SORT_ROLE)
         self.setDynamicSortFilter(False)
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        # El número de cada fila es su lugar en el orden que se ve (y que va a sonar), no el del modelo.
+        if orientation == Qt.Orientation.Vertical and role == Qt.ItemDataRole.DisplayRole:
+            return section + 1
+        return super().headerData(section, orientation, role)
