@@ -28,12 +28,13 @@ def preview_pixmap(p: theme.Palette, ratio: float = 2.0) -> QPixmap:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(p.accent))
     painter.drawEllipse(QRectF(6, 3, 12, 12))  # botón reproducir
-    painter.setBrush(QColor(p.lcd_bg))
-    painter.drawRoundedRect(QRectF(22, 2.5, 52, 13), 3, 3)  # pantalla de la canción actual
-    painter.setBrush(QColor(p.lcd_muted))
+    painter.setBrush(QColor(p.elevated))
+    painter.drawRoundedRect(QRectF(22, 2.5, 52, 13), 3, 3)  # tarjeta de la canción actual
+    painter.setBrush(QColor(p.border))
     painter.drawRoundedRect(QRectF(26, 10, 44, 2), 1, 1)  # progreso
-    painter.setBrush(QColor(p.lcd_text))
+    painter.setBrush(QColor(p.text))
     painter.drawRoundedRect(QRectF(26, 5.5, 28, 2.5), 1, 1)  # título
+    painter.setBrush(QColor(p.accent))
     painter.drawRoundedRect(QRectF(26, 10, 18, 2), 1, 1)
     painter.fillRect(QRectF(0, 18, 38, h - 18), QColor(p.sidebar))  # barra lateral
     painter.setBrush(QColor(p.accent_soft))
@@ -60,7 +61,7 @@ def preview_pixmap(p: theme.Palette, ratio: float = 2.0) -> QPixmap:
 
 def auto_pixmap() -> QPixmap:
     """«Automático»: mitad clara y mitad oscura."""
-    light, dark = preview_pixmap(theme.ALUMINIUM), preview_pixmap(theme.GRAPHITE)
+    light, dark = preview_pixmap(theme.SNOW), preview_pixmap(theme.ONYX)
     result = QPixmap(light.size())
     result.setDevicePixelRatio(light.devicePixelRatio())
     result.fill(Qt.GlobalColor.transparent)
@@ -75,7 +76,7 @@ def auto_pixmap() -> QPixmap:
 
 class ThemePicker(QWidget):
     """Cuadrícula de tarjetas. `buttons` asocia la clave del tema con su tarjeta («light»/«dark» son
-    alias de Aluminio/Grafito, por compatibilidad)."""
+    alias de Nieve/Ónix, por compatibilidad)."""
 
     chosen = Signal(str)
 
@@ -104,8 +105,8 @@ class ThemePicker(QWidget):
             self._group.addButton(button)
             self.buttons[key] = button
             grid.addWidget(button, index // columns, index % columns)
-        self.buttons[theme.MODE_LIGHT] = self.buttons["aluminio"]
-        self.buttons[theme.MODE_DARK] = self.buttons["grafito"]
+        self.buttons[theme.MODE_LIGHT] = self.buttons["nieve"]
+        self.buttons[theme.MODE_DARK] = self.buttons["onix"]
         self.select(selected)
 
     def select(self, key: str) -> None:

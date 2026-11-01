@@ -1,9 +1,8 @@
 """Contraste de todos los temas (WCAG 2.x): texto ≥ 7:1, texto secundario y acento como texto ≥ 4.5:1,
 texto sobre el botón de acento ≥ 4.5:1, avisos legibles (≥ 4.5:1), títulos de sección de la barra lateral
-≥ 4.5:1 (sobre la barra y sobre su píldora), la pantalla de la canción actual y el botón de acento distinguible del fondo."""
+el botón de acento distinguible del fondo, y el texto de la tarjeta de la canción actual."""
 import sys
 sys.path.insert(0, r"D:\soluplayer")
-from app.ui.styles import _mix
 from app.ui.theme import THEMES
 
 
@@ -27,8 +26,7 @@ rules = [
     ("on_accent", "accent", 4.5), ("on_accent", "accent_hover", 4.5),
     ("danger", "bg", 4.5), ("success", "bg", 4.5), ("warning", "bg", 4.5),
     ("accent", "bg", 3.0),  # el botón de acento se distingue del fondo (componente gráfico)
-    ("sec_library", "sidebar", 4.5), ("sec_playlists", "sidebar", 4.5), ("sec_folders", "sidebar", 4.5),
-    ("lcd_text", "lcd_bg", 7.0), ("lcd_muted", "lcd_bg", 4.5),  # la «pantalla» de la canción actual
+    ("muted", "bar", 4.5), ("accent_text", "accent_soft", 3.0), ("accent_text", "elevated", 4.5),
 ]
 results = []
 for key, p in THEMES.items():
@@ -37,10 +35,6 @@ for key, p in THEMES.items():
         r = ratio(getattr(p, fg), getattr(p, bg))
         if r < need:
             bad.append(f"{fg}/{bg} {r:.2f}<{need}")
-    for sec in ("sec_library", "sec_playlists", "sec_folders"):  # título sobre su píldora
-        pill = _mix(getattr(p, sec), p.sidebar, 0.10 if p.dark else 0.08)
-        if ratio(getattr(p, sec), pill) < 4.5:
-            bad.append(f"{sec}/píldora {ratio(getattr(p, sec), pill):.2f}<4.5")
     results.append(not bad)
     print(("  OK  " if not bad else " FALLA"), f"{p.name:15s}", "; ".join(bad))
 print(f"\nRESULTADO: {sum(results)}/{len(results)} temas con buen contraste")

@@ -2,6 +2,17 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.26.0 — 2026-11-01 (temas modernos)
+
+- **Temas nuevos:** *Ónix*, *Medianoche*, *Esmeralda*, *Rubí*, *Ámbar* y *Alto contraste* (oscuros); *Nieve*, *Perla*,
+  *Menta* y *Lavanda* (claros). Superficies neutras y un solo color de acento por tema. Se cambian sin reiniciar.
+- **Quien tenía un tema retirado pasa al más parecido:** Grafito → Ámbar, Carmesí → Rubí, Acero → Esmeralda, Aluminio
+  y Cromo → Nieve, Cobalto → Lavanda, Arena → Perla. Automático sigue a Windows con Ónix o Nieve.
+- **La canción actual va en una tarjeta** en lugar de la pantalla tipo LCD, con tiempos en la letra del programa.
+- **Más limpio:** la barra lateral sin píldoras de colores, las listas sin rayas y con resaltado al pasar el cursor,
+  y casillas, opciones y pestañas con los colores del tema en todas las ventanas.
+- **En Windows 11, la barra de título** de la ventana principal toma el color del tema.
+
 ## 1.25.0 — 2026-11-01 (Localizar archivo lo encuentra solo)
 
 - **Clic derecho → *Localizar archivo* muestra el archivo directamente,** en cualquier lista del programa: abre

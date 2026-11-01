@@ -414,7 +414,7 @@ class LevelMeter(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(theme.qcolor("lcd_text" if self._active else "lcd_muted"))  # va dentro de la pantalla
+        painter.setBrush(theme.qcolor("accent_text" if self._active else "muted"))
         width, gap = 3.0, 2.5
         for i in range(self.BARS):
             if self._active:

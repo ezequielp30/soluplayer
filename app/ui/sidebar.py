@@ -173,7 +173,7 @@ class Sidebar(QFrame):
     # ------------------------------------------------------------------ construcción
 
     def _section_label(self, text: str, section: str, icon_name: str) -> QFrame:
-        """Título de sección: icono y texto en el color propio de la sección, sobre una píldora tenue."""
+        """Título de sección: icono y texto discretos."""
         frame = QFrame()
         frame.setObjectName("SectionHeader")
         frame.setProperty("section", section)
@@ -183,8 +183,8 @@ class Sidebar(QFrame):
         row.setSpacing(7)
         glyph = QLabel()
         glyph.setProperty("icon_name", icon_name)
-        glyph.setProperty("role", f"sec_{section}")
-        glyph.setPixmap(icon(icon_name, f"sec_{section}", 15).pixmap(15, 15))
+        glyph.setProperty("role", MUTED)
+        glyph.setPixmap(icon(icon_name, MUTED, 15).pixmap(15, 15))
         title = QLabel(text.upper())
         title.setObjectName("SectionTitle")
         row.addWidget(glyph)

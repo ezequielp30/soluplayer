@@ -82,7 +82,7 @@ s.setValue("equalizer/state", '{"gains": ["abc", null, 1e999], "preamp": "x", "c
 s.setValue("player/volume", "mucho"); s.setValue("preferences/theme", "vino")
 eq = Preferences(s).equalizer()
 check("ecualizador dañado vuelve a valores válidos", eq["gains"][:3] == [0.0, 0.0, 0.0] and eq["preamp"] == 0.0 and eq["custom"]["m"]["gains"] == [0.0] * 10, eq)
-check("tema retirado («vino») se lee como el nuevo («carmesi»)", Preferences(s).theme == "carmesi", Preferences(s).theme)
+check("tema retirado («vino») se lee como el nuevo («rubi»)", Preferences(s).theme == "rubi", Preferences(s).theme)
 from app.database import Database
 from app.config import database_path
 from app.ui import main_window as mw
@@ -93,7 +93,7 @@ except Exception as exc:
     opened = False; print(exc)
 check("con volumen dañado en el registro el programa abre igual", opened and win.player_bar.volume.value() == 70)
 from app.ui.theme_picker import ThemePicker
-check("Preferencias marca el tema que reemplaza al retirado", ThemePicker("vino").selected() == "carmesi")
+check("Preferencias marca el tema que reemplaza al retirado", ThemePicker("vino").selected() == "rubi")
 
 print("[Deshacer conversión: solo MP3 creados por el programa]")
 conv = os.path.join(work, "conv"); os.makedirs(conv)

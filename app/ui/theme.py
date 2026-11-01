@@ -1,12 +1,11 @@
-"""Temas visuales: 9 paletas (5 oscuras y 4 claras) inspiradas en reproductores clásicos de Windows (Winamp,
-jetAudio, AIMP, XMPlay, UltraPlayer), con fondos suaves, un acento propio y una «pantalla» tipo LCD.
+"""Temas visuales: 10 paletas modernas (6 oscuras y 4 claras) de superficies neutras y un solo acento por tema.
 
-Grafito (oscuro) y Aluminio (claro) son los de «auto», que sigue el tema claro/oscuro de Windows.
-Cada paleta trae además tres colores para identificar las secciones de la barra lateral.
+Ónix (oscuro) y Nieve (claro) son los de «auto», que sigue el tema claro/oscuro de Windows.
 """
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Callable
 
@@ -15,6 +14,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
 MODE_AUTO, MODE_LIGHT, MODE_DARK = "auto", "light", "dark"
 MODES = (MODE_AUTO, MODE_LIGHT, MODE_DARK)
+_DWMWA_CAPTION_COLOR = 35
 
 
 @dataclass(frozen=True)
@@ -22,12 +22,12 @@ class Palette:
     name: str
     dark: bool
     bg: str  # panel principal
-    sidebar: str
+    sidebar: str  # barra lateral y barra de menús
     bar: str  # barra del reproductor
-    elevated: str  # tarjetas, menús, campos
+    elevated: str  # tarjeta de la canción actual, menús, campos
     border: str
     hover: str
-    row_alt: str
+    row_alt: str  # igual al fondo: las listas no llevan rayas
     text: str
     muted: str  # texto secundario (≥ 4.5:1 sobre bg)
     faint: str  # deshabilitado / decorativo
@@ -42,120 +42,107 @@ class Palette:
     danger: str
     cover_a: str  # degradado de la carátula de reemplazo
     cover_b: str
-    sec_library: str  # encabezado «Biblioteca» de la barra lateral (≥ 4.5:1 sobre sidebar)
-    sec_playlists: str  # encabezado «Playlists»
-    sec_folders: str  # encabezado «Carpetas»
-    lcd_bg: str  # «pantalla» de la canción actual, como el visor de los reproductores clásicos
-    lcd_text: str  # título en la pantalla (≥ 7:1 sobre lcd_bg)
-    lcd_muted: str  # artista y tiempos en la pantalla (≥ 4.5:1)
 
 
-# Reglas comunes (las comprueba tests/theme_contrast_test.py): fondos casi neutros con un acento propio;
-# texto ≥ 7:1; texto secundario, acento como texto y títulos de sección ≥ 4.5:1; texto sobre el acento
-# ≥ 4.5:1. Los tres colores de sección se separan en el círculo cromático y se alejan del acento.
+# Reglas comunes (las comprueba tests/theme_contrast_test.py): superficies neutras teñidas apenas con el color del
+# tema y un solo acento; texto ≥ 7:1, pero sin blanco ni negro puros (más descansado); texto secundario y acento
+# como texto ≥ 4.5:1; texto sobre el acento ≥ 4.5:1.
 
-GRAPHITE = Palette(
-    name="Grafito", dark=True,
-    bg="#1e2023", sidebar="#18191c", bar="#232529", elevated="#292b30", border="#35383e", hover="#2e3136",
-    row_alt="#212327", text="#d8dee6", muted="#9aa3ad", faint="#5f656e",
-    accent="#e8a24a", accent_hover="#f0b46a", accent_text="#e8a858", accent_soft="#40362a", on_accent="#1e1405",
-    warning="#f0a07a", warning_soft="#3b322f", success="#7cc99a", danger="#ec7f7f", cover_a="#30333a", cover_b="#212327",
-    sec_library="#8fb8dc", sec_playlists="#d9a0bf", sec_folders="#8fcfaa",
-    lcd_bg="#111416", lcd_text="#9fe0a8", lcd_muted="#78a882",
-)
+_ON_DARK = {"warning": "#f5b06b", "warning_soft": "#3a2f22", "success": "#5fd39a", "danger": "#ff8f8f"}
+_ON_LIGHT = {"warning": "#a14a14", "warning_soft": "#fbeedc", "success": "#1c7a4a", "danger": "#c02a2a"}
 
-CRIMSON = Palette(
-    name="Carmesí", dark=True,
-    bg="#1c1a1b", sidebar="#151314", bar="#211e20", elevated="#282426", border="#383033", hover="#2e292b",
-    row_alt="#1f1c1e", text="#e6dcdc", muted="#ab9d9f", faint="#66595c",
-    accent="#d9534f", accent_hover="#e46d69", accent_text="#ec7a74", accent_soft="#3c2424", on_accent="#1a0605",
-    warning="#f0a070", warning_soft="#3a2d27", success="#7cc99a", danger="#f08c8c", cover_a="#3a2c2e", cover_b="#231d1f",
-    sec_library="#8fb3d9", sec_playlists="#c5a8e8", sec_folders="#e3c27a",
-    lcd_bg="#0e0b0b", lcd_text="#f2766b", lcd_muted="#b3685f",
-)
-
-STEEL = Palette(
-    name="Acero", dark=True,
-    bg="#182022", sidebar="#12191a", bar="#1d2628", elevated="#232d30", border="#303c3f", hover="#283336",
-    row_alt="#1b2325", text="#d9e4e4", muted="#98aaab", faint="#5a6a6c",
-    accent="#4cc3b5", accent_hover="#6fd3c7", accent_text="#5ccdbf", accent_soft="#213c3b", on_accent="#052421",
-    warning="#f0a878", warning_soft="#36332e", success="#8fd6a0", danger="#ee8a8a", cover_a="#2a3739", cover_b="#1c2527",
-    sec_library="#93b5e8", sec_playlists="#e3a3c0", sec_folders="#e6c77a",
-    lcd_bg="#0b1819", lcd_text="#7fe6d6", lcd_muted="#5fa89d",
+ONYX = Palette(
+    name="Ónix", dark=True,
+    bg="#16181d", sidebar="#101216", bar="#16181d", elevated="#20232a", border="#2b2f38", hover="#242830", row_alt="#16181d",
+    text="#e4e7ec", muted="#98a0ae", faint="#5d6472",
+    accent="#5b9dff", accent_hover="#7cb1ff", accent_text="#7ab0ff", accent_soft="#1f2f49", on_accent="#07152b",
+    cover_a="#2b2f38", cover_b="#1b1e24", **_ON_DARK,
 )
 
 MIDNIGHT = Palette(
     name="Medianoche", dark=True,
-    bg="#191b24", sidebar="#13151c", bar="#1e212b", elevated="#242735", border="#2f3345", hover="#282c3d",
-    row_alt="#1c1e28", text="#c9cbd4", muted="#979cb3", faint="#5d6279",
-    accent="#8d94f1", accent_hover="#a4a9f4", accent_text="#9ca2f3", accent_soft="#2d3047", on_accent="#0e1133",
-    warning="#f1af81", warning_soft="#373031", success="#5fc9a1", danger="#f28a96", cover_a="#2f344b", cover_b="#202330",
-    sec_library="#6ab7c6", sec_playlists="#df9cb9", sec_folders="#cfad6d",
-    lcd_bg="#0b0d14", lcd_text="#b4b9ff", lcd_muted="#8a90c8",
+    bg="#14162b", sidebar="#0e1022", bar="#14162b", elevated="#1e2140", border="#2a2e52", hover="#22254a", row_alt="#14162b",
+    text="#e2e4f2", muted="#9da1c4", faint="#5d618a",
+    accent="#8f8bff", accent_hover="#a8a5ff", accent_text="#a5a2ff", accent_soft="#2b2a5c", on_accent="#0e0c33",
+    cover_a="#2a2e52", cover_b="#191c36", **_ON_DARK,
+)
+
+EMERALD = Palette(
+    name="Esmeralda", dark=True,
+    bg="#121a18", sidebar="#0c1311", bar="#121a18", elevated="#1b2623", border="#27352f", hover="#202d29", row_alt="#121a18",
+    text="#e1ebe7", muted="#93a8a1", faint="#587067",
+    accent="#2fd6a3", accent_hover="#55e2b7", accent_text="#4fdcb1", accent_soft="#173a30", on_accent="#03241a",
+    cover_a="#27352f", cover_b="#16201d", **_ON_DARK,
+)
+
+RUBY = Palette(
+    name="Rubí", dark=True,
+    bg="#1a1518", sidebar="#130f11", bar="#1a1518", elevated="#251d21", border="#35292f", hover="#2b2227", row_alt="#1a1518",
+    text="#eee4e7", muted="#ad9ca3", faint="#6e5c64",
+    accent="#ff5f7e", accent_hover="#ff7f97", accent_text="#ff8097", accent_soft="#43202b", on_accent="#2b0510",
+    cover_a="#35292f", cover_b="#201a1d", **_ON_DARK,
+)
+
+AMBER = Palette(
+    name="Ámbar", dark=True,
+    bg="#18171a", sidebar="#121114", bar="#18171a", elevated="#232125", border="#322f34", hover="#29272b", row_alt="#18171a",
+    text="#ece8e2", muted="#a8a29a", faint="#6a655e",
+    accent="#f7b23b", accent_hover="#fac45f", accent_text="#f8bd57", accent_soft="#3b2f18", on_accent="#241803",
+    cover_a="#322f34", cover_b="#1e1c20", **_ON_DARK,
 )
 
 HIGH_CONTRAST = Palette(
     name="Alto contraste", dark=True,
-    bg="#000000", sidebar="#000000", bar="#0d0d0d", elevated="#161616", border="#8c8c8c", hover="#2b2b2b",
-    row_alt="#0f0f0f", text="#ffffff", muted="#e0e0e0", faint="#9e9e9e",
+    bg="#000000", sidebar="#000000", bar="#000000", elevated="#161616", border="#8c8c8c", hover="#2b2b2b", row_alt="#000000",
+    text="#ffffff", muted="#e0e0e0", faint="#9e9e9e",
     accent="#ffd60a", accent_hover="#ffe347", accent_text="#ffd60a", accent_soft="#4d4100", on_accent="#000000",
     warning="#ffb86b", warning_soft="#4a2a00", success="#7dffa8", danger="#ff8f8f", cover_a="#2b2b2b", cover_b="#161616",
-    sec_library="#7fd8ff", sec_playlists="#ffa3d6", sec_folders="#8dffb4",
-    lcd_bg="#000000", lcd_text="#ffd60a", lcd_muted="#e0e0e0",
 )
 
-ALUMINIUM = Palette(
-    name="Aluminio", dark=False,
-    bg="#eceef0", sidebar="#e1e4e8", bar="#e6e9ec", elevated="#f4f5f7", border="#cdd2d8", hover="#d8dce1",
-    row_alt="#e5e8eb", text="#23262b", muted="#555b65", faint="#9aa0a9",
-    accent="#cc6f18", accent_hover="#e8862a", accent_text="#984d00", accent_soft="#e9dcd0", on_accent="#1f1000",
-    warning="#a8461f", warning_soft="#e5dddb", success="#287248", danger="#b23838", cover_a="#d9dde2", cover_b="#c5cad1",
-    sec_library="#2e5c99", sec_playlists="#95386f", sec_folders="#2c674e",
-    lcd_bg="#2a2d31", lcd_text="#ffad5c", lcd_muted="#c99a6a",
+SNOW = Palette(
+    name="Nieve", dark=False,
+    bg="#f7f8fa", sidebar="#eef0f4", bar="#f7f8fa", elevated="#ffffff", border="#dfe2e8", hover="#e9ebf0", row_alt="#f7f8fa",
+    text="#262b33", muted="#596170", faint="#a0a7b3",
+    accent="#2563eb", accent_hover="#1d4fd1", accent_text="#1f56d0", accent_soft="#dfe9fd", on_accent="#ffffff",
+    cover_a="#e3e6ec", cover_b="#d2d6de", **_ON_LIGHT,
 )
 
-CHROME = Palette(
-    name="Cromo", dark=False,
-    bg="#eef1f4", sidebar="#e2e7ec", bar="#dde4ea", elevated="#f6f8fa", border="#c8d1da", hover="#d6dee6",
-    row_alt="#e7ecf0", text="#1f2a36", muted="#4f5d6c", faint="#98a5b2",
-    accent="#1f72ad", accent_hover="#1a6399", accent_text="#1e679e", accent_soft="#cfdee9", on_accent="#ffffff",
-    warning="#a8461f", warning_soft="#e7e0df", success="#217246", danger="#b23838", cover_a="#d6e0ea", cover_b="#c1cfdd",
-    sec_library="#4a46a8", sec_playlists="#9e3867", sec_folders="#27694d",
-    lcd_bg="#9fd8ee", lcd_text="#0f2c4a", lcd_muted="#2a5578",
+PEARL = Palette(
+    name="Perla", dark=False,
+    bg="#faf8f7", sidebar="#f2eeec", bar="#faf8f7", elevated="#fffefd", border="#e7e1de", hover="#efeae7", row_alt="#faf8f7",
+    text="#2d2628", muted="#675a5e", faint="#aea3a6",
+    accent="#d42c5c", accent_hover="#b72249", accent_text="#bd2450", accent_soft="#fae1e7", on_accent="#ffffff",
+    cover_a="#ece6e3", cover_b="#dcd3cf", **_ON_LIGHT,
 )
 
-COBALT = Palette(
-    name="Cobalto", dark=False,
-    bg="#eceaf2", sidebar="#e0dde9", bar="#e4e1ed", elevated="#f4f3f8", border="#c9c5d8", hover="#d6d2e3",
-    row_alt="#e6e3ee", text="#22203a", muted="#555170", faint="#9d99b3",
-    accent="#3550c8", accent_hover="#2a42ad", accent_text="#2f47b8", accent_soft="#d1d3ec", on_accent="#ffffff",
-    warning="#a3441e", warning_soft="#e5dadd", success="#276f46", danger="#ad3636", cover_a="#dcd9ea", cover_b="#c8c3dc",
-    sec_library="#1a6076", sec_playlists="#943461", sec_folders="#725410",
-    lcd_bg="#203c9c", lcd_text="#f2f5ff", lcd_muted="#bcc8f2",
+MINT = Palette(
+    name="Menta", dark=False,
+    bg="#f6faf8", sidebar="#ebf2ef", bar="#f6faf8", elevated="#fdfefe", border="#dae5e0", hover="#e6efeb", row_alt="#f6faf8",
+    text="#1f2c28", muted="#52645d", faint="#9aaca5",
+    accent="#0a7d63", accent_hover="#086a54", accent_text="#086e57", accent_soft="#d6efe6", on_accent="#ffffff",
+    cover_a="#dfe9e5", cover_b="#cddad5", **_ON_LIGHT,
 )
 
-SAND = Palette(
-    name="Arena", dark=False,
-    bg="#f5f2ed", sidebar="#ece5db", bar="#f1ece4", elevated="#f9f7f4", border="#e0d6ca", hover="#e5dbce",
-    row_alt="#f0ebe3", text="#463d36", muted="#6a5a49", faint="#b4a592",
-    accent="#a74b2c", accent_hover="#8c3e23", accent_text="#984326", accent_soft="#eadbd2", on_accent="#ffffff",
-    warning="#9d5425", warning_soft="#ede4db", success="#407336", danger="#ad3439", cover_a="#e9decf", cover_b="#d9cbb5",
-    sec_library="#405c8a", sec_playlists="#7c3d67", sec_folders="#415828",
-    lcd_bg="#3a3128", lcd_text="#f5c27a", lcd_muted="#c9a070",
+LAVENDER = Palette(
+    name="Lavanda", dark=False,
+    bg="#f8f7fc", sidebar="#efedf7", bar="#f8f7fc", elevated="#fefeff", border="#e1deee", hover="#eae8f4", row_alt="#f8f7fc",
+    text="#26233a", muted="#5d5a75", faint="#a3a0b8",
+    accent="#5b45d6", accent_hover="#4c38bd", accent_text="#4e3ac4", accent_soft="#e5e1fa", on_accent="#ffffff",
+    cover_a="#e4e1f0", cover_b="#d3cfe4", **_ON_LIGHT,
 )
 
 # Clave guardada en las preferencias → tema. «auto», «light» y «dark» se conservan por compatibilidad.
 THEMES: dict[str, Palette] = {
-    "grafito": GRAPHITE, "carmesi": CRIMSON, "acero": STEEL, "medianoche": MIDNIGHT, "alto_contraste": HIGH_CONTRAST,
-    "aluminio": ALUMINIUM, "cromo": CHROME, "cobalto": COBALT, "arena": SAND,
+    "onix": ONYX, "medianoche": MIDNIGHT, "esmeralda": EMERALD, "rubi": RUBY, "ambar": AMBER, "alto_contraste": HIGH_CONTRAST,
+    "nieve": SNOW, "perla": PEARL, "menta": MINT, "lavanda": LAVENDER,
 }
 # Temas retirados: quien los tenía elegidos pasa al más parecido.
 _LEGACY = {
-    "neon": "medianoche", "vumetro": "acero", "aurora": "acero", "vino": "carmesi", "oceano": "cromo",
-    "lavanda": "cobalto",
+    "grafito": "ambar", "carmesi": "rubi", "acero": "esmeralda", "aluminio": "nieve", "cromo": "nieve", "cobalto": "lavanda",
+    "arena": "perla", "neon": "medianoche", "vumetro": "esmeralda", "aurora": "esmeralda", "vino": "rubi", "oceano": "nieve",
 }
 
-_current: Palette = ALUMINIUM
+_current: Palette = SNOW
 _mode: str = MODE_AUTO
 _listeners: list[Callable[[], None]] = []
 
@@ -201,10 +188,10 @@ def resolve(requested: str) -> Palette:
     if requested in THEMES:
         return THEMES[requested]
     if requested == MODE_DARK:
-        return GRAPHITE
+        return ONYX
     if requested == MODE_LIGHT:
-        return ALUMINIUM
-    return GRAPHITE if system_is_dark() else ALUMINIUM
+        return SNOW
+    return ONYX if system_is_dark() else SNOW
 
 
 def valid(requested: str) -> bool:
@@ -232,7 +219,24 @@ def apply(app, requested: str) -> Palette:
     app.setStyleSheet(build_stylesheet(_current))
     for callback in list(_listeners):
         callback()
+    for window in app.topLevelWidgets():
+        if window.isVisible():
+            tint_title_bar(window)
     return _current
+
+
+def tint_title_bar(window) -> None:
+    """Windows 11: la barra de título con el color de la barra de menús. En otras versiones no hace nada."""
+    if sys.platform != "win32" or QGuiApplication.platformName() != "windows":
+        return
+    import ctypes
+
+    rgb = QColor(_current.sidebar)
+    value = ctypes.c_int(rgb.red() | rgb.green() << 8 | rgb.blue() << 16)
+    try:
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(int(window.winId()), _DWMWA_CAPTION_COLOR, ctypes.byref(value), ctypes.sizeof(value))
+    except OSError:
+        pass  # sin el servicio de ventanas: se queda con la barra normal
 
 
 def _qt_palette(p: Palette) -> QPalette:

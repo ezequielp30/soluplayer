@@ -64,7 +64,7 @@ pending.append(choose("auto")); pref.trigger(); spin(250)
 check("Preferencias → Automático vuelve a seguir a Windows", theme.mode() == "auto" and theme.current().dark == (system == "dark"), theme.current().name)
 
 # Simula que Windows cambia de modo con el programa abierto
-other = theme.GRAPHITE if not theme.current().dark else theme.ALUMINIUM
+other = theme.ONYX if not theme.current().dark else theme.SNOW
 orig = theme.system_is_dark
 theme.system_is_dark = lambda: other.dark
 win._on_system_scheme_changed(None); spin(150)
@@ -73,7 +73,7 @@ theme.system_is_dark = orig
 pending.append(choose("light")); pref.trigger(); spin(150)
 theme.system_is_dark = lambda: True
 win._on_system_scheme_changed(None); spin(100)
-check("  con un tema fijo, no cambia aunque Windows sí", theme.current() is theme.ALUMINIUM)
+check("  con un tema fijo, no cambia aunque Windows sí", theme.current() is theme.SNOW)
 theme.system_is_dark = orig
 
 win.player.stop(); win.close(); spin(100)

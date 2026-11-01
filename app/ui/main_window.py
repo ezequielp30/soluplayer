@@ -1841,6 +1841,10 @@ class MainWindow(QMainWindow):
 
     # ================================================================== tema
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        theme.tint_title_bar(self)
+
     def _on_theme_changed(self) -> None:
         self.player_bar.refresh_icons()
         self.sidebar.refresh_icons()
