@@ -422,9 +422,9 @@ def t_missing_and_explorer():
     sb.select_library("songs"); spin(100)
     row = titles().index("B tono")
     c.table.selectRow(row)
-    expect(is_(QMenu), pick_menu("Mostrar en el Explorador"))
+    expect(is_(QMenu), pick_menu("Localizar archivo"))
     c._table_menu(c.table.visualRect(c.proxy.index(row, 1)).center()); spin(100)
-    check("Clic derecho → «Mostrar en el Explorador»", explorer_calls and isinstance(explorer_calls[-1], str) and explorer_calls[-1].lower().startswith('"' + os.environ.get("SystemRoot", r"C:\Windows").lower()) and '/select,"' in explorer_calls[-1],  # ruta completa del Explorador
+    check("Clic derecho → «Localizar archivo» muestra el archivo en el Explorador", explorer_calls and isinstance(explorer_calls[-1], str) and explorer_calls[-1].lower().startswith('"' + os.environ.get("SystemRoot", r"C:\Windows").lower()) and '/select,"' in explorer_calls[-1],  # ruta completa del Explorador
           explorer_calls[-1:] )
     win.player.stop(); win.player._player.setSource(__import__('PySide6.QtCore',fromlist=['QUrl']).QUrl()); spin(300)
     target = os.path.join(music, "B tono.wav")
@@ -441,7 +441,10 @@ def t_missing_and_explorer():
     check("Doble clic en canción faltante → mensaje útil, no se reproduce", not win.player.is_playing)
     # La primera faltante EN EL ORDEN QUE SE VE (esta lista pudo quedar mezclada por el botón Aleatorio).
     file_answers.append(os.path.join(moved, os.path.basename(c.first_missing_track().path)))
-    expect(msgbox_with("No se encuentra el archivo"), click_msg("Localizar archivo…"))
+    from app.ui import locate_dialog
+    locate_dialog.search_tiers = lambda track, library: []  # que la prueba no recorra los discos de verdad
+    expect(msgbox_with("No se encuentra el archivo"), click_msg("Localizar archivo"))
+    expect(msgbox_with("No se encontró"), click_msg("Buscar a mano…"))
     expect(msgbox_with("otras"), click_msg("Actualizar también"))
     c.btn_missing.click(); spin(300)
     check("Botón «Localizar el primero…» → relocaliza y ofrece las de la misma carpeta",

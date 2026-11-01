@@ -180,7 +180,7 @@ class TrackTableModel(QAbstractTableModel):
                 return (
                     f"No se encuentra el archivo:\n{track.path}\n\n"
                     "Puede haberse movido, renombrado o eliminado, o estar en una unidad "
-                    "desconectada. Haz clic derecho y elige «Localizar archivo…»."
+                    "desconectada. Haz clic derecho y elige «Localizar archivo»."
                 )
             return f"{track.title}\n{track.artist} — {track.album}\n{track.path}"
         if role == Qt.ItemDataRole.ForegroundRole:

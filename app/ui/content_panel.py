@@ -182,7 +182,6 @@ class ContentPanel(QFrame):
     remove_from_playlist_requested = Signal(object)
     remove_from_library_requested = Signal(object)
     locate_requested = Signal(object)
-    show_in_folder_requested = Signal(object)
     import_files_requested = Signal()
     import_folder_requested = Signal()
     missing_review_requested = Signal()
@@ -772,7 +771,7 @@ class ContentPanel(QFrame):
             f"{plural(count, 'canción', 'canciones')} de esta lista no "
             f"{'se encuentra' if count == 1 else 'se encuentran'} en su ubicación. "
             "Los archivos pueden haberse movido, renombrado o eliminado, o estar en una "
-            "unidad desconectada. Puedes volver a localizarlos con clic derecho → «Localizar archivo…»."
+            "unidad desconectada. Clic derecho → «Localizar archivo» los busca en tus discos."
         )
         self.missing_banner.show()
 
@@ -928,16 +927,12 @@ class ContentPanel(QFrame):
         menu.addAction(icon("globe", TEXT, 16), label, lambda: self.online_lookup_requested.emit(tracks))
         menu.addSeparator()
         if len(tracks) == 1:
-            if not first.available:
-                menu.addAction(
-                    icon("warning", "warning", 16), "Localizar archivo…", lambda: self.locate_requested.emit(first)
-                )
-            else:
-                menu.addAction(
-                    icon("folder", TEXT, 16),
-                    "Mostrar en el Explorador",
-                    lambda: self.show_in_folder_requested.emit(first),
-                )
+            menu.addAction(
+                icon("folder", TEXT, 16) if first.available else icon("warning", "warning", 16),
+                "Localizar archivo",
+                lambda: self.locate_requested.emit(first),
+            )
+            if first.available:
                 menu.addAction(icon("edit", TEXT, 16), "Renombrar archivo…", lambda: self.rename_file_requested.emit(first))
         available = [t for t in tracks if t.available]
         if available:

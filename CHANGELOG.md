@@ -2,6 +2,16 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.25.0 — 2026-11-01 (Localizar archivo lo encuentra solo)
+
+- **Clic derecho → *Localizar archivo* muestra el archivo directamente,** en cualquier lista del programa: abre
+  el Explorador con el archivo seleccionado. Reemplaza a «Mostrar en el Explorador».
+- **Si el archivo ya no está donde se guardó, el programa lo busca solo:** primero en su carpeta y en las de la
+  biblioteca, después en las carpetas personales y por último en todos los discos del equipo (no en unidades de red).
+  Sirve un archivo con el mismo nombre o título y la misma duración, aunque se haya renombrado o movido. La canción
+  conserva playlists y orden. La música sigue sonando mientras busca, y la búsqueda se puede detener.
+- Si hay varios posibles, se elige de una lista; si no hay ninguno, se puede buscar a mano.
+
 ## 1.24.0 — 2026-11-01 (sin signos ni numeración al inicio)
 
 - **«¿» y «¡» ya no se conservan al inicio del título:** se quitan como los demás signos, en la biblioteca y

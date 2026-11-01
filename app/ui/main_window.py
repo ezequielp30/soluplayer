@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError, available_paths
-from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, title_tags, win_audio
+from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, song_format, title_tags, win_audio
 from ..config import data_dir, playlists_backup_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
@@ -76,6 +76,7 @@ from .equalizer_dialog import EqualizerDialog
 from .convert_dialog import ConvertDialog
 from .history_dialog import HistoryDialog
 from .song_format_dialog import SongFormatDialog
+from .locate_dialog import LocateDialog
 from .loudness_dialog import FILTER_DONE, FILTER_NEED, LoudnessDialog
 from .online_dialog import OnlineLookupDialog
 from .icons import TEXT, icon
@@ -354,7 +355,6 @@ class MainWindow(QMainWindow):
         c.remove_from_playlist_requested.connect(self._remove_from_playlist)
         c.remove_from_library_requested.connect(self._remove_from_library)
         c.locate_requested.connect(self._locate_track)
-        c.show_in_folder_requested.connect(self._show_in_folder)
         c.import_files_requested.connect(self._import_files)
         c.import_folder_requested.connect(self._import_folder)
         c.missing_review_requested.connect(self._review_first_missing)
@@ -1081,7 +1081,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 f"Atención: {plural(missing, 'canción', 'canciones')} de la biblioteca no "
                 f"{'se encuentra' if missing == 1 else 'se encuentran'} en el disco. "
-                "Aparecen en gris; usa clic derecho → «Localizar archivo…».",
+                "Aparecen en gris; usa clic derecho → «Localizar archivo».",
                 15000,
             )
         elif not self.library:
@@ -1712,7 +1712,7 @@ class MainWindow(QMainWindow):
                  ("Quitarlas de la lista", QMessageBox.ButtonRole.DestructiveRole)],
                 QMessageBox.Icon.Question,
                 f"{shown}\n\nQuitarlas no borra ningún archivo: solo las saca de la biblioteca y de las playlists (se "
-                "hace un respaldo antes). Si las moviste, consérvalas y usa clic derecho → «Localizar archivo…». "
+                "hace un respaldo antes). Si las moviste, consérvalas y usa clic derecho → «Localizar archivo». "
                 "Esta revisión se puede desactivar en Preferencias.",
             ) == 1:
                 to_remove = list(plan.remove)
@@ -1726,7 +1726,7 @@ class MainWindow(QMainWindow):
                  ("Quitarlas de la lista", QMessageBox.ButtonRole.DestructiveRole)],
                 QMessageBox.Icon.Warning,
                 "Son muchas a la vez: puede que el disco haya cambiado de letra o que la carpeta se haya movido. "
-                "Si es así, consérvalas y usa clic derecho → «Localizar archivo…». Quitarlas no borra ningún "
+                "Si es así, consérvalas y usa clic derecho → «Localizar archivo». Quitarlas no borra ningún "
                 "archivo: solo las saca de la biblioteca y de las playlists (se hace un respaldo antes).",
             ) == 1:
                 to_remove.extend(tracks)
@@ -2081,7 +2081,7 @@ class MainWindow(QMainWindow):
             "Archivo no encontrado",
             f"No se encuentra el archivo de «{track.title}».",
             [
-                ("Localizar archivo…", QMessageBox.ButtonRole.AcceptRole),
+                ("Localizar archivo", QMessageBox.ButtonRole.AcceptRole),
                 ("Quitar de la biblioteca", QMessageBox.ButtonRole.DestructiveRole),
                 ("Cancelar", QMessageBox.ButtonRole.RejectRole),
             ],
@@ -2100,13 +2100,14 @@ class MainWindow(QMainWindow):
             self._handle_missing(track)
 
     def _locate_track(self, track: Track) -> None:
-        old_dir = os.path.dirname(track.path)
-        start = old_dir if os.path.isdir(old_dir) else self._import_start_dir()
-        path, _ = QFileDialog.getOpenFileName(
-            self, f"Localizar «{track.title}»", start, f"{AUDIO_FILE_FILTER};;Todos los archivos (*.*)"
-        )
-        if not path:
+        """Muestra el archivo en el Explorador. Si no está donde se guardó, primero lo busca en los discos."""
+        if track.check_available():
+            self._show_in_folder(track)
             return
+        path = self._search_for_file(track)
+        if path is None:
+            return
+        old_dir = os.path.dirname(track.path)
         if not self._relocate(track, path, show_errors=True):
             return
 
@@ -2142,6 +2143,38 @@ class MainWindow(QMainWindow):
             f"Ubicación actualizada para {plural(fixed, 'canción', 'canciones')}. Sus playlists se conservan.",
             8000,
         )
+        self._reveal(path)
+
+    def _search_for_file(self, track: Track) -> str | None:
+        raw = self.db.with_raw_text([track])[0]
+        search = LocateDialog(raw, self.db.all_tracks(), self)
+        search.exec()
+        if not search.found:
+            return None if search.stopped else self._ask_for_file(track)
+        if len(search.found) == 1:
+            return search.found[0]
+        chosen, ok = QInputDialog.getItem(
+            self, "Localizar archivo", f"Hay {len(search.found)} archivos que pueden ser «{track.title}». ¿Cuál es?",
+            search.found, 0, False,
+        )
+        return chosen if ok else None
+
+    def _ask_for_file(self, track: Track) -> str | None:
+        """Nada coincide (se le cambió el nombre y también el título, o el disco no está): a mano."""
+        if ask(
+            self, "Localizar archivo", f"No se encontró el archivo de «{track.title}».",
+            [("Buscar a mano…", QMessageBox.ButtonRole.AcceptRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Warning,
+            "Se buscó en los discos de este equipo un archivo con su nombre o su título y la misma duración. Puede estar "
+            f"en una unidad desconectada o en la Papelera.\n\nUbicación guardada:\n{track.path}",
+        ) != 0:
+            return None
+        old_dir = os.path.dirname(track.path)
+        start = old_dir if os.path.isdir(old_dir) else self._import_start_dir()
+        path, _ = QFileDialog.getOpenFileName(
+            self, f"Localizar «{track.title}»", start, f"{AUDIO_FILE_FILTER};;Todos los archivos (*.*)"
+        )
+        return path or None
 
     def _relocate(self, track: Track, path: str, show_errors: bool) -> bool:
         scanned, failure = scan_file(path)
@@ -2160,17 +2193,21 @@ class MainWindow(QMainWindow):
             if show_errors:
                 QMessageBox.warning(self, "Archivo ya importado", str(exc))
             return False
+        song_format.follow_rename(track.id, scanned.path)
         return True
 
     def _show_in_folder(self, track: Track) -> None:
         if not track.check_available():
             self._handle_missing(track)
             return
+        self._reveal(track.path)
+
+    def _reveal(self, path: str) -> None:
         if sys.platform == "win32":
             # Una sola cadena: con «/select,» separado, una ruta con comas y sin espacios abría otra carpeta.
-            subprocess.Popen(f'"{_EXPLORER}" /select,"{os.path.normpath(track.path)}"')
+            subprocess.Popen(f'"{_EXPLORER}" /select,"{os.path.normpath(path)}"')
         else:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(track.path)))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
     # ================================================================== reproducción
 
