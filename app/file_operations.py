@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder, title_tags
+from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder, song_format, title_tags
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
@@ -32,6 +32,7 @@ KIND_CONVERSION = "conversion"
 KIND_VOLUME = "volumen"
 KIND_FILES = "archivos"  # renombrar y mover (app/file_history.py)
 KIND_TITLES = "titulos"  # títulos limpios grabados en los archivos (app/title_tags.py)
+KIND_FORMAT = "formato"  # «Canción - Quién la canta» (app/song_format.py)
 
 # (id de la copia que se conserva, copias a quitar)
 DuplicatesPlan = list[tuple[int, list[Track]]]
@@ -162,6 +163,10 @@ class FileOperations:
 
     def changed(self) -> None:
         self._on_changed()
+
+    def prepare_files(self, reason: str, track_ids: set[int]) -> bool:
+        """Antes de que una herramienta cambie archivos: respaldo y soltar las canciones."""
+        return self._prepare(reason, track_ids)
 
     # ------------------------------------------------------------------ repetidas
 
@@ -372,6 +377,17 @@ class FileOperations:
                 KIND_TITLES, _when(s.created_at), "Grabar títulos limpios en los archivos",
                 plural(len(s.changes), "archivo"), state, can_undo=not undone and bool(pending), count=len(pending),
                 session=s, location=os.path.dirname(s.changes[0].path) if s.changes else "",
+            ))
+        for s in song_format.list_sessions():
+            pending = s.pending()
+            undone = s.status == journal.STATUS_UNDONE
+            state = "Deshecha" if undone else ("Interrumpida" if s.status == journal.STATUS_RUNNING else "Hecha")
+            if not undone and not pending:
+                state = "Ya no se puede deshacer"
+            entries.append(HistoryEntry(
+                KIND_FORMAT, _when(s.created_at), "Título y quién la canta",
+                plural(len(s.changes), "canción", "canciones"), state, can_undo=not undone and bool(pending),
+                count=len(pending), session=s, location=os.path.dirname(s.changes[0].new_path) if s.changes else "",
             ))
         adjusted = [t for t in library if t.norm_gain_db != 0]
         if adjusted:
@@ -654,7 +670,36 @@ class FileOperations:
             return self._undo_files(entry.session)
         if entry.kind == KIND_TITLES:
             return self._undo_titles(entry.session)
+        if entry.kind == KIND_FORMAT:
+            return self._undo_format(entry.session)
         raise ValueError(f"No se puede deshacer aquí: {entry.kind}")
+
+    def _undo_format(self, session: song_format.FormatSession) -> UndoOutcome:
+        """Cada canción recupera su nombre de archivo, sus etiquetas y sus datos en la biblioteca."""
+        ids = {c.track_id for c in session.changes}
+        if not self._prepare("antes-de-deshacer", ids):
+            return UndoOutcome(0, [], "Operación cancelada.")
+        restored, problems = song_format.undo(session, self.db)
+        self._on_changed()
+        message = f"Se {'deshizo' if restored == 1 else 'deshicieron'} {plural(restored, 'canción', 'canciones')}."
+        if problems:
+            message += f"\n\nNo se pudieron deshacer {len(problems)}:\n" + "\n".join(f"• {p}" for p in problems[:20])
+        return UndoOutcome(restored, problems, message)
+
+    def reconcile_interrupted_format(self) -> int:
+        """Al abrir: «Título y quién la canta» cortado a mitad. Las canciones ya renombradas pasan a apuntar a su
+        archivo nuevo, y la operación queda en el Historial para deshacerla."""
+        fixed = 0
+        for session in song_format.list_sessions():
+            if session.status != journal.STATUS_RUNNING:
+                continue
+            try:
+                fixed += song_format.reconcile(session, self.db)
+            except sqlite3.Error as exc:
+                log.error("No se pudo reconciliar %s: %s", session.id, exc)
+        if fixed:
+            self._on_changed()
+        return fixed
 
     def _undo_titles(self, session: title_tags.TitleSession) -> UndoOutcome:
         """Los archivos recuperan su título original. En la biblioteca el título queda como está."""

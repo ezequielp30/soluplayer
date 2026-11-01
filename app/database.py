@@ -438,6 +438,17 @@ class Database:
                 )
         return len(updates)
 
+    def set_song_data(
+        self, track_id: int, path: str, title: str, artist: str, album: str, genre: str, cover_hash: str | None
+    ) -> None:
+        """Ruta y datos de una canción de una vez: conserva su id, sus playlists y su lugar en cada orden."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE tracks SET path = ?, path_key = ?, title = ?, artist = ?, album = ?, genre = ?, "
+                "cover_hash = (SELECT hash FROM covers WHERE hash = ?) WHERE id = ?",  # la carátula pudo ya no estar
+                (path, path_key(path), title, artist, album, genre, cover_hash, track_id),
+            )
+
     def remove_tracks(self, track_ids: Iterable[int]) -> int:
         """Quita canciones de la biblioteca (y de sus playlists). No toca los archivos."""
         with self.conn:

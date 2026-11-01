@@ -82,6 +82,7 @@
     <addaction name="act_duplicates"/>
     <addaction name="act_loudness"/>
     <addaction name="act_convert"/>
+    <addaction name="act_song_format"/>
     <addaction name="separator"/>
     <addaction name="act_history"/>
    </widget>
@@ -298,6 +299,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+M</string>
+   </property>
+  </action>
+  <action name="act_song_format">
+   <property name="text">
+    <string>&amp;Título y quién la canta…</string>
    </property>
   </action>
   <action name="act_history">

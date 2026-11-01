@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..file_operations import KIND_CONVERSION, KIND_FILES, KIND_REVIEW, KIND_TITLES, KIND_VOLUME, FileOperations, HistoryEntry
+from ..file_operations import KIND_CONVERSION, KIND_FILES, KIND_FORMAT, KIND_REVIEW, KIND_TITLES, KIND_VOLUME, FileOperations, HistoryEntry
 from ..models import Track
 from ..utils import plural
 from . import theme
@@ -153,6 +153,9 @@ class HistoryDialog(QDialog):
         elif entry.kind == KIND_FILES:
             text = f"¿Deshacer «{entry.title.lower()}» ({entry.detail})?"
             info = "Vuelve a su nombre y lugar anterior; la biblioteca y las playlists se actualizan solas. No se pisa nada."
+        elif entry.kind == KIND_FORMAT:
+            text = f"¿Deshacer «{entry.title}» en {plural(entry.count, 'canción', 'canciones')}?"
+            info = "Vuelven su nombre de archivo, su título, su artista y los demás datos que se borraron (carátula incluida)."
         elif entry.kind == KIND_TITLES:
             text = f"¿Devolver su título original a {plural(entry.count, 'archivo')}?"
             info = "Solo cambia la etiqueta del título dentro del archivo. En la biblioteca los títulos no cambian."

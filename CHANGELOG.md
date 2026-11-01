@@ -2,6 +2,18 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.23.0 — 2026-11-01 (título y quién la canta)
+
+- **Nueva herramienta: *Herramientas → Título y quién la canta*.** Deja cada canción como «Canción - Quién la
+  canta» en el título, en el nombre del archivo y dentro del archivo (etiquetas de título y artista), y quita
+  lo que agrega YouTube («(Video Oficial)», «LETRA», «#hashtag»…).
+- **Primero se ve qué va a pasar:** una lista con la propuesta de cada canción, que se puede corregir a mano
+  o invertir. Las que no son seguras quedan sin marcar para revisarlas.
+- **Los demás datos se borran** del archivo y de la biblioteca: álbum, género, año, comentarios y carátula (se
+  puede conservar la carátula). En formatos que no son MP3, WAV ni AIFF solo cambian título y artista.
+- Se conservan las playlists y el orden, y las marcas internas del programa (volumen ajustado, MP3 convertidos).
+- Se deshace todo, carátula incluida, desde *Historial de cambios en archivos*.
+
 ## 1.22.0 — 2026-11-01 (títulos limpios también dentro de los archivos; se conservan «¿» y «¡»)
 
 - **El título limpio queda grabado en los archivos,** en la etiqueta del título, así se ve igual en otros

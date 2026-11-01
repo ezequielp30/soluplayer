@@ -14,6 +14,7 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import mutagen
 from mutagen import MutagenError
@@ -144,6 +145,11 @@ def _set_title_tag(path: str, title: str | None) -> None:
 
 def write_title(path: str, title: str | None) -> None:
     """Graba el título de forma segura. Si no se pudo lanza un error y el original queda intacto."""
+    edit_safely(path, lambda temp: _set_title_tag(temp, title), title)
+
+
+def edit_safely(path: str, edit: Callable[[str], None], title: str | None) -> None:
+    """Hace `edit` sobre una copia, la verifica y recién entonces reemplaza al archivo. Conserva la fecha."""
     source = long_path(path)
     if not os.access(source, os.W_OK):
         raise PermissionError("el archivo es de solo lectura")
@@ -152,7 +158,7 @@ def write_title(path: str, title: str | None) -> None:
     before = os.stat(source)
     try:
         shutil.copy2(source, temp)
-        _set_title_tag(temp, title)
+        edit(temp)
         _verify(source, temp, title)
         os.utime(temp, ns=(before.st_atime_ns, before.st_mtime_ns))
         now = os.stat(source)

@@ -85,7 +85,7 @@ def walk(menu, path):
         else:
             yield path + [a.text().replace("&", "")], a
 all_actions = [(p, a) for top in win.menuBar().actions() for p, a in walk(top.menu(), [top.text().replace("&", "")])]
-check("el menú tiene todas las opciones (30)", len(all_actions) == 30, len(all_actions))
+check("el menú tiene todas las opciones (31)", len(all_actions) == 31, len(all_actions))
 
 def state():
     p = win.player
@@ -124,6 +124,7 @@ def expectation(label, before, after, dialogs, urls):
         "Buscar canciones repetidas…": DuplicatesDialog.__name__ in names,
         "Analizar y ajustar volumen…": LoudnessDialog.__name__ in names,
         "Convertir a MP3…": ConvertDialog.__name__ in names,
+        "Título y quién la canta…": "SongFormatDialog" in names,
         "Historial de cambios en archivos…": HistoryDialog.__name__ in names,
         "Abrir registro de errores": bool(urls) or "registro" in texts.lower(),
         "Acerca de…": "Reproductor" in texts and "Ezequiel Perez" in texts and "ezequielp30@gmail.com" in texts

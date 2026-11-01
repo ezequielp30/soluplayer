@@ -74,9 +74,9 @@ print("[1. Menús reorganizados]")
 menus = {a.text().replace("&", ""): a.menu() for a in win.menuBar().actions()}
 def labels(menu): return [a.text().replace("&", "") if not a.isSeparator() else "—" for a in menu.actions()]
 tools = labels(menus["Herramientas"])
-check("Herramientas: 4 herramientas + Historial", tools == [
+check("Herramientas: 5 herramientas + Historial", tools == [
     "Buscar datos en internet…", "Buscar canciones repetidas…", "Analizar y ajustar volumen…", "Convertir a MP3…",
-    "—", "Historial de cambios en archivos…"], tools)
+    "Título y quién la canta…", "—", "Historial de cambios en archivos…"], tools)
 archivo = labels(menus["Archivo"])
 sub = next(a.menu() for a in menus["Archivo"].actions() if a.menu() is not None)
 check("Archivo → Respaldos de la biblioteca (submenú)", "Respaldos de la biblioteca" in archivo

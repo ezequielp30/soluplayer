@@ -75,6 +75,7 @@ from .duplicates_dialog import DuplicatesDialog
 from .equalizer_dialog import EqualizerDialog
 from .convert_dialog import ConvertDialog
 from .history_dialog import HistoryDialog
+from .song_format_dialog import SongFormatDialog
 from .loudness_dialog import FILTER_DONE, FILTER_NEED, LoudnessDialog
 from .online_dialog import OnlineLookupDialog
 from .icons import TEXT, icon
@@ -244,6 +245,7 @@ class MainWindow(QMainWindow):
             "act_duplicates": self._open_duplicates,
             "act_loudness": self._open_loudness,
             "act_convert": self._open_convert,
+            "act_song_format": self._open_song_format,
             "act_history": self._open_history,
             "act_error_log": self._open_error_log,
             "act_about": self._about,
@@ -1410,6 +1412,12 @@ class MainWindow(QMainWindow):
                 ConvertDialog(self.ops, tracks, self, open_history=self._open_history), folder
             ))
 
+    def _open_song_format(self) -> None:
+        scope = self._choose_scope("Título y quién la canta")
+        if scope is not None:
+            tracks, folder = scope
+            self._run_dialog(self._scoped_title(SongFormatDialog(self.ops, tracks, self), folder))
+
     def _open_history(self) -> None:
         self._run_dialog(HistoryDialog(
             self.ops, lambda: self.library, lambda: self._open_loudness(FILTER_DONE, ask_scope=False), self
@@ -1687,6 +1695,7 @@ class MainWindow(QMainWindow):
         (si fuera al revés, se quitarían canciones que deshacer devolvería a su sitio). Antes que nada, un
         «Mover a otra carpeta» cortado a mitad: las canciones ya movidas pasan a su lugar nuevo."""
         self.ops.reconcile_interrupted_moves()
+        self.ops.reconcile_interrupted_format()
         self.check_interrupted_review()
         for path in library_cleanup.remove_leftover_temps(self.library):
             log.info("Temporal sobrante borrado (corte o cierre a mitad de una operación): %s", path)
