@@ -2,6 +2,20 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.22.0 — 2026-11-01 (títulos limpios también dentro de los archivos; se conservan «¿» y «¡»)
+
+- **El título limpio queda grabado en los archivos,** en la etiqueta del título, así se ve igual en otros
+  programas y en el teléfono. Se hace solo: una vez para la biblioteca, en segundo plano al abrir, y con cada
+  canción importada. Cambia únicamente esa etiqueta: el sonido, el nombre y la fecha del archivo siguen iguales.
+- **Seguro y reversible:** se trabaja sobre una copia que se verifica antes de reemplazar al archivo, y el
+  título original queda anotado; se deshace en *Herramientas → Historial de cambios en archivos*. Si un archivo
+  no se puede grabar (por ejemplo, está en uso), se intenta de nuevo al volver a abrir.
+- **Los signos de apertura «¿» y «¡» ya no se quitan del inicio del título,** porque son parte de la
+  escritura en español. Los demás caracteres especiales se siguen quitando («►► ¿Quién como Tú?» → «¿Quién
+  como Tú?»). Al ordenar no cuentan: «¿A quién…» va con la A.
+- **Los títulos que los perdieron en la 1.21.0 los recuperan solos,** una sola vez, desde el respaldo de
+  antes de esa limpieza. Un título cambiado después no se toca.
+
 ## 1.21.0 — 2026-11-01 (títulos bien ordenados, mover a una posición)
 
 - **El orden alfabético de «Canciones» ahora es por título** (antes iba por artista y, con muchos artistas
@@ -19,7 +33,7 @@ Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
   biblioteca: los archivos, sus nombres y sus etiquetas no se tocan. Se aplica al importar y, una sola vez,
   a los títulos ya guardados (con respaldo antes). Los números no cuentan como especiales, y lo que cambies
   después a mano se respeta.
-- Pruebas en `tests/orden_visible_test.py` (37).
+- Pruebas en `tests/orden_visible_test.py`.
 
 ## 1.20.0 — 2026-11-01 (el orden se ve y se controla)
 

@@ -300,6 +300,18 @@ class Database:
             self.conn.executemany("UPDATE tracks SET title = ? WHERE id = ?", changes)
         return len(changes)
 
+    def restore_opening_marks(self, old_titles: dict[int, str]) -> int:
+        """Devuelve el «¿»/«¡» a los títulos que perdieron el signo en la limpieza de la versión 1.21.0.
+        `old_titles` son los títulos de antes de esa limpieza. Un título cambiado después no se toca."""
+        changes = []
+        for track_id, title in self.conn.execute("SELECT id, title FROM tracks").fetchall():
+            wanted = clean_title(old_titles.get(track_id, ""))
+            if wanted[:1] in ("¿", "¡") and clean_title(wanted.lstrip("¿¡ ")) == title:
+                changes.append((wanted, track_id))
+        with self.conn:
+            self.conn.executemany("UPDATE tracks SET title = ? WHERE id = ?", changes)
+        return len(changes)
+
     def _store_cover(self, digest: str | None, data: bytes | None) -> None:
         if digest and data:
             self.conn.execute(

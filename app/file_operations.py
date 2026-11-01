@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder
+from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder, title_tags
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
@@ -31,6 +31,7 @@ KIND_REVIEW = "reunion"
 KIND_CONVERSION = "conversion"
 KIND_VOLUME = "volumen"
 KIND_FILES = "archivos"  # renombrar y mover (app/file_history.py)
+KIND_TITLES = "titulos"  # títulos limpios grabados en los archivos (app/title_tags.py)
 
 # (id de la copia que se conserva, copias a quitar)
 DuplicatesPlan = list[tuple[int, list[Track]]]
@@ -363,6 +364,15 @@ class FileOperations:
                 can_undo=not undone and bool(pending), count=len(pending), session=s,
                 location=os.path.dirname(first.target) if first else "",
             ))
+        for s in title_tags.list_sessions():
+            pending = s.pending()
+            undone = s.status == journal.STATUS_UNDONE
+            state = "Deshecha" if undone else ("Hecha" if pending else "Ya no se puede deshacer")
+            entries.append(HistoryEntry(
+                KIND_TITLES, _when(s.created_at), "Grabar títulos limpios en los archivos",
+                plural(len(s.changes), "archivo"), state, can_undo=not undone and bool(pending), count=len(pending),
+                session=s, location=os.path.dirname(s.changes[0].path) if s.changes else "",
+            ))
         adjusted = [t for t in library if t.norm_gain_db != 0]
         if adjusted:
             entries.append(HistoryEntry(
@@ -642,7 +652,19 @@ class FileOperations:
             return self._undo_conversion(entry.session)
         if entry.kind == KIND_FILES:
             return self._undo_files(entry.session)
+        if entry.kind == KIND_TITLES:
+            return self._undo_titles(entry.session)
         raise ValueError(f"No se puede deshacer aquí: {entry.kind}")
+
+    def _undo_titles(self, session: title_tags.TitleSession) -> UndoOutcome:
+        """Los archivos recuperan su título original. En la biblioteca el título queda como está."""
+        self._release({c.track_id for c in session.changes})
+        restored, problems = title_tags.undo(session)
+        self._on_changed()
+        message = f"{plural(restored, 'archivo')} con su título original. En la biblioteca los títulos no cambian."
+        if problems:
+            message += f"\n\nNo se pudieron deshacer {len(problems)}:\n" + "\n".join(f"• {p}" for p in problems[:20])
+        return UndoOutcome(restored, problems, message)
 
     def _undo_files(self, session: file_history.FileSession) -> UndoOutcome:
         """Deshace un renombre o un movimiento: cada archivo vuelve a su lugar y la biblioteca con él."""

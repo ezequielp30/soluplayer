@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError, available_paths
-from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, win_audio
+from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, title_tags, win_audio
 from ..config import data_dir, playlists_backup_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
@@ -82,6 +82,8 @@ from .player_bar import PlayerBar
 from .sidebar import Sidebar
 
 log = logging.getLogger(__name__)
+
+FILE_TITLES_DELAY_MS = 5000  # que primero abra la ventana y empiece la música
 
 _VIEW_TITLES = {
     "recent": "Recientes",
@@ -147,6 +149,11 @@ class MainWindow(QMainWindow):
             confirm_without_backup=lambda: confirm_without_backup(self),
         )
         self._import_thread: QThread | None = None
+        self._tags_thread: QThread | None = None
+        self._tags_worker: title_tags.CleanTitleTagsWorker | None = None
+        self._tags_waiting: list[tuple[int, str]] = []
+        self._tags_full_scan = False
+        self._closing = False
         self._import_worker: ImportWorker | None = None
         self._after_import = None  # qué hacer al terminar una importación pedida por una herramienta
         self._quiet_import = False  # importación para una herramienta: sin el resumen final si todo salió bien
@@ -180,7 +187,9 @@ class MainWindow(QMainWindow):
         self.splitter.setSizes([230, 1050])
         self.setCentralWidget(self.splitter)
 
+        self._restore_opening_marks()
         self._clean_saved_titles()
+        QTimer.singleShot(FILE_TITLES_DELAY_MS, self._clean_file_titles_once)
         self._build_menus()
         self._connect()
         self._restore_settings()
@@ -360,6 +369,69 @@ class MainWindow(QMainWindow):
 
     # ================================================================== ajustes
 
+    def _restore_opening_marks(self) -> None:
+        """Una sola vez: la limpieza de la 1.21.0 también quitó «¿» y «¡»; se recuperan de su respaldo."""
+        if self.settings.value("library/opening_marks_restored", False, type=bool):
+            return
+        try:
+            for source in backup.list_backups():
+                if "antes-de-limpiar-titulos" in source.name and self.db.restore_opening_marks(backup.titles_in(source)):
+                    log.info("Títulos con «¿» o «¡» recuperados desde %s", source.name)
+        except sqlite3.Error:
+            log.exception("No se pudieron recuperar los signos de los títulos")
+            return
+        self.settings.setValue("library/opening_marks_restored", True)
+
+    def _clean_file_titles_once(self) -> None:
+        """Una vez, un rato después de abrir (si algo falló, de nuevo al abrir la próxima vez)."""
+        if self._closing or self.settings.value("library/file_titles_cleaned", False, type=bool):
+            return
+        self._tags_full_scan = True
+        self._start_cleaning_tags([(t.id, t.path) for t in self.db.all_tracks()])
+
+    def _start_cleaning_tags(self, tracks: list[tuple[int, str]]) -> None:
+        """Graba los títulos limpios en los archivos, en otro hilo: la música sigue sonando."""
+        if self._closing or not tracks:
+            return
+        if self._tags_thread is not None:
+            self._tags_waiting.extend(tracks)  # al terminar lo que está en marcha
+            return
+        self._tags_thread = QThread(self)
+        self._tags_worker = title_tags.CleanTitleTagsWorker(tracks)
+        self._tags_worker.moveToThread(self._tags_thread)
+        self._tags_thread.started.connect(self._tags_worker.run)
+        self._tags_worker.finished.connect(self._on_tags_cleaned)
+        self._tags_thread.start()
+
+    def _on_tags_cleaned(self, written: int, problems: list) -> None:
+        self._stop_tags_thread()
+        if problems:
+            self.settings.setValue("library/file_titles_cleaned", False)
+            self.statusBar().showMessage(
+                f"No se pudo grabar el título en {plural(len(problems), 'archivo')}: se intentará al volver a abrir.", 8000
+            )
+        elif self._tags_full_scan:
+            self.settings.setValue("library/file_titles_cleaned", True)
+        self._tags_full_scan = False
+        if written and not problems:
+            self.statusBar().showMessage(
+                f"Título limpio grabado en {plural(written, 'archivo')}. Se puede deshacer en Herramientas → "
+                "Historial de cambios en archivos.", 8000
+            )
+        waiting, self._tags_waiting = self._tags_waiting, []
+        self._start_cleaning_tags(waiting)
+
+    def _stop_tags_thread(self) -> None:
+        if self._tags_thread is not None:
+            self._tags_thread.quit()
+            if self._tags_thread.wait(30000):
+                self._tags_thread.deleteLater()
+            else:
+                worker_runner.keep_alive(self._tags_thread)
+        if self._tags_worker is not None:
+            self._tags_worker.deleteLater()
+        self._tags_thread = self._tags_worker = None
+
     def _clean_saved_titles(self) -> None:
         """Una sola vez: los títulos ya guardados quedan sin los caracteres especiales del principio (los que se
         importan después ya entran limpios). Con respaldo antes; los archivos no se tocan."""
@@ -494,6 +566,16 @@ class MainWindow(QMainWindow):
                 # Sigue leyendo (p. ej. una unidad de red lenta): que no se destruya en marcha; al salir
                 # del programa se espera a los hilos pendientes (application.run).
                 worker_runner.keep_alive(self._import_thread)
+        self._closing = True
+        if self._tags_worker is not None:
+            # Termina el archivo que está grabando y sale; lo que falte se hace al volver a abrir.
+            try:
+                self._tags_worker.finished.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            self._tags_worker.cancel()
+            self.settings.setValue("library/file_titles_cleaned", False)
+            self._stop_tags_thread()
         self._save_settings()
         self.settings.sync()
         theme.off_change(self._on_theme_changed)
@@ -1128,6 +1210,8 @@ class MainWindow(QMainWindow):
         duplicates = result.duplicates + late_duplicates
         self._reload_library()
         self._refresh_view()
+        new_files = {path_key(p) for p in added}
+        self._start_cleaning_tags([(t.id, t.path) for t in self.library if path_key(t.path) in new_files])
 
         self.statusBar().showMessage(
             f"Importación terminada: {plural(len(added), 'canción', 'canciones')} "

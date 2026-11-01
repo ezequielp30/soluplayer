@@ -120,13 +120,14 @@ class Full:
 real_fdopen = os.fdopen
 import app.eq_player as eqp
 eqp.os.fdopen = lambda fd, mode: (os.close(fd), Full())[1]
+temps_before = set(os.listdir(tempfile.gettempdir()))  # el reproductor instalado puede estar sonando con los suyos
 try:
     store.append(np.zeros((80, 2), np.int16)); spilled = "sin error"
 except OSError:
     spilled = "error"
 eqp.os.fdopen = real_fdopen
 check("si el disco se llena al pasar a temporal: error controlado, sigue en memoria", spilled == "error" and not store.on_disk and store.frames == 50, (spilled, store.frames))
-check("  y no deja archivos temporales", not [f for f in os.listdir(tempfile.gettempdir()) if f.startswith("reproductor-eq-")])
+check("  y no deja archivos temporales", not [f for f in set(os.listdir(tempfile.gettempdir())) - temps_before if f.startswith("reproductor-eq-")])
 
 print("[Carátulas]")
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
