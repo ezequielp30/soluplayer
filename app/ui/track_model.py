@@ -6,7 +6,7 @@ from PySide6.QtCore import QAbstractTableModel, QByteArray, QMimeData, QModelInd
 from PySide6.QtGui import QFont
 
 from ..models import Track
-from ..utils import format_time, normalize_text
+from ..utils import format_time, natural_key
 from . import theme
 from .covers import CoverProvider
 from .icons import ACCENT, MUTED, icon, padded_pixmap
@@ -164,7 +164,7 @@ class TrackTableModel(QAbstractTableModel):
                 return track.duration_ms
             if col == COL_ACTION:
                 return index.row()
-            return normalize_text(self.data(index, Qt.ItemDataRole.DisplayRole) or "")
+            return natural_key(self.data(index, Qt.ItemDataRole.DisplayRole) or "")
         if role == Qt.ItemDataRole.DecorationRole:
             if col == COL_ACTION:
                 return padded_pixmap("add_circle", MUTED, 20, ROW_COVER_SIZE)

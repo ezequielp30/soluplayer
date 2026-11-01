@@ -46,7 +46,7 @@ from ..models import Track
 from ..player import PlaybackController, RepeatMode, percent_from_linear
 from ..preferences import Preferences
 from ..titles import suggest_from_filename
-from ..utils import normalize_text, path_key, plural
+from ..utils import clean_title, natural_key, normalize_text, path_key, plural
 from .content_panel import (
     MODE_LIBRARY,
     MODE_PLAYLIST,
@@ -106,9 +106,14 @@ def _in_order(tracks: list[Track], order: dict[int, int], new_first: bool = Fals
     return sorted(tracks, key=lambda t: (0, order[t.id]) if t.id in order else (unplaced, 0))
 
 
-def _natural_order(tracks: list[Track]) -> list[Track]:
-    """El orden de siempre de «Canciones»: artista, álbum, título."""
-    return sorted(tracks, key=lambda t: (t.artist.casefold(), t.album.casefold(), t.title.casefold()))
+def _by_title(tracks: list[Track]) -> list[Track]:
+    """El orden alfabético de «Canciones»: por título (por artista, con 300 artistas, los títulos se ven al azar)."""
+    return sorted(tracks, key=lambda t: (natural_key(t.title), natural_key(t.artist)))
+
+
+def _by_album(tracks: list[Track]) -> list[Track]:
+    """Dentro de un artista o un álbum: por álbum y título."""
+    return sorted(tracks, key=lambda t: (natural_key(t.album), natural_key(t.title)))
 
 
 def _folder_view(path: str) -> str:
@@ -175,6 +180,7 @@ class MainWindow(QMainWindow):
         self.splitter.setSizes([230, 1050])
         self.setCentralWidget(self.splitter)
 
+        self._clean_saved_titles()
         self._build_menus()
         self._connect()
         self._restore_settings()
@@ -353,6 +359,20 @@ class MainWindow(QMainWindow):
         c.order_mode_changed.connect(self._on_order_mode_changed)
 
     # ================================================================== ajustes
+
+    def _clean_saved_titles(self) -> None:
+        """Una sola vez: los títulos ya guardados quedan sin los caracteres especiales del principio (los que se
+        importan después ya entran limpios). Con respaldo antes; los archivos no se tocan."""
+        if self.settings.value("library/titles_cleaned", False, type=bool):
+            return
+        try:
+            if any(clean_title(t.title) != t.title for t in self.db.all_tracks()):
+                backup.create_backup(self.db.conn, "antes-de-limpiar-titulos")
+            self.db.clean_title_prefixes()
+        except sqlite3.Error:
+            log.exception("No se pudieron limpiar los títulos")
+            return
+        self.settings.setValue("library/titles_cleaned", True)
 
     def _fit_to_screen(self) -> None:
         """La ventana entra entera en el área visible de su monitor (sin quedar bajo la barra de tareas),
@@ -646,17 +666,17 @@ class MainWindow(QMainWindow):
             mode = self._order_mode_for(kind, has_manual)
             self.content.show_groups(
                 _VIEW_TITLES[kind], self._groups_by(attr, manual=mode == ORDER_MANUAL), noun, self._library_empty_state(),
-                group_icon, reorderable=True, reset_label="Volver al orden de siempre (como en «Canciones»)",
-                order_mode=mode, has_manual=has_manual, default_label="Como en «Canciones»",
+                group_icon, reorderable=True, reset_label="Volver al orden de siempre (por álbum y título)",
+                order_mode=mode, has_manual=has_manual, default_label="Por álbum y título",
             )
         else:
             has_manual = self.db.has_library_order()
             mode = self._order_mode_for("songs", has_manual)
             self.content.show_tracks(
-                "Canciones", self.library if mode == ORDER_MANUAL else _natural_order(self.library), MODE_LIBRARY,
+                "Canciones", self.library if mode == ORDER_MANUAL else _by_title(self.library), MODE_LIBRARY,
                 self._library_empty_state(), reorderable=True,
-                reset_label="Volver al orden de siempre (artista, álbum, título)",
-                order_mode=mode, has_manual=has_manual, default_label="Alfabético (artista, álbum, título)",
+                reset_label="Volver al orden alfabético (por título)",
+                order_mode=mode, has_manual=has_manual, default_label="Alfabético (por título)",
             )
             if self.library and mode == ORDER_MANUAL:
                 self.content.add_subtitle_note("orden personalizado")
@@ -898,9 +918,9 @@ class MainWindow(QMainWindow):
         elif kind == "recent":
             what, natural = "«Recientes»", "la más reciente primero"
         elif kind in ("artists", "albums"):
-            what, natural = f"«{self.content.current_group_label()}»", "como en «Canciones»"
+            what, natural = f"«{self.content.current_group_label()}»", "por álbum y título"
         else:
-            what, natural = "«Canciones»", "artista, álbum, título"
+            what, natural = "«Canciones»", "alfabético, por título"
         has_order = bool(self.db.view_order(view)) if view is not None else self.db.has_library_order()
         if not has_order:
             self.statusBar().showMessage(f"{what[0].upper()}{what[1:]} ya está en el orden de siempre.", 4000)
@@ -929,8 +949,8 @@ class MainWindow(QMainWindow):
             buckets.setdefault(getattr(track, attr), []).append(track)
         orders = self.db.view_orders(f"{attr}:") if manual else {}  # el orden manual de cada uno, en una consulta
         groups = []
-        for label in sorted(buckets, key=normalize_text):
-            tracks = _in_order(buckets[label], orders.get(f"{attr}:{normalize_text(label)}", {}))
+        for label in sorted(buckets, key=natural_key):
+            tracks = _in_order(_by_album(buckets[label]), orders.get(f"{attr}:{normalize_text(label)}", {}))
             cover = next((t.cover_hash for t in tracks if t.cover_hash), None)
             groups.append(Group(label, tracks, cover))
         return groups
@@ -944,11 +964,11 @@ class MainWindow(QMainWindow):
 
     def _render_search(self, text: str) -> None:
         terms = normalize_text(text).split()
-        results = [
+        results = _by_title([
             t
             for t in self.library
             if all(term in normalize_text(f"{t.title} {t.artist} {t.album}") for term in terms)
-        ]
+        ])
         actions = [EmptyAction("Limpiar búsqueda", self._clear_search, primary=True)]
         if not self.library:
             actions.append(EmptyAction("Importar carpeta…", self._import_folder))
@@ -969,7 +989,7 @@ class MainWindow(QMainWindow):
             subtitle=f"{plural(len(results), 'canción', 'canciones')} para «{text}»  ·  "
             "pulsa + en una canción para agregarla a una playlist",
             order_mode=self._order_mode_for("search", False),
-            default_label="Como en «Canciones»",
+            default_label="Por título",
         )
         self._sync_current_track()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import unicodedata
 
 
@@ -41,6 +42,32 @@ def normalize_text(text: str) -> str:
     """Minúsculas y sin tildes, para buscar sin importar acentos."""
     decomposed = unicodedata.normalize("NFKD", text or "")
     return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold().translate(_PLAIN_LETTERS)
+
+
+_CLOSING = {"[": "]", "(": ")", "{": "}", "«": "»", "‹": "›", "“": "”", '"': '"'}
+
+
+def clean_title(title: str) -> str:
+    """El título sin los caracteres especiales del principio («►►Cuando…», «🔥El…», «| El…»). Si uno de ellos
+    abre un corchete o paréntesis, se quita también el que lo cierra («[Oficial] Santo» → «Oficial Santo»).
+    Los números no son especiales. Un título hecho solo de signos queda como estaba."""
+    text = (title or "").strip()
+    start = re.match(r"^[\W_]+", text)
+    if start is None or start.end() == len(text):
+        return title
+    rest = text[start.end():]
+    for opening, closing in _CLOSING.items():
+        if opening in start.group():
+            rest = rest.replace(closing, "", 1)
+    return " ".join(rest.split()) if "  " in rest else rest.strip()
+
+
+def natural_key(text: str) -> str:
+    """Clave para ordenar como espera una persona: sin distinguir mayúsculas ni tildes, sin contar los signos
+    del principio («¡Aleluya», «(En vivo)…») y con los números como números (2 antes que 10)."""
+    plain = normalize_text(text).strip()
+    plain = re.sub(r"^[\W_]+", "", plain) or plain
+    return re.sub(r"\d+", lambda m: m.group().zfill(12), plain)
 
 
 def _long_path(path: str) -> str:

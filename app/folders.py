@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 
 from .models import Track
+from .utils import natural_key
 
 
 @dataclass
@@ -17,7 +18,7 @@ class FolderNode:
     total: int = 0  # canciones en esta carpeta y sus subcarpetas
 
     def sorted_children(self) -> list["FolderNode"]:
-        return sorted(self.children.values(), key=lambda n: n.name.casefold())
+        return sorted(self.children.values(), key=lambda n: natural_key(n.name))
 
 
 def folder_key(path: str) -> str:
@@ -71,7 +72,7 @@ def tracks_in_folder(tracks: list[Track], folder: str, recursive: bool = True) -
         track_dir = folder_key(os.path.dirname(track.path))
         if track_dir == key or (recursive and track_dir.startswith(prefix)):
             result.append(track)
-    return sorted(result, key=lambda t: (folder_key(os.path.dirname(t.path)), os.path.basename(t.path).casefold()))
+    return sorted(result, key=lambda t: (natural_key(os.path.dirname(t.path)), natural_key(os.path.basename(t.path))))
 
 
 def breadcrumb(folder: str, roots: list[FolderNode]) -> list[tuple[str, str]]:

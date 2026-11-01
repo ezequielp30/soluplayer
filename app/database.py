@@ -12,7 +12,7 @@ from .config import RECENT_LIMIT
 from .importer import ScannedTrack
 from .metadata import AudioMetadata
 from .models import Playlist, Track
-from .utils import no_markup, normalize_text, path_key
+from .utils import clean_title, no_markup, normalize_text, path_key
 
 SCHEMA_VERSION = 4
 
@@ -279,7 +279,7 @@ class Database:
                     (
                         item.path,
                         item.key,
-                        meta.title,
+                        clean_title(meta.title),
                         meta.artist,
                         meta.album,
                         meta.genre,
@@ -290,6 +290,15 @@ class Database:
                 )
                 (added if cursor.rowcount else duplicates).append(item.path)
         return added, duplicates
+
+    def clean_title_prefixes(self) -> int:
+        """Quita los caracteres especiales del principio de los títulos guardados. Solo la biblioteca: los
+        archivos no se tocan. Devuelve cuántos cambiaron."""
+        changes = [(clean_title(title), track_id) for track_id, title in self.conn.execute("SELECT id, title FROM tracks")
+                   if clean_title(title) != title]
+        with self.conn:
+            self.conn.executemany("UPDATE tracks SET title = ? WHERE id = ?", changes)
+        return len(changes)
 
     def _store_cover(self, digest: str | None, data: bytes | None) -> None:
         if digest and data:

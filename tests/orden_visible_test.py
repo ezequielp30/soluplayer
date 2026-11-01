@@ -46,7 +46,7 @@ def choose(mode):
 print("[Se ve en qué orden está]")
 win.sidebar.select_library("songs"); spin(150)
 check("el selector «Orden:» dice el orden de siempre", combo.currentText().startswith("Alfabético") and combo.isVisible(), combo.currentText())
-check("  y la lista está en ese orden", titles() == ["Beta", "Zeta", "Media", "Alfa"], titles())
+check("  y la lista está en ese orden (por título)", titles() == ["Alfa", "Beta", "Media", "Zeta"], titles())
 check("  el aviso dice cómo suena", c.order_note.text() == "Suena de arriba abajo", c.order_note.text())
 check("cada fila muestra su número en la secuencia", c.table.verticalHeader().isVisible()
       and [c.proxy.headerData(i, Qt.Orientation.Vertical) for i in range(3)] == [1, 2, 3])
@@ -118,6 +118,54 @@ win.sidebar.select_folder(folder); spin(150)
 check("después de cerrar y abrir, la carpeta sigue en su orden", combo.currentData() == "duration_asc" and titles() == ["Alfa", "Media", "Zeta", "Beta"], titles())
 win.sidebar.select_library("songs"); spin(150)
 check("  y «Canciones» en «Mi orden»", combo.currentData() == "manual" and titles() == mine, titles())
+
+print("[Mover a una posición exacta]")
+win.sidebar.select_library("songs"); spin(100)
+start = titles()
+c.table.clearSelection(); c.table.selectRow(3); c._move_to_position(1); spin(50)
+check("«Mover al principio»: la última pasa a ser la 1", titles() == [start[3]] + start[:3] and combo.currentData() == "manual", titles())
+now = titles()
+c.table.clearSelection(); c.table.selectRow(0); c._move_to_position(len(now)); spin(50)
+check("«Mover al final»", titles() == now[1:] + now[:1], titles())
+now = titles()
+c.table.clearSelection(); c.table.selectRow(0); c._move_to_position(3); spin(50)
+check("«Mover a la posición 3»: queda en el número 3", titles()[2] == now[0] and sorted(titles()) == sorted(now), titles())
+
+print("[Ordenar como espera una persona]")
+from app.utils import natural_key
+messy = ["Zeta", "¡Aleluya!", "10 Mandamientos", "2 Corazones", "Ángel", "(En vivo) Bendito", "eco", "Ñandú", "1 Alabanza"]
+check("signos, tildes y números no desordenan los títulos", sorted(messy, key=natural_key) ==
+      ["1 Alabanza", "2 Corazones", "10 Mandamientos", "¡Aleluya!", "Ángel", "eco", "(En vivo) Bendito", "Ñandú", "Zeta"], sorted(messy, key=natural_key))
+
+print("[Caracteres especiales al inicio del título]")
+from app.utils import clean_title
+cases = {
+    "►►cuando mi pueblo ora": "cuando mi pueblo ora",
+    "🔥El Infierno Tiembla": "El Infierno Tiembla",
+    "| EL PODEROSO DE ISRAEL": "EL PODEROSO DE ISRAEL",
+    "[Vídeo Oficial] Cuando A": "Vídeo Oficial Cuando A",
+    "(PISTA) CRYSTAL LEWIS": "PISTA CRYSTAL LEWIS",
+    "¿A quién tengo yo?": "A quién tengo yo?",
+    "06. Con tu Sangre": "06. Con tu Sangre",
+    "A Dios (en vivo)": "A Dios (en vivo)",
+    "♪♪♪": "♪♪♪",
+}
+bad = {k: clean_title(k) for k, v in cases.items() if clean_title(k) != v}
+check("se quitan del principio; los números y el resto del título quedan; solo signos, igual", not bad, bad)
+marked = tone(os.path.join(music, "marcada.wav"), 1)
+item = scan_file(marked)[0]; item.metadata.title = "►►Nueva Marcada"; db.add_tracks([item])
+tid = db.track_id_for_path(marked)
+check("una canción importada entra limpia", db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "Nueva Marcada")
+db.conn.execute("update tracks set title='🔥Vieja Marcada' where id=?", (tid,)); db.conn.commit()
+win.settings.remove("library/titles_cleaned"); bytes_before = open(marked, "rb").read()
+win._clean_saved_titles(); win._reload_library()
+check("las ya guardadas se limpian una vez, sin tocar el archivo",
+      db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "Vieja Marcada"
+      and open(marked, "rb").read() == bytes_before and win.settings.value("library/titles_cleaned", type=bool))
+db.conn.execute("update tracks set title='¡Elegido a mano!' where id=?", (tid,)); db.conn.commit()
+win._clean_saved_titles()
+check("  no se repite: lo que cambies después a mano se respeta",
+      db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "¡Elegido a mano!")
 
 print("[Preferencias]")
 c._toggle_column("number", False); spin(50)

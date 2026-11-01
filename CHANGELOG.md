@@ -2,6 +2,25 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.21.0 — 2026-11-01 (títulos bien ordenados, mover a una posición)
+
+- **El orden alfabético de «Canciones» ahora es por título** (antes iba por artista y, con muchos artistas
+  distintos, la columna Título se veía desordenada). Sigue disponible ordenar por *Artista* o *Álbum*. Los
+  artistas y los álbumes ordenan sus canciones por álbum y título.
+- **Orden como espera una persona,** en títulos, artistas, álbumes, carpetas y nombres de archivo: no
+  distingue mayúsculas ni tildes, no cuenta los signos del principio («¿A quién…», «(En vivo)…», «►…») y
+  los números van como números (2 antes que 10).
+- **Mover a una posición exacta:** clic derecho → *Mover al principio*, *Mover al final* o *Mover a la
+  posición…* (se escribe el número de la lista), además de *Subir*/*Bajar* y arrastrar. Práctico en listas
+  largas; pasa a *Mi orden*.
+- **Primero los números, después las letras,** como en otros programas (en orden A–Z).
+- **Títulos sin caracteres especiales al inicio:** se quitan solos («►►cuando mi pueblo ora» → «cuando mi
+  pueblo ora», «[Vídeo Oficial] Cuando A» → «Vídeo Oficial Cuando A»). Solo cambia el título en la
+  biblioteca: los archivos, sus nombres y sus etiquetas no se tocan. Se aplica al importar y, una sola vez,
+  a los títulos ya guardados (con respaldo antes). Los números no cuentan como especiales, y lo que cambies
+  después a mano se respeta.
+- Pruebas en `tests/orden_visible_test.py` (37).
+
 ## 1.20.0 — 2026-11-01 (el orden se ve y se controla)
 
 - **Selector «Orden:»** en cada lista, junto al resumen: dice en qué orden está y permite cambiarlo: *Mi

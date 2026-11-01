@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -856,6 +857,34 @@ class ContentPanel(QFrame):
             self.table.scrollTo(first)
         self.reorder_requested.emit(ordered)
 
+    def _move_to_position(self, position: int) -> None:
+        """Lleva las canciones seleccionadas al número `position` de la lista (la primera de ellas queda ahí)."""
+        rows = sorted(index.row() for index in self.table.selectionModel().selectedRows())
+        total = self.proxy.rowCount()
+        if not rows or not self.table.reorderable():
+            return
+        wanted = max(1, min(position, total - len(rows) + 1)) - 1
+        target = next(t for t in range(total + 1) if t - sum(1 for r in rows if r < t) == wanted)
+        self._move_rows(rows, target)
+
+    def _ask_position(self) -> None:
+        rows = sorted(index.row() for index in self.table.selectionModel().selectedRows())
+        if not rows:
+            return
+        total = self.proxy.rowCount()
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.IntInput)
+        dialog.setWindowTitle("Mover a la posición")
+        what = "esta canción" if len(rows) == 1 else f"estas {len(rows)} canciones"
+        dialog.setLabelText(f"¿A qué número de la lista mover {what}? (de 1 a {total})")
+        dialog.setIntRange(1, total)
+        dialog.setIntValue(rows[0] + 1)
+        dialog.setOkButtonText("Mover")
+        dialog.setCancelButtonText("Cancelar")
+        if dialog.exec():
+            self._move_to_position(dialog.intValue())
+        dialog.deleteLater()
+
     def _nudge_selected(self, step: int) -> None:
         """Alt+↑ / Alt+↓: sube o baja una fila las canciones seleccionadas."""
         if not self.table.reorderable():
@@ -920,6 +949,9 @@ class ContentPanel(QFrame):
             up.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Up))
             down = menu.addAction(icon("arrow_down", TEXT, 16), "Bajar", lambda: self._nudge_selected(1))
             down.setShortcut(QKeySequence(Qt.Modifier.ALT | Qt.Key.Key_Down))
+            menu.addAction("Mover al principio", lambda: self._move_to_position(1))
+            menu.addAction("Mover al final", lambda: self._move_to_position(self.proxy.rowCount()))
+            menu.addAction("Mover a la posición…", self._ask_position)
             if self._reset_label:
                 menu.addAction(self._reset_label, self.reset_order_requested.emit)
             menu.addSeparator()
