@@ -188,7 +188,6 @@ class MainWindow(QMainWindow):
         self.splitter.setSizes([230, 1050])
         self.setCentralWidget(self.splitter)
 
-        self._restore_opening_marks()
         self._clean_saved_titles()
         QTimer.singleShot(FILE_TITLES_DELAY_MS, self._clean_file_titles_once)
         self._build_menus()
@@ -371,22 +370,9 @@ class MainWindow(QMainWindow):
 
     # ================================================================== ajustes
 
-    def _restore_opening_marks(self) -> None:
-        """Una sola vez: la limpieza de la 1.21.0 también quitó «¿» y «¡»; se recuperan de su respaldo."""
-        if self.settings.value("library/opening_marks_restored", False, type=bool):
-            return
-        try:
-            for source in backup.list_backups():
-                if "antes-de-limpiar-titulos" in source.name and self.db.restore_opening_marks(backup.titles_in(source)):
-                    log.info("Títulos con «¿» o «¡» recuperados desde %s", source.name)
-        except sqlite3.Error:
-            log.exception("No se pudieron recuperar los signos de los títulos")
-            return
-        self.settings.setValue("library/opening_marks_restored", True)
-
     def _clean_file_titles_once(self) -> None:
         """Una vez, un rato después de abrir (si algo falló, de nuevo al abrir la próxima vez)."""
-        if self._closing or self.settings.value("library/file_titles_cleaned", False, type=bool):
+        if self._closing or self.settings.value("library/file_titles_cleaned_2", False, type=bool):
             return
         self._tags_full_scan = True
         self._start_cleaning_tags([(t.id, t.path) for t in self.db.all_tracks()])
@@ -408,12 +394,12 @@ class MainWindow(QMainWindow):
     def _on_tags_cleaned(self, written: int, problems: list) -> None:
         self._stop_tags_thread()
         if problems:
-            self.settings.setValue("library/file_titles_cleaned", False)
+            self.settings.setValue("library/file_titles_cleaned_2", False)
             self.statusBar().showMessage(
                 f"No se pudo grabar el título en {plural(len(problems), 'archivo')}: se intentará al volver a abrir.", 8000
             )
         elif self._tags_full_scan:
-            self.settings.setValue("library/file_titles_cleaned", True)
+            self.settings.setValue("library/file_titles_cleaned_2", True)
         self._tags_full_scan = False
         if written and not problems:
             self.statusBar().showMessage(
@@ -437,7 +423,7 @@ class MainWindow(QMainWindow):
     def _clean_saved_titles(self) -> None:
         """Una sola vez: los títulos ya guardados quedan sin los caracteres especiales del principio (los que se
         importan después ya entran limpios). Con respaldo antes; los archivos no se tocan."""
-        if self.settings.value("library/titles_cleaned", False, type=bool):
+        if self.settings.value("library/titles_cleaned_2", False, type=bool):
             return
         try:
             if any(clean_title(t.title) != t.title for t in self.db.all_tracks()):
@@ -446,7 +432,7 @@ class MainWindow(QMainWindow):
         except sqlite3.Error:
             log.exception("No se pudieron limpiar los títulos")
             return
-        self.settings.setValue("library/titles_cleaned", True)
+        self.settings.setValue("library/titles_cleaned_2", True)
 
     def _fit_to_screen(self) -> None:
         """La ventana entra entera en el área visible de su monitor (sin quedar bajo la barra de tareas),
@@ -576,7 +562,7 @@ class MainWindow(QMainWindow):
             except (RuntimeError, TypeError):
                 pass
             self._tags_worker.cancel()
-            self.settings.setValue("library/file_titles_cleaned", False)
+            self.settings.setValue("library/file_titles_cleaned_2", False)
             self._stop_tags_thread()
         self._save_settings()
         self.settings.sync()
@@ -1696,10 +1682,15 @@ class MainWindow(QMainWindow):
         «Mover a otra carpeta» cortado a mitad: las canciones ya movidas pasan a su lugar nuevo."""
         self.ops.reconcile_interrupted_moves()
         self.ops.reconcile_interrupted_format()
+        reconnected = self.ops.reconnect_renamed(self.library)
         self.check_interrupted_review()
         for path in library_cleanup.remove_leftover_temps(self.library):
             log.info("Temporal sobrante borrado (corte o cierre a mitad de una operación): %s", path)
         self.remove_missing_tracks()
+        if reconnected:
+            self.statusBar().showMessage(
+                f"Se reconectó {plural(reconnected, 'canción', 'canciones')} cuyo archivo se renombró por fuera del programa.", 10000
+            )
 
     def remove_missing_tracks(self) -> None:
         """Quita de la lista las canciones (y con ellas las carpetas) que ya no existen en el disco."""

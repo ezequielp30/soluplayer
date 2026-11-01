@@ -50,10 +50,10 @@ _CLOSING = {"[": "]", "(": ")", "{": "}", "«": "»", "‹": "›", "“": "”"
 def clean_title(title: str) -> str:
     """El título sin los caracteres especiales del principio («►►Cuando…», «🔥El…», «| El…»). Si uno de ellos
     abre un corchete o paréntesis, se quita también el que lo cierra («[Oficial] Santo» → «Oficial Santo»).
-    Los números y los signos de apertura del español («¿», «¡») no son especiales. Un título hecho solo de
-    signos queda como estaba."""
+    Los signos de apertura («¿», «¡») también se quitan; los números no son especiales. Un título hecho solo
+    de signos queda como estaba."""
     text = (title or "").strip()
-    start = re.match(r"^(?:(?![¿¡])[\W_])+", text)
+    start = re.match(r"^[\W_]+", text)
     if start is None or start.end() == len(text):
         return title
     rest = text[start.end():]

@@ -145,10 +145,10 @@ cases = {
     "| EL PODEROSO DE ISRAEL": "EL PODEROSO DE ISRAEL",
     "[Vídeo Oficial] Cuando A": "Vídeo Oficial Cuando A",
     "(PISTA) CRYSTAL LEWIS": "PISTA CRYSTAL LEWIS",
-    "¿A quién tengo yo?": "¿A quién tengo yo?",
-    "¡Aleluya!": "¡Aleluya!",
-    "►► ¿Quién como Tú?": "¿Quién como Tú?",
-    "(¡En vivo!) Santo": "¡En vivo! Santo",
+    "¿A quién tengo yo?": "A quién tengo yo?",
+    "¡Aleluya!": "Aleluya!",
+    "►► ¿Quién como Tú?": "Quién como Tú?",
+    "(¡En vivo!) Santo": "En vivo! Santo",
     "06. Con tu Sangre": "06. Con tu Sangre",
     "A Dios (en vivo)": "A Dios (en vivo)",
     "♪♪♪": "♪♪♪",
@@ -160,37 +160,22 @@ item = scan_file(marked)[0]; item.metadata.title = "►►Nueva Marcada"; db.add
 tid = db.track_id_for_path(marked)
 check("una canción importada entra limpia", db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "Nueva Marcada")
 db.conn.execute("update tracks set title='🔥Vieja Marcada' where id=?", (tid,)); db.conn.commit()
-win.settings.remove("library/titles_cleaned"); bytes_before = open(marked, "rb").read()
+win.settings.remove("library/titles_cleaned_2"); bytes_before = open(marked, "rb").read()
 win._clean_saved_titles(); win._reload_library()
 check("las ya guardadas se limpian una vez, sin tocar el archivo",
       db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "Vieja Marcada"
-      and open(marked, "rb").read() == bytes_before and win.settings.value("library/titles_cleaned", type=bool))
+      and open(marked, "rb").read() == bytes_before and win.settings.value("library/titles_cleaned_2", type=bool))
 db.conn.execute("update tracks set title='¡Elegido a mano!' where id=?", (tid,)); db.conn.commit()
 win._clean_saved_titles()
 check("  no se repite: lo que cambies después a mano se respeta",
       db.conn.execute("select title from tracks where id=?", (tid,)).fetchone()[0] == "¡Elegido a mano!")
 
-print("[Los signos «¿» y «¡» se conservan y se recuperan]")
-import sqlite3
-from app import backup
-check("  y ordenan por la primera letra", sorted(["Beta", "¿Alfa?", "Zeta"], key=natural_key) == ["¿Alfa?", "Beta", "Zeta"])
-db.conn.execute("update tracks set title='¿Quién sabe?' where id=?", (tid,)); db.conn.commit()
-other = db.track_id_for_path(tracks_paths[0]) if (tracks_paths := [t.path for t in db.all_tracks() if t.id != tid]) else None
-db.conn.execute("update tracks set title='¡Santo!' where id=?", (other,)); db.conn.commit()
-saved = backup.create_backup(db.conn, "antes-de-limpiar-titulos")
-db.conn.execute("update tracks set title='Quién sabe?' where id=?", (tid,))
-db.conn.execute("update tracks set title='Lo cambié a mano' where id=?", (other,)); db.conn.commit()
-win.settings.remove("library/opening_marks_restored")
-win._restore_opening_marks()
+print("[Los signos «¿» y «¡» también se quitan]")
 title_of = lambda i: db.conn.execute("select title from tracks where id=?", (i,)).fetchone()[0]
-check("la versión anterior los quitó: el signo vuelve desde el respaldo", title_of(tid) == "¿Quién sabe?", title_of(tid))
-check("  lo cambiado a mano después no se toca", title_of(other) == "Lo cambié a mano", title_of(other))
-db.conn.execute("update tracks set title='Quién sabe?' where id=?", (tid,)); db.conn.commit()
-win._restore_opening_marks()
-check("  se recupera una sola vez", title_of(tid) == "Quién sabe?" and win.settings.value("library/opening_marks_restored", type=bool))
-db.conn.execute("update tracks set title='¿Sigue?' where id=?", (tid,)); db.conn.commit()
-win.settings.remove("library/titles_cleaned"); win._clean_saved_titles()
-check("  la limpieza ya no se los lleva", title_of(tid) == "¿Sigue?", title_of(tid))
+check("  al ordenar no cuentan", sorted(["Beta", "¿Alfa?", "Zeta"], key=natural_key) == ["¿Alfa?", "Beta", "Zeta"])
+db.conn.execute("update tracks set title='¿Quién sabe?' where id=?", (tid,)); db.conn.commit()
+win.settings.remove("library/titles_cleaned_2"); win._clean_saved_titles()
+check("los títulos ya guardados los pierden", title_of(tid) == "Quién sabe?", title_of(tid))
 
 print("[Preferencias]")
 c._toggle_column("number", False); spin(50)

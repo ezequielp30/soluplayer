@@ -195,16 +195,6 @@ def newest_outside_copy() -> Path | None:
     return None
 
 
-def titles_in(path: Path) -> dict[int, str]:
-    """Los títulos guardados en un respaldo, por id de canción. Abre en solo lectura."""
-    uri = "file:" + urllib.request.pathname2url(str(Path(path).resolve())) + "?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=5)
-    try:
-        return dict(conn.execute("SELECT id, title FROM tracks"))
-    finally:
-        conn.close()
-
-
 def latest_valid_backup() -> Path | None:
     for path in list_backups():
         if check_database(path) is None:

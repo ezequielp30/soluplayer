@@ -1,7 +1,7 @@
 """Herramientas → Título y quién la canta: propone bien, deja el título, el nombre y las etiquetas como
 «Canción - Quién la canta», borra los demás datos sin tocar el sonido ni las marcas del programa y se deshace
 por completo. Todo en carpetas temporales."""
-import os, sqlite3, sys, tempfile, time
+import os, shutil, sqlite3, sys, tempfile, time
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -80,6 +80,42 @@ check("lo que está entre paréntesis no es quien canta", got.song.startswith("T
 got = propose(*library[11], singers)
 check("si no se sabe quién canta, queda por revisar", not got.sure, got)
 check("«(En vivo)» se conserva", "(En vivo)" in strip_noise("Santo (En vivo) [Video Oficial]") and "Oficial" not in strip_noise("Santo (En vivo) [Video Oficial]"))
+
+print("[Numeración y signos del inicio]")
+numbered = {
+    "3-4 de 19 Marco Barrientos - El Señor": "Marco Barrientos - El Señor",
+    "3 de 19 - Santo": "Santo",
+    "12/19 Santo": "Santo",
+    "7 of 12 - Holy": "Holy",
+    "06. Con tu Sangre": "Con tu Sangre",
+    "7 - Santo": "Santo",
+    "4ª EN EL MISMO SITIO": "EN EL MISMO SITIO",
+    "¿A quién tengo yo?": "A quién tengo yo?",
+    "► 06. ¡Santo!": "Santo!",
+    "3 Días": "3 Días",
+    "7 de Mayo": "7 de Mayo",
+    "1º de Mayo": "1º de Mayo",
+    "1ª del Rey": "1ª del Rey",
+    "24/7 Adoración": "24/7 Adoración",
+    "40 de Fe": "40 de Fe",
+    "2019 - Santo": "2019 - Santo",
+    "06.": "06.",
+}
+bad = {k: strip_noise(k) for k, v in numbered.items() if strip_noise(k) != v}
+check("se quita la numeración, no los números que son parte del título", not bad, bad)
+
+print("[El nombre del archivo como pista]")
+named = known_singers([("x", "Marco Barrientos"), ("y", "Nancy Amancio"), ("z", "Benjamin Grullón")])
+got = propose("3-4 de 19 Marco Barrientos - El SEÑOR está en este lugar / El camino del SEÑOR", "ifernand2011", named,
+              r"D:\M\El Señor esta en este lugar - Marco Barrientos.mp3")
+check("el nombre confirma: queda Lista y con el título completo",
+      got.title == "El SEÑOR está en este lugar / El camino del SEÑOR - Marco Barrientos" and got.sure, got)
+got = propose("Benjamin - Ser o No Ser (Audio)", "Twisted Symmetry", named, r"D:\M\Benjamin Grullón - Ser o no Ser.mp3")
+check("si el título no alcanza, se propone el nombre, pero por revisar", got.title == "Ser o no Ser - Benjamin Grullón" and not got.sure, got)
+got = propose("PISTA  NANCY AMANCIO  AMÁNDOME ASÍ", "ADM Claude", named, r"D:\M\Nancy Amancio - Pista 01.mp3")
+check("«Pista 01» no confirma nada", not got.sure and "Pista 01" not in got.title, got)
+got = propose("Algo Raro", "canal123", named, r"D:\M\no dice nada.mp3")
+check("un nombre sin «Canción - Cantante» no cambia la propuesta", got == propose("Algo Raro", "canal123", named), got)
 
 print("[En el archivo]")
 music = os.path.join(work, "Musica"); os.makedirs(music)
@@ -197,6 +233,38 @@ check("  (el corte: la biblioteca apunta al archivo viejo)", db.conn.execute("se
 win.ops.reconcile_interrupted_format(); spin(50)
 check("al abrir, la canción apunta al archivo nuevo y no se pierde", db.conn.execute("select path from tracks where id=?", (cut_id,)).fetchone()[0] == change.new_path)
 check("  y se puede deshacer", any(e.kind == KIND_FORMAT and e.session.id == session.id and e.can_undo for e in win.ops.history(win.library)))
+
+print("[Renombrada por fuera]")
+loose = synth.mp3(os.path.join(music, "¿Cómo no - Lilly Goodman.mp3"), 2, title="Cómo no - Lilly Goodman", artist="Lilly Goodman")
+db.add_tracks([scan_file(loose)[0]]); loose_id = db.track_id_for_path(loose)
+loose_track = db.with_raw_text([t for t in db.all_tracks() if t.id == loose_id])[0]
+session = song_format.new_session(); change = song_format.plan(loose_track, "Cómo no", "Lilly Goodman", False)
+song_format.apply(session, change); change.done = True; song_format.set_in_library(db, change); session.status = journal.STATUS_DONE; session.save()
+applied_path = change.new_path; win._reload_library()
+outside = os.path.join(music, "4ª " + os.path.basename(applied_path))
+os.rename(applied_path, outside)
+win._reload_library()
+check("  (el archivo tiene otro nombre: la biblioteca no lo encuentra)", not os.path.exists(applied_path))
+before_paths = {t.id: t.path for t in db.all_tracks() if t.id != loose_id}
+check("al abrir vuelve a apuntar a su archivo", win.ops.reconnect_renamed(win.library) == 1
+      and db.conn.execute("select path from tracks where id=?", (loose_id,)).fetchone()[0] == outside)
+check("  sin tocar las demás", before_paths == {t.id: t.path for t in db.all_tracks() if t.id != loose_id})
+reloaded = next(s for s in song_format.list_sessions() if s.id == session.id)
+check("  y el Historial lo sigue encontrando", reloaded.changes[-1].new_path == outside and reloaded.pending())
+win._reload_library()
+check("  la segunda vez no hay nada que hacer", win.ops.reconnect_renamed(win.library) == 0)
+twin_a = synth.mp3(os.path.join(music, "Gemela.mp3"), 2, title="Gemela", artist="A")
+db.add_tracks([scan_file(twin_a)[0]]); twin_id = db.track_id_for_path(twin_a)
+shutil.move(twin_a, os.path.join(music, "1. Gemela.mp3")); shutil.copy(os.path.join(music, "1. Gemela.mp3"), os.path.join(music, "2. Gemela.mp3"))
+win._reload_library()
+check("con dos archivos posibles no adivina", win.ops.reconnect_renamed(win.library) == 0
+      and db.conn.execute("select path from tracks where id=?", (twin_id,)).fetchone()[0] == twin_a)
+other_length = synth.mp3(os.path.join(music, "Larga.mp3"), 2, title="Larga", artist="A")
+db.add_tracks([scan_file(other_length)[0]]); long_id = db.track_id_for_path(other_length)
+os.remove(other_length); synth.mp3(os.path.join(music, "1. Larga.mp3"), 6, title="Larga", artist="A")
+win._reload_library()
+check("si dura otra cosa, no es la misma canción", win.ops.reconnect_renamed(win.library) == 0
+      and db.conn.execute("select path from tracks where id=?", (long_id,)).fetchone()[0] == other_length)
 
 sfd.ask = real_ask; QMessageBox.information = real_info
 win.close(); spin(100)

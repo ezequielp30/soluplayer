@@ -15,7 +15,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from .metadata import MetadataError, read_metadata
 from .models import Track
+from .title_format import strip_noise
+from .utils import normalize_text, path_key
 
 SUSPICIOUS_MIN = 20  # a partir de cuántas faltantes en un mismo disco se mira la proporción
 SUSPICIOUS_RATIO = 0.5
@@ -82,6 +85,50 @@ def plan_missing(tracks: list[Track], protected_ids: set[int]) -> MissingPlan:
                 loose.extend(in_folder)
         plan.remove.extend(loose)
     return plan
+
+
+DURATION_MARGIN_MS = 2000  # la misma canción con otro nombre dura lo mismo
+
+
+def _bare_name(path: str) -> tuple[str, str]:
+    stem, ext = os.path.splitext(os.path.basename(path))
+    return normalize_text(strip_noise(stem)), ext.lower()
+
+
+def find_renamed(tracks: list[Track]) -> list[tuple[Track, str]]:
+    """Canciones cuyo archivo se renombró por fuera solo quitándole signos o numeración del inicio
+    («¿A quién….mp3» → «A quién….mp3», «4ª En el….mp3» → «En el….mp3»). Tiene que haber un único archivo posible,
+    fuera de la biblioteca y de la misma duración: ante la duda, no se reconecta. Solo mira; no cambia nada."""
+    by_folder: dict[str, list[Track]] = {}
+    for track in tracks:
+        if not os.path.isfile(track.path):
+            by_folder.setdefault(os.path.dirname(track.path), []).append(track)
+    known = {path_key(t.path) for t in tracks}
+    found = []
+    for folder, missing in by_folder.items():
+        try:
+            with os.scandir(folder) as entries:
+                loose = [e.path for e in entries if e.is_file() and path_key(e.path) not in known]
+        except OSError:
+            continue  # carpeta que ya no existe o disco desconectado
+        names: dict[tuple[str, str], list[str]] = {}
+        for path in loose:
+            names.setdefault(_bare_name(path), []).append(path)
+        wanted: dict[tuple[str, str], list[Track]] = {}
+        for track in missing:
+            wanted.setdefault(_bare_name(track.path), []).append(track)
+        for name, claiming in wanted.items():
+            candidates = names.get(name, [])
+            if len(candidates) == 1 and len(claiming) == 1 and _same_length(claiming[0], candidates[0]):
+                found.append((claiming[0], candidates[0]))
+    return found
+
+
+def _same_length(track: Track, path: str) -> bool:
+    try:
+        return abs(read_metadata(path).duration_ms - track.duration_ms) <= DURATION_MARGIN_MS
+    except (MetadataError, OSError):
+        return False
 
 
 def relocate_folder(tracks: list[Track], old_folder: str, new_folder: str) -> list[tuple[int, str]]:

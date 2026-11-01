@@ -138,7 +138,7 @@ class SongFormatDialog(QDialog):
         singers = known_singers((t.title, t.artist) for t in self._ops.db.with_raw_text(self._ops.db.all_tracks()))
         rows = []
         for track in tracks:
-            proposal = propose(track.title, track.artist, singers)
+            proposal = propose(track.title, track.artist, singers, track.path)
             if not song_format.is_formatted(track, proposal.song, proposal.singer):
                 rows.append((track, proposal))
         rows.sort(key=lambda row: row[1].sure)  # primero lo que hay que mirar

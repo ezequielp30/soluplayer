@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_history, file_manager, journal, mp3gain, review_folder, song_format, title_tags
+from . import backup, converter, file_history, file_manager, journal, library_cleanup, mp3gain, review_folder, song_format, title_tags
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
@@ -700,6 +700,26 @@ class FileOperations:
         if fixed:
             self._on_changed()
         return fixed
+
+    def reconnect_renamed(self, tracks: list[Track]) -> int:
+        """Al abrir: las canciones cuyo archivo se renombró por fuera vuelven a apuntar a él (conservan playlists
+        y orden). No cambia ningún archivo."""
+        found = library_cleanup.find_renamed(tracks)
+        if not found:
+            return 0
+        if backup.create_backup(self.db.conn, "antes-de-reconectar") is None:
+            log.warning("No se reconectaron las canciones renombradas: no se pudo crear el respaldo previo")
+            return 0
+        try:
+            self.db.update_track_paths([(track.id, path) for track, path in found])
+        except sqlite3.Error as exc:
+            log.error("No se pudieron reconectar las canciones renombradas: %s", exc)
+            return 0
+        for track, path in found:
+            log.info("Reconectada: %s → %s", track.path, path)
+            song_format.follow_rename(track.id, path)
+        self._on_changed()
+        return len(found)
 
     def _undo_titles(self, session: title_tags.TitleSession) -> UndoOutcome:
         """Los archivos recuperan su título original. En la biblioteca el título queda como está."""

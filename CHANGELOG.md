@@ -2,6 +2,19 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.24.0 — 2026-11-01 (sin signos ni numeración al inicio)
+
+- **«¿» y «¡» ya no se conservan al inicio del título:** se quitan como los demás signos, en la biblioteca y
+  dentro de los archivos. Se hace solo, una vez, al abrir («¿A quién tengo yo?» → «A quién tengo yo?»); se
+  puede deshacer en *Historial de cambios en archivos*. El «?» del final se queda.
+- **Título y quién la canta quita la numeración del inicio:** «3-4 de 19», «12/19», «06.», «7 -», «4ª». Los
+  números que son parte del título se quedan («3 Días», «7 de Mayo», «24/7»).
+- **Título y quién la canta usa el nombre del archivo como pista:** si coincide en la canción y en quién canta,
+  la propuesta queda Lista; si dice otra cosa, se propone lo del nombre, pero queda por revisar.
+- **Canciones renombradas por fuera:** si a un archivo solo se le quitaron signos o numeración del inicio, al
+  abrir la canción vuelve a encontrarlo y conserva playlists y orden. Solo con un único archivo posible y de la
+  misma duración.
+
 ## 1.23.0 — 2026-11-01 (título y quién la canta)
 
 - **Nueva herramienta: *Herramientas → Título y quién la canta*.** Deja cada canción como «Canción - Quién la

@@ -7,6 +7,7 @@ ventana la deja sin elegir para que la revise una persona. Sin ventanas ni archi
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from collections import Counter
@@ -30,7 +31,13 @@ _TAIL_JUNK = re.compile(
     re.I,
 )
 _LEAD_JUNK = re.compile(r"^(?:v[ií]deo\s*\d*[.:)\s-]*(?=\S)|(?:v[ií]deo\s+)?oficial\s+|[A-Z]{1,5}\s?\d{2,}\s+)", re.I)
+# La numeración del disco o de la lista de reproducción: «3-4 de 19 », «12/19 », «06. », «7 - », «4ª ».
+# No «3 Días», «7 de Mayo», «1º de Mayo» ni «24/7 Adoración» (el total no puede ser menor que el número).
+_COUNT = re.compile(r"^\d{1,3}\s*(?:[-–—]\s*(\d{1,3})\s*)?(?:de|of|/)\s*(\d{1,3})(?=[\s.:)-]|$)[\s.:)–—-]*", re.I)
+_NUMBER = re.compile(r"^(?:\d{1,2}\s*[.)–—-]\s+|\d{1,2}[ªº]\s+(?!del?\b))", re.I)
 _HASHTAG = re.compile(r"(?<!\S)#\w+")
+_GENERIC_SONG = re.compile(r"^(?:pista|track|tema)\s*\d*$", re.I)
+_FILE_COPY = re.compile(r"\s*\(\d+\)$")  # «Canción - Cantante (2).mp3»
 _EXTENSION = re.compile(r"\.(?:wmv|mp4|avi|flv|mkv|webm|mp3|m4a)$", re.I)
 _SEPARATOR = re.compile(r"\s*\|+\s*|\s*//\s*|\s+[-–—~]+\s*|[-–—~]+\s+|\s{2,}|\s+by\s+")
 _TIGHT_DASH = re.compile(r"(?<=\S)[-–—](?=\S)")
@@ -74,6 +81,16 @@ def _unprotect(text: str) -> str:
     return "".join(_UNPROTECT.get(c, c) for c in text)
 
 
+def _strip_numbering(text: str) -> str:
+    count = _COUNT.match(text)
+    if count:
+        first = int(count.group(1) or re.match(r"\d+", text).group())
+        rest = text[count.end():] if int(count.group(2)) >= max(first, 3) else text
+    else:
+        rest = _NUMBER.sub("", text)
+    return clean_title(rest).strip() if rest.strip() else text
+
+
 def strip_noise(title: str) -> str:
     """Sin lo que agrega YouTube: «(Video Oficial)», «[Audio]», «#hashtag», adornos, «.wmv». Conserva los
     espacios dobles: separan datos («Cuando estoy en tu presencia   New Wine»)."""
@@ -85,7 +102,7 @@ def strip_noise(title: str) -> str:
     text = _BRACKETS.sub(bracket, text)
     text = _HASHTAG.sub("", text)
     text = _EXTENSION.sub("", _strip_end_symbols(text.strip()))
-    return _LEAD_JUNK.sub("", _strip_end_symbols(text.strip())).strip()
+    return _strip_numbering(_LEAD_JUNK.sub("", _strip_end_symbols(text.strip())).strip())
 
 
 def _strip_segment(segment: str) -> str:
@@ -156,7 +173,38 @@ def _best_known(segments: list[str], singers: KnownSingers) -> int | None:
     return None
 
 
-def propose(title: str, artist: str, singers: KnownSingers) -> Proposal:
+def propose(title: str, artist: str, singers: KnownSingers, path: str = "") -> Proposal:
+    """`path`: el archivo de la canción; su nombre ayuda con las que el título no alcanza para resolver."""
+    proposal = _from_title(title, artist, singers)
+    return _with_file_name(proposal, path, artist, singers) if path and not proposal.sure else proposal
+
+
+def _with_file_name(proposal: Proposal, path: str, artist: str, singers: KnownSingers) -> Proposal:
+    """Si el nombre coincide en la canción y en quién canta, la propuesta queda confirmada. Si dice otra cosa, se
+    propone lo del nombre, pero sigue por revisar: a veces es de otra canción. Sin «Canción - Cantante» claro, nada."""
+    stem = _FILE_COPY.sub("", os.path.splitext(os.path.basename(path))[0])
+    parts = _segments(strip_noise(stem))
+    if len(parts) != 2:
+        return proposal
+    index = _best_known(parts, singers)
+    if index is None:
+        tag = _plain_name(artist)
+        index = next((i for i, part in enumerate(parts) if _mentions(part, tag)), None)
+    if index is None:
+        return proposal
+    singer, song = parts[index], parts[1 - index]
+    if _GENERIC_SONG.match(song):  # «Nancy Amancio - Pista 06.mp3» no dice qué canción es
+        return proposal
+    if _same_name(singer, proposal.singer) and _same_name(song, proposal.song):
+        return Proposal(proposal.song, proposal.singer, True)
+    return _result(song, singer, False)
+
+
+def _same_name(one: str, other: str) -> bool:
+    return bool(one and other) and (_mentions(one, normalize_text(_outside_brackets(other))) or _mentions(other, normalize_text(_outside_brackets(one))))
+
+
+def _from_title(title: str, artist: str, singers: KnownSingers) -> Proposal:
     segments = _segments(strip_noise(title))
     tag = _plain_name(artist)
     if len(segments) == 1 and _TIGHT_DASH.search(segments[0]):  # «Estar contigo-Miguel Cassina»

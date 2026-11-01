@@ -307,6 +307,15 @@ def undo(session: FormatSession, db) -> tuple[int, list[str]]:
     return restored, problems
 
 
+def follow_rename(track_id: int, new_path: str) -> None:
+    """El archivo se renombró por fuera después de aplicar: deshacer tiene que buscarlo con su nombre nuevo."""
+    for session in list_sessions():
+        changes = [c for c in session.changes if c.track_id == track_id and c.done and not c.undone]
+        if changes:
+            changes[-1].new_path = new_path
+            session.save()
+
+
 def set_in_library(db, change: FormatChange) -> None:
     db.set_song_data(
         change.track_id, change.new_path, change.new_title, change.new_artist, UNKNOWN_ALBUM, UNKNOWN_GENRE,

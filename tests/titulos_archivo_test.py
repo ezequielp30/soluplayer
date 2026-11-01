@@ -78,7 +78,7 @@ check("FLAC: se graba", FLAC(flac)["title"] == [CLEAN])
 
 print("[Qué se graba y qué no]")
 check("un título sin signos no se toca", title_tags.clean_title_for(synth.mp3(os.path.join(music, "normal.mp3"), 1, title="Normal")) is None)
-check("«¿» y «¡» no cuentan como especiales", title_tags.clean_title_for(synth.mp3(os.path.join(music, "preg.mp3"), 1, title="¿A quién tengo yo?")) is None)
+check("«¿» y «¡» también se quitan", title_tags.clean_title_for(synth.mp3(os.path.join(music, "preg.mp3"), 1, title="¿A quién tengo yo?")) == ("¿A quién tengo yo?", "A quién tengo yo?"))
 check("los números tampoco", title_tags.clean_title_for(synth.mp3(os.path.join(music, "num.mp3"), 1, title="06. Con tu Sangre")) is None)
 broken = os.path.join(music, "roto.mp3"); open(broken, "wb").write(b"no es audio")
 check("un archivo dañado se deja como está", title_tags.clean_title_for(broken) is None)
@@ -129,15 +129,15 @@ for path in files.values():
 mw.FILE_TITLES_DELAY_MS = 0
 holder = open(files["bloqueado"], "rb")
 win = mw.MainWindow(db); win.show(); win.player.set_volume(0)
-idle = lambda: win._tags_thread is None and win.settings.contains("library/file_titles_cleaned")
+idle = lambda: win._tags_thread is None and win.settings.contains("library/file_titles_cleaned_2")
 spin(15000, idle)
 check("al abrir, los títulos quedan grabados en los archivos", title_tag(files["uno"]) == "El Infierno Tiembla" and title_tag(files["dos"]) == "EL PODEROSO",
       (title_tag(files["uno"]), title_tag(files["dos"])))
 check("el que está en uso queda como estaba", title_tag(files["bloqueado"]) == "[Oficial] Santo")
-check("  y queda pendiente para la próxima vez", not win.settings.value("library/file_titles_cleaned", type=bool))
+check("  y queda pendiente para la próxima vez", not win.settings.value("library/file_titles_cleaned_2", type=bool))
 holder.close()
 win._clean_file_titles_once(); spin(15000, lambda: win._tags_thread is None)
-check("al reintentar se graba, y ya no vuelve a revisar", title_tag(files["bloqueado"]) == "Oficial Santo" and win.settings.value("library/file_titles_cleaned", type=bool))
+check("al reintentar se graba, y ya no vuelve a revisar", title_tag(files["bloqueado"]) == "Oficial Santo" and win.settings.value("library/file_titles_cleaned_2", type=bool))
 
 imported = synth.mp3(os.path.join(music, "nueva.mp3"), 1, title="►Nueva")
 db_item = scan_file(imported)[0]
@@ -157,12 +157,12 @@ check("  en la biblioteca el título sigue limpio", db.conn.execute("select titl
 
 print("[Cerrar mientras graba]")
 extra = [synth.mp3(os.path.join(music, f"lote{i}.mp3"), 1, title=f"►Lote {i}") for i in range(6)]
-win.settings.setValue("library/file_titles_cleaned", True)
+win.settings.setValue("library/file_titles_cleaned_2", True)
 win._start_cleaning_tags([(1000 + i, p) for i, p in enumerate(extra)])
 win.close(); spin(100)
 sane = all(title_tag(p) in (f"►Lote {i}", f"Lote {i}") for i, p in enumerate(extra))
 check("cierra sin dañar nada y sin temporales", sane and not leftovers(music))
-check("  lo que faltó queda para la próxima vez", not QSettings("ReproductorMusicaTest", "ReproductorMusica").value("library/file_titles_cleaned", type=bool))
+check("  lo que faltó queda para la próxima vez", not QSettings("ReproductorMusicaTest", "ReproductorMusica").value("library/file_titles_cleaned_2", type=bool))
 
 print(f"\nRESULTADO: {sum(results)}/{len(results)} correctas")
 sys.exit(0 if all(results) else 1)
