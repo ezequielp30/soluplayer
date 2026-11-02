@@ -4,7 +4,7 @@ sys.path.insert(0, r"D:\soluplayer")
 work = tempfile.mkdtemp(prefix="mp_conv_")
 os.environ["MUSICPLAYER_DATA_DIR"] = os.path.join(work, "data")
 import numpy as np
-from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, QSettings, Qt, QTimer, QUrl
 from PySide6.QtWidgets import QApplication, QInputDialog, QMessageBox
 from PySide6.QtMultimedia import QAudioDecoder, QAudioFormat
 app = QApplication(sys.argv); app.setOrganizationName("ReproductorMusicaTest")
@@ -197,9 +197,10 @@ check("  la biblioteca vuelve a los originales", all(any(t.path == p for t in wi
 check("Tus archivos reales no se tocaron", all(sha(p) == real_hashes[k] for k, p in real.items()))
 check("todos los diálogos esperados aparecieron", not pending, pending)
 win.player.stop(); win.close(); QSettings("ReproductorMusicaTest", "ReproductorMusica").clear()
-# Soltar el audio antes de terminar el proceso: cortar a la fuerza (os._exit) con la salida de audio de Qt
-# todavía abierta provocaba a veces un cierre anómalo de la prueba (no del programa, que sale por la ventana).
+# Antes de cortar a la fuerza (os._exit): soltar el audio y liberar las ventanas pendientes. Con ellas pendientes,
+# el proceso fallaba dentro de PySide al apagarse; spin() no las libera, porque no vuelve al bucle principal.
 win.player.release_source(); win.deleteLater(); spin(500)
+QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 if errors: print("\n".join(errors))
 print(f"\nRESULTADO: {sum(results)}/{len(results)} correctas, {len(errors)} errores")
 sys.stdout.flush(); os._exit(0 if all(results) and not errors else 1)

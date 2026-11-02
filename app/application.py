@@ -7,7 +7,7 @@ import os
 import sqlite3
 import sys
 
-from PySide6.QtCore import QLibraryInfo, QObject, QSettings, Qt, QTimer, QTranslator, Signal
+from PySide6.QtCore import QCoreApplication, QEvent, QLibraryInfo, QObject, QSettings, Qt, QTimer, QTranslator, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -204,6 +204,8 @@ def run() -> int:
         log.warning("Una tarea en segundo plano no terminó: se sale sin esperarla")
         log.info("Cierre normal (código %s)", code)
         logging.shutdown()
+        # Antes, lo que quedó por liberar: con ventanas pendientes, os._exit puede fallar dentro de PySide al apagarse.
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         os._exit(code)
     log.info("Cierre normal (código %s)", code)
     return code
