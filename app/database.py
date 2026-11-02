@@ -437,6 +437,11 @@ class Database:
                 (path, path_key(path), title, artist, album, genre, cover_hash, track_id),
             )
 
+    def song_data(self, track_id: int) -> dict | None:
+        """Los datos propios de la biblioteca, tal como están guardados."""
+        row = self.conn.execute("SELECT title, artist, album, genre, cover_hash FROM tracks WHERE id = ?", (track_id,)).fetchone()
+        return dict(zip(("title", "artist", "album", "genre", "cover_hash"), tuple(row))) if row else None
+
     def restore_song(self, track_id: int, path: str, title: str, artist: str, album: str, genre: str, cover_hash: str | None, cover: bytes | None) -> None:
         """La canción volvió a como estaba: sus datos, leídos del archivo restaurado. Conserva id, playlists y orden."""
         self._store_cover(cover_hash, cover)

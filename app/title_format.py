@@ -127,6 +127,12 @@ def clean_song_title(title: str) -> str:
     return _tidy(text)
 
 
+def confirmed_title(title: str) -> str:
+    """Un título ya decidido (por la base de datos o a mano): sin colaboradores ni signos al inicio, pero sin tocar sus
+    números, que pueden ser parte del título («99 - Problems»)."""
+    return _tidy(_CREDIT_TO_END.sub("", _CREDIT_IN_BRACKETS.sub("", clean_title(title or "").strip())))
+
+
 def main_artist(artist: str, confirmed: str = "") -> str:
     """Un solo artista. `confirmed` es el primero que da una base de datos: manda sobre el texto. Sin ella se corta en
     «ft.», «feat.» y comas, pero no en «&» ni en «y»: «Ana y Ricky» o «Israel & New Breed» pueden ser un solo nombre."""
@@ -146,9 +152,9 @@ def _plain_name_part(text: str) -> str:
 
 def file_stem(title: str, artist: str) -> str:
     """«TITULO - ARTISTA», sin extensión, para el nombre del archivo. Solo el nombre pierde tildes y puntuación: las
-    etiquetas las conservan. Empieza con letra salvo que el número sea parte del título («7 Dias», «1999»). Vacío si
-    el título no deja nada escribible (otro alfabeto): el nombre no se toca y la canción queda por revisar."""
-    song = _plain_name_part(clean_song_title(title))
+    etiquetas las conservan. El título ya viene decidido: si lleva un número, es parte de él («7 Dias», «1999»). Vacío
+    si el título no deja nada escribible (otro alfabeto): el nombre no se toca y la canción queda por revisar."""
+    song = _plain_name_part(title)
     singer = _plain_name_part(artist)
     if not song:
         return ""

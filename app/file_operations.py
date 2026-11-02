@@ -11,6 +11,7 @@ archivos»: reuniones de repetidas, conversiones a MP3 y ajustes de volumen, con
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -18,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_history, file_manager, journal, library_cleanup, mp3gain, organizer_db, pending_review, review_folder, song_format, title_tags
+from . import backup, converter, file_history, file_manager, journal, library_cleanup, mp3gain, normalizer, organizer_db, pending_review, review_folder, song_format, title_tags
 from .importer import scan_file
 from .metadata import UNKNOWN_ALBUM, UNKNOWN_GENRE
 from .organizer_db import PENDING_RETURNED
@@ -700,6 +701,8 @@ class FileOperations:
         """La biblioteca se entera de una canción normalizada. Si no está en la biblioteca, no se agrega."""
         track_id = self.db.track_id_for_path(item.old_path)
         if track_id is not None:
+            # Lo corregido a mano o con «Datos en internet» no está en el archivo: restaurar se lo devuelve.
+            organizer_db.save_library_data(item.id, json.dumps(self.db.song_data(track_id), ensure_ascii=False))
             self.db.set_song_data(track_id, item.new_path, item.new_title, item.new_artist, UNKNOWN_ALBUM, UNKNOWN_GENRE, None)
         organizer_db.mark_library_synced(item.id)
 
@@ -719,10 +722,15 @@ class FileOperations:
         if track_id is None:
             track_id = self.db.track_id_for_path(item.old_path)
         if track_id is not None:
-            scanned, _failure = scan_file(item.old_path)
-            if scanned is not None:
+            saved = json.loads(item.library_data) if item.library_data else None
+            scanned, _failure = (None, None) if saved else scan_file(item.old_path)
+            if saved:
+                self.db.set_song_data(track_id, item.old_path, saved["title"], saved["artist"], saved["album"], saved["genre"], saved["cover_hash"])
+            elif scanned is not None:
                 meta = scanned.metadata
                 self.db.restore_song(track_id, item.old_path, clean_title(meta.title), meta.artist, meta.album, meta.genre, scanned.cover_hash, scanned.cover_bytes)
+            else:  # no se pudo leer ahora: al menos que apunte a su archivo
+                self.db.update_track_paths([(track_id, item.old_path)])
         organizer_db.mark_library_synced(item.id)
 
     def reconcile_organizer(self) -> int:
@@ -730,19 +738,28 @@ class FileOperations:
         biblioteca se pone al día. Una canción a medias de normalizar se retoma al normalizarla otra vez."""
         if not organizer_db.database_file().exists():
             return 0
-        db = organizer_db.OrganizerDb()
+        fixed = 0
+        try:
+            db = organizer_db.OrganizerDb()
+        except sqlite3.Error as exc:  # una base dañada no debe impedir abrir el programa
+            log.error("No se pudo abrir la base del organizador: %s", exc)
+            return 0
         try:
             fixed = pending_review.reconcile(db)
-            for pending in db.unsynced_pending():
-                self.sync_organizer_pending(db, pending)
-                fixed += 1
-            for item in db.unsynced_items():
-                if item.state == organizer_db.ITEM_DONE:
-                    self.sync_organizer_item(db, item)
-                else:
-                    self.sync_organizer_restored(db, item)
-                fixed += 1
-        except sqlite3.Error as exc:
+            # Se cortó justo tras renombrar: el archivo ya está en su lugar nuevo y solo falta anotarlo.
+            for item in db.unfinished_items():
+                if item.state == organizer_db.ITEM_RENAMING and journal.was_moved(item.old_path, item.new_path):
+                    normalizer._finish_rename(db, item)
+                    fixed += 1
+            work = [(self.sync_organizer_pending, p) for p in db.unsynced_pending()]
+            work += [(self.sync_organizer_item if i.state == organizer_db.ITEM_DONE else self.sync_organizer_restored, i) for i in db.unsynced_items()]
+            for sync, entry in work:
+                try:  # una mala no debe dejar sin poner al día a las demás
+                    sync(db, entry)
+                    fixed += 1
+                except sqlite3.Error as exc:
+                    log.error("No se pudo poner al día %s: %s", entry, exc)
+        except (sqlite3.Error, OSError, normalizer.NormalizeError) as exc:
             log.error("No se pudo poner al día el organizador: %s", exc)
         finally:
             db.close()

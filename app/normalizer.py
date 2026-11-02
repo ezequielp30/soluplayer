@@ -23,11 +23,13 @@ from .organizer import BACKUP_FOLDER, DECISION_AUTO, DECISION_DONE, Identificati
 from .organizer_db import ITEM_BACKED_UP, ITEM_DONE, ITEM_PLANNED, ITEM_RENAMING, ITEM_RESTORED, ITEM_TAGGED, OperationItem, OrganizerDb
 from .review_folder import safe_name
 from .song_format import _target_path
-from .title_format import clean_song_title, file_stem, main_artist
+from .title_format import confirmed_title, file_stem
 from .title_tags import _WRITE_ERRORS, CannotTag, edit_safely
 from .utils import long_path
 
 log = logging.getLogger(__name__)
+
+MAX_PATH = 240  # el mismo margen que la carpeta de revisión de repetidas y la de pendientes
 
 
 class NormalizeError(Exception):
@@ -48,8 +50,17 @@ def jobs_from_identifications(db: OrganizerDb, file_ids: list[int] | None = None
 
 
 def backup_root(path: str, chosen: str | None) -> str:
-    """La carpeta elegida o, si no, «RESPALDOS_MP3» en la raíz del disco de la canción."""
-    return chosen or os.path.join(os.path.splitdrive(os.path.abspath(path))[0] + os.sep, BACKUP_FOLDER)
+    """Siempre en una carpeta «RESPALDOS_MP3», dentro de la elegida o en la raíz del disco de la canción: por ese nombre
+    el programa sabe en todas partes que no son canciones, aunque se analice la unidad entera."""
+    return os.path.join(chosen or os.path.splitdrive(os.path.abspath(path))[0] + os.sep, BACKUP_FOLDER)
+
+
+def _target_for(path: str, title: str, artist: str) -> str:
+    """Siempre con extensión .mp3 en minúsculas. Si la ruta no entra en Windows, se avisa antes de tocar nada."""
+    target = _target_path(os.path.splitext(path)[0] + ".mp3", file_stem(title, artist))
+    if len(target) > MAX_PATH:
+        raise NormalizeError("La ruta quedaría demasiado larga para Windows: la canción se queda como está.")
+    return target
 
 
 def tags_snapshot(path: str) -> str:
@@ -107,10 +118,15 @@ def normalize(db: OrganizerDb, operation_id: int, job: SongJob, backup_folder: s
     row = db.file_by_id(job.file_id)
     if row is None:
         raise NormalizeError("La canción ya no está en el análisis.")
-    title, artist = clean_song_title(job.title), main_artist(job.artist)
-    if not title or not artist or not file_stem(title, artist):
+    # El título y el artista ya vienen decididos: de la base de datos o de la persona. Aquí no se vuelven a recortar.
+    title, artist = confirmed_title(job.title), job.artist.strip()
+    if not title or not artist or not _plain_enough(title, artist):
         raise NormalizeError("Falta el título o el artista.")
     item = db.open_item(job.file_id)
+    if item is not None and (item.new_title, item.new_artist) != (title, artist):
+        if item.state not in (ITEM_PLANNED, ITEM_BACKED_UP):
+            raise NormalizeError(f"Quedó a medias como «{item.new_title}»: retómala o restáurala en Historial.")
+        item = db.update_item_song(item.id, title, artist)
     if item is None:
         if not os.path.isfile(long_path(row.path)):
             raise NormalizeError("El archivo ya no está en su sitio.")
@@ -119,8 +135,15 @@ def normalize(db: OrganizerDb, operation_id: int, job: SongJob, backup_folder: s
             raise NormalizeError("El archivo cambió desde que se analizó: analízalo de nuevo.")
         if already_normalized(row.path, title, artist):
             return None
+        _target_for(row.path, title, artist)
         item = db.add_item(operation_id, job.file_id, row.path, tags_snapshot(row.path), title, artist)
     return _advance(db, item, backup_folder)
+
+
+def _plain_enough(title: str, artist: str) -> bool:
+    """El nombre del archivo lleva título y artista: si uno no deja nada escribible (otro alfabeto), no hay formato."""
+    stem = file_stem(title, artist)
+    return bool(stem) and " - " in stem
 
 
 def _advance(db: OrganizerDb, item: OperationItem, backup_folder: str | None) -> OperationItem:
@@ -156,7 +179,17 @@ def _back_up(db: OrganizerDb, item: OperationItem, backup_folder: str | None) ->
     except song_backup.BackupError as exc:
         db.fail_item(item.id, str(exc))
         raise NormalizeError(str(exc)) from exc
+    _note_in_index(target, item.old_path)
     return db.mark_backed_up(item.id, target, digest)
+
+
+def _note_in_index(backup: str, original: str) -> None:
+    """Un índice junto a las copias: si se perdiera la base de datos, se sabe de dónde salió cada una."""
+    try:
+        with open(os.path.join(os.path.dirname(backup), "indice.tsv"), "a", encoding="utf-8") as index:
+            index.write(f"{os.path.basename(backup)}\t{original}\n")
+    except OSError as exc:
+        log.warning("No se pudo anotar el respaldo en el índice: %s", exc)
 
 
 def _matches_backup(item: OperationItem) -> bool:
@@ -193,7 +226,12 @@ def _write_tags(db: OrganizerDb, item: OperationItem) -> OperationItem:
 
 
 def _rename(db: OrganizerDb, item: OperationItem) -> OperationItem:
-    return db.mark_renaming(item.id, _target_path(item.old_path, file_stem(item.new_title, item.new_artist)))
+    try:
+        target = _target_for(item.old_path, item.new_title, item.new_artist)
+    except NormalizeError as exc:
+        db.note_item_error(item.id, str(exc))
+        raise
+    return db.mark_renaming(item.id, target)
 
 
 def _finish_rename(db: OrganizerDb, item: OperationItem) -> OperationItem:
@@ -214,15 +252,17 @@ def _finish_rename(db: OrganizerDb, item: OperationItem) -> OperationItem:
 
 
 def restore(db: OrganizerDb, item: OperationItem) -> OperationItem:
-    """Devuelve la canción tal como estaba, byte a byte y con su nombre. Nunca pisa un archivo ajeno. El respaldo se
-    conserva hasta que la persona lo borre."""
+    """Devuelve la canción a como estaba antes de `item`, byte a byte y con su nombre, aunque después se normalizara
+    otra vez. Nunca pisa un archivo ajeno. El respaldo se conserva hasta que la persona lo borre."""
     if item.state == ITEM_RESTORED:
         return item
     if not song_backup.is_intact(item.backup_path, item.backup_sha):
         raise NormalizeError("El respaldo no está o no está intacto: no se tocó nada.")
     old = long_path(item.old_path)
     # La versión normalizada, si sigue ahí y con otro nombre: la que hay que quitar una vez restaurada la original.
-    renamed = long_path(item.new_path) if item.new_path else ""
+    row = db.file_by_id(item.file_id)
+    current_path = row.path if row is not None else item.new_path
+    renamed = long_path(current_path) if current_path else ""
     if not renamed or os.path.normcase(renamed) == os.path.normcase(old) or not os.path.exists(renamed):
         renamed = ""
     if os.path.exists(old) and not _is_same_song(old, item.backup_path):
@@ -236,8 +276,6 @@ def restore(db: OrganizerDb, item: OperationItem) -> OperationItem:
         if digest != item.backup_sha:
             raise NormalizeError("La copia restaurada no salió idéntica: no se tocó nada.")
         os.replace(temp, old)
-        if renamed:
-            os.remove(renamed)
     except (OSError, song_backup.BackupError) as exc:
         raise NormalizeError(f"No se pudo restaurar: {getattr(exc, 'strerror', None) or exc}") from exc
     finally:
@@ -249,7 +287,14 @@ def restore(db: OrganizerDb, item: OperationItem) -> OperationItem:
     info = os.stat(old)
     db.move_file(item.file_id, item.old_path, info.st_size, info.st_mtime_ns)
     db.forget_identification(item.file_id)  # al analizar se decide otra vez, sin repetir la consulta
-    return db.set_item_state(item.id, ITEM_RESTORED)
+    # Anotado antes de quitar la versión normalizada: si se corta aquí, sobra una copia, pero la biblioteca lo sabe.
+    restored = db.mark_restored_from(item, current_path or "")
+    if renamed:
+        try:
+            os.remove(renamed)
+        except OSError as exc:
+            log.warning("Restaurada, pero no se pudo quitar %s: %s", renamed, exc)
+    return restored
 
 
 def _is_same_song(path: str, backup: str) -> bool:

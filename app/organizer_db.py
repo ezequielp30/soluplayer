@@ -16,7 +16,7 @@ from .config import data_dir
 from .organizer import DECISION_DONE, DECISION_OFFLINE, Identification
 from .utils import path_key
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 PENDING_MOVING, PENDING_WAITING, PENDING_RETURNING, PENDING_RETURNED = "moviendo", "pendiente", "devolviendo", "devuelta"
 ITEM_PLANNED, ITEM_BACKED_UP, ITEM_TAGGED, ITEM_RENAMING = "anotada", "respaldada", "etiquetada", "renombrando"
 ITEM_DONE, ITEM_FAILED, ITEM_RESTORED = "lista", "fallo", "restaurada"
@@ -142,6 +142,7 @@ class OperationItem:
     state: str
     error: str
     library_synced: bool
+    library_data: str = ""  # lo que tenía la biblioteca antes: restaurar se lo devuelve (JSON)
 
 
 def cache_key(duration_s: float, fingerprint: str) -> str:
@@ -162,6 +163,8 @@ class OrganizerDb:
             with self.conn:
                 for statement in (*_SCHEMA, *_IDENTIFICATIONS, *_OPERATIONS, *_PENDING):  # todas con IF NOT EXISTS
                     self.conn.execute(statement)
+                if "library_data" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(operation_items)")}:
+                    self.conn.execute("ALTER TABLE operation_items ADD COLUMN library_data TEXT NOT NULL DEFAULT ''")
                 self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def close(self) -> None:
@@ -251,8 +254,10 @@ class OrganizerDb:
         return row is not None and (row["size"], row["mtime_ns"]) == (size, mtime_ns)
 
     def move_file(self, file_id: int, path: str, size: int, mtime_ns: int) -> None:
-        """El archivo cambió por el propio organizador: su huella sigue valiendo (el audio es el mismo)."""
+        """El archivo cambió por el propio organizador: su huella sigue valiendo (el audio es el mismo). Si en esa ruta
+        había anotada otra canción, su archivo ya no existe (acaba de ocupar su lugar este): esa fila ya no vale."""
         with self.conn:
+            self.conn.execute("DELETE FROM files WHERE path_key = ? AND id != ?", (path_key(path), file_id))
             self.conn.execute(
                 "UPDATE files SET path = ?, path_key = ?, size = ?, mtime_ns = ? WHERE id = ?",
                 (path, path_key(path), size, mtime_ns, file_id),
@@ -387,7 +392,26 @@ class OrganizerDb:
         return self._update_item(item_id, backup_path=backup_path, backup_sha=backup_sha, state=ITEM_BACKED_UP)
 
     def set_item_state(self, item_id: int, state: str) -> OperationItem:
+        if state == ITEM_RESTORED:  # la biblioteca tiene que enterarse otra vez, aunque ya supiera de la normalización
+            return self._update_item(item_id, state=state, error="", library_synced=0)
         return self._update_item(item_id, state=state, error="")
+
+    def update_item_song(self, item_id: int, title: str, artist: str) -> OperationItem:
+        """La persona corrigió el título de una a medias que todavía no se escribió."""
+        return self._update_item(item_id, new_title=title, new_artist=artist)
+
+    def mark_restored_from(self, item: OperationItem, current_path: str) -> OperationItem:
+        """Restaurada al estado de antes de `item`. Las normalizaciones posteriores de esa canción quedan deshechas."""
+        with self.conn:
+            self.conn.execute(
+                "UPDATE operation_items SET state = ?, library_synced = 1, updated_at = ? WHERE file_id = ? AND id > ? AND state = ?",
+                (ITEM_RESTORED, time.time(), item.file_id, item.id, ITEM_DONE),
+            )
+        self._update_item(item.id, new_path=current_path)
+        return self.set_item_state(item.id, ITEM_RESTORED)
+
+    def save_library_data(self, item_id: int, data: str) -> None:
+        self._update_item(item_id, library_data=data)
 
     def mark_renaming(self, item_id: int, new_path: str) -> OperationItem:
         return self._update_item(item_id, new_path=new_path, state=ITEM_RENAMING)
@@ -414,6 +438,7 @@ class OrganizerDb:
         return OperationItem(
             row["id"], row["operation_id"], row["file_id"], row["old_path"], row["new_path"], row["old_tags"], row["new_title"],
             row["new_artist"], row["backup_path"], row["backup_sha"], row["state"], row["error"], bool(row["library_synced"]),
+            row["library_data"],
         )
 
     def forget_identification(self, file_id: int) -> None:
@@ -437,11 +462,16 @@ class OrganizerDb:
         return [r for r in rows if r["path_key"].startswith(prefixes)] if prefixes else []
 
     def restorable_items(self) -> list[OperationItem]:
-        """Las cambiadas que se pueden devolver: tienen copia y no se restauraron ya."""
+        """Una fila por canción: la primera normalización sin deshacer, que es la que guarda el original. También las
+        que un corte dejó a medias, si ya tienen su copia."""
+        marks = ",".join("?" * (len(_OPEN_STATES) + 1))
         rows = self.conn.execute(
-            "SELECT * FROM operation_items WHERE state = ? AND backup_path != '' ORDER BY id", (ITEM_DONE,)
+            f"SELECT * FROM operation_items WHERE state IN ({marks}) AND backup_path != '' ORDER BY id", (ITEM_DONE, *_OPEN_STATES)
         )
-        return [self._item(r) for r in rows]
+        first: dict[int, OperationItem] = {}
+        for row in rows:
+            first.setdefault(row["file_id"], self._item(row))
+        return list(first.values())
 
     def counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self.conn.execute("SELECT status, COUNT(*) AS n FROM files GROUP BY status")}

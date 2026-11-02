@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from itertools import islice
 from typing import Callable
 
+import mutagen
 from PySide6.QtCore import QObject, Signal, Slot
 
 from . import acoustid_lookup, fingerprint, normalizer, organizer, pending_review
@@ -23,6 +25,7 @@ BATCH_SIZE = 50  # lo que se pierde como mucho si se corta la luz: se retoma des
 _MAX_PROCESSES = 4
 CACHE_MAX_AGE_S = 30 * 24 * 3600  # una canción sin coincidencia puede tenerla más adelante
 _SAVE_EVERY = 20
+_SONG_ERRORS = (OSError, sqlite3.Error, mutagen.MutagenError)
 
 
 @dataclass
@@ -297,6 +300,10 @@ class NormalizeWorker(QObject):
                 log.warning("No se normalizó %s: %s", path, exc)
                 result.failed.append((path, str(exc)))
                 continue
+            except _SONG_ERRORS as exc:  # el problema es de esta canción: las demás siguen
+                log.exception("Error al normalizar %s", path)
+                result.failed.append((path, str(exc)))
+                continue
             if item is None:
                 result.skipped += 1
             else:
@@ -333,7 +340,7 @@ class RestoreWorker(QObject):
                     self.progress.emit(index, len(self._items), os.path.basename(item.old_path))
                     try:
                         self.restored.emit(normalizer.restore(db, item))
-                    except normalizer.NormalizeError as exc:
+                    except (normalizer.NormalizeError, *_SONG_ERRORS) as exc:
                         problems.append((item.old_path, str(exc)))
             finally:
                 db.close()
@@ -395,7 +402,7 @@ class MoveToPendingWorker(QObject):
             try:
                 self.moved.emit(pending_review.move_to_pending(db, file_id, pending_review.root_of(row.path, self._roots), item))
                 result.moved += 1
-            except pending_review.PendingError as exc:
+            except (pending_review.PendingError, *_SONG_ERRORS) as exc:
                 result.failed.append((row.path, str(exc)))
         self.progress.emit(len(rows), len(rows), "")
 
@@ -447,12 +454,12 @@ class ResolvePendingWorker(QObject):
             try:
                 self.returned.emit(pending_review.return_to_origin(db, pending))
                 result.returned += 1
-            except pending_review.PendingError as exc:
+            except (pending_review.PendingError, *_SONG_ERRORS) as exc:
                 result.failed.append((pending.pending_path, str(exc)))
                 continue
             try:
                 item = normalizer.normalize(db, operation, job, self._backup_folder)
-            except normalizer.NormalizeError as exc:
+            except (normalizer.NormalizeError, *_SONG_ERRORS) as exc:
                 result.failed.append((pending.original_path, str(exc)))
                 continue
             if item is not None:

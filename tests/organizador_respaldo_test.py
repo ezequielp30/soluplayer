@@ -12,7 +12,7 @@ from mutagen.apev2 import APEv2
 from mutagen.id3 import APIC, COMM, ID3, TALB, TCON, TXXX
 from mutagen.mp3 import MP3
 import audio_sintetico as synth
-from app import converter, normalizer, song_backup, title_tags
+from app import converter, normalizer, organizer, song_backup, title_tags
 from app.normalizer import NormalizeError, SongJob
 from app.organizer import DECISION_AUTO, DECISION_REVIEW, Identification
 from app.organizer_db import (ITEM_BACKED_UP, ITEM_DONE, ITEM_FAILED, ITEM_PLANNED, ITEM_RENAMING, ITEM_RESTORED, ITEM_TAGGED, OrganizerDb)
@@ -67,6 +67,17 @@ except ValueError:
     check("una edición que daña el audio se rechaza y el archivo queda igual", sha(bad_edit) == before)
 os.remove(bad_edit)
 
+print("[Forzado al disco antes de seguir]")
+order = []; real_flush, real_rename_, real_replace = song_backup.flush_to_disk, os.rename, os.replace
+song_backup.flush_to_disk = lambda p: (order.append(("disco", os.path.basename(p))), real_flush(p))[1]
+os.rename = lambda a, b: (order.append(("renombrar", os.path.basename(a))), real_rename_(a, b))[1]
+os.replace = lambda a, b: (order.append(("reemplazar", os.path.basename(a))), real_replace(a, b))[1]
+flush_probe = os.path.join(backups, "orden", "copia.mp3"); song_backup.make_backup(path, flush_probe)
+check("el respaldo llega al disco antes de darlo por hecho", [o[0] for o in order] == ["disco", "renombrar"] and order[0][1] == order[1][1], order)
+order.clear(); title_tags.edit_safely(path, lambda t: None, None)
+check("la canción editada llega al disco antes de reemplazar", [o[0] for o in order] == ["disco", "reemplazar"] and order[0][1] == order[1][1], order)
+song_backup.flush_to_disk, os.rename, os.replace = real_flush, real_rename_, real_replace
+
 print("[Respaldo]")
 backup = os.path.join(backups, "x", "copia.mp3")
 got = song_backup.make_backup(path, backup)
@@ -91,7 +102,7 @@ check("mira si hay espacio", song_backup.enough_space(work, 1) and not song_back
 print("[Normalizar]")
 path, fid = song("01 - Santo (Video Oficial).mp3")
 original = open(path, "rb").read(); audio_before = song_backup.audio_digest(path); length_before = MP3(path).info
-item = run(fid, "01 - Santo (feat. Alguien)", "New Wine ft. Otro")
+item = run(fid, "Santo (feat. Alguien)", "New Wine")
 target = os.path.join(music, "Santo - New Wine.mp3")
 check("nombre TITULO - ARTISTA.mp3", item.state == ITEM_DONE and os.path.isfile(target) and not os.path.exists(path), item.new_path)
 tags = ID3(target)
@@ -111,6 +122,18 @@ check("  etiquetas con tildes, nombre sin ellas", os.path.basename(item2.new_pat
 number, nfid = song("03 - Siete.mp3"); item3 = run(nfid, "7 Dias", "A")
 check("  un número del título se conserva", os.path.basename(item3.new_path) == "7 Dias - A.mp3", item3.new_path)
 check("otra vez lo mismo: no hace nada ni crea otro respaldo", run(fid, "Santo", "New Wine") is None)
+
+upper, ufid2 = song("MAYUS.MP3"); done = run(ufid2, "Mayus", "A")
+check("la extensión siempre en minúsculas", os.path.basename(done.new_path) == "Mayus - A.mp3", done.new_path)
+real_limit = normalizer.MAX_PATH; normalizer.MAX_PATH = 20; deep, dfid = song("Profunda.mp3"); kept = sha(deep)
+try:
+    run(dfid, "Profunda", "A"); check("ruta demasiado larga", False)
+except NormalizeError as exc:
+    check("ruta demasiado larga: se avisa antes de tocar nada", sha(deep) == kept and db.open_item(dfid) is None, exc)
+normalizer.MAX_PATH = real_limit
+in_index = open(os.path.join(os.path.dirname(done.backup_path), "indice.tsv"), encoding="utf-8").read()
+check("un índice junto a las copias dice de dónde salió cada una", os.path.basename(done.backup_path) in in_index and upper in in_index)
+check("los respaldos van siempre en una carpeta RESPALDOS_MP3", organizer.BACKUP_FOLDER in done.backup_path.split(os.sep))
 
 print("[Marcas del programa]")
 marked, mfid = song("Marcada.mp3")
@@ -180,6 +203,26 @@ try:
     run(db.file(damaged).id, "Danada", "A"); check("archivo dañado", False)
 except NormalizeError as exc:
     check("archivo dañado: queda intacto", sha(damaged) == before, str(exc)[:80])
+
+print("[Una fila vieja no atasca la canción]")
+stale_target = os.path.join(music, "Ocupada - A.mp3")
+old_owner, ofid = song("Ocupada - A.mp3"); os.remove(old_owner)  # se borró por fuera: su fila sigue en la base
+newcomer, nfid2 = song("Recien.mp3"); done = run(nfid2, "Ocupada", "A")
+check("usa el nombre libre sin atascarse", done.state == ITEM_DONE and done.new_path == stale_target and db.file_by_id(nfid2).path == stale_target, done.state)
+check("  la fila vieja desaparece", db.file_by_id(ofid) is None)
+
+print("[Título corregido sobre una a medias]")
+half, hfid = song("Medias.mp3"); hi = db.add_item(op, hfid, half, "{}", "Viejo", "A"); hi = normalizer._back_up(db, hi, backups)
+done = run(hfid, "Nuevo", "A")
+check("todavía sin escribir: usa el título corregido", done.state == ITEM_DONE and done.new_title == "Nuevo" and os.path.basename(done.new_path) == "Nuevo - A.mp3", done.new_path)
+half2, h2id = song("Medias2.mp3"); hi2 = db.add_item(op, h2id, half2, "{}", "Viejo2", "A"); hi2 = normalizer._back_up(db, hi2, backups); hi2 = normalizer._write_tags(db, hi2)
+try:
+    run(h2id, "Otro", "A"); check("ya escrito con otro título", False)
+except NormalizeError as exc:
+    check("ya escrito con otro título: lo dice, no lo ignora", "a medias" in str(exc), exc)
+check("  se puede restaurar desde Historial", any(i.id == hi2.id for i in db.restorable_items()))
+back = normalizer.restore(db, hi2)
+check("  y vuelve a su original", back.state == ITEM_RESTORED and os.path.isfile(half2) and db.open_item(h2id) is None)
 
 print("[Corte de luz en cada paso]")
 def interrupted(state):
@@ -262,6 +305,32 @@ try:
     normalizer.restore(db, i4); check("reemplazada por otra", False)
 except NormalizeError:
     check("si ya no es esta canción, no la borra", open(i4.new_path, "rb").read() == b"lo cambiaron por otra cosa")
+
+print("[Dos generaciones]")
+gen, gfid2 = song("Generacion.mp3"); original_gen = sha(gen)
+first_gen = run(gfid2, "Uno", "A"); second_gen = run(gfid2, "Dos", "A")
+check("una sola fila por canción en Historial: la del original", [i.id for i in db.restorable_items() if i.file_id == gfid2] == [first_gen.id])
+restored = normalizer.restore(db, db.item(first_gen.id))
+check("restaura el original y quita la última versión, sin copias de más", sha(gen) == original_gen and not os.path.exists(second_gen.new_path) and not os.path.exists(first_gen.new_path), os.listdir(music)[:3])
+check("  la siguiente generación queda deshecha", db.item(second_gen.id).state == ITEM_RESTORED and not [i for i in db.restorable_items() if i.file_id == gfid2])
+check("  la biblioteca debe enterarse", restored.id in {i.id for i in db.unsynced_items()} and restored.new_path == second_gen.new_path)
+
+print("[Corte tras restaurar]")
+cut, cfid2 = song("CorteRestaurar.mp3"); ci = run(cfid2, "CR", "A"); db.mark_library_synced(ci.id)
+restored = normalizer.restore(db, db.item(ci.id))
+check("aunque ya estuviera anotada, la biblioteca debe enterarse otra vez", restored.state == ITEM_RESTORED and not restored.library_synced and restored.id in {i.id for i in db.unsynced_items()})
+real_remove = os.remove
+def fail_remove(p): raise PermissionError(13, "En uso")
+ri, rf = song("NoSeBorra.mp3"), None; ri2 = run(ri[1], "NSB", "A"); os.remove = fail_remove
+restored = normalizer.restore(db, db.item(ri2.id)); os.remove = real_remove
+check("si no se puede quitar la versión normalizada, igual queda restaurada y anotada", restored.state == ITEM_RESTORED and os.path.isfile(ri[0]) and os.path.isfile(ri2.new_path))
+os.remove(ri2.new_path)
+
+print("[Un error no detiene el lote]")
+one, o1 = song("L1.mp3"); two, o2 = song("L2.mp3"); bad = db.add_item(op, o1, one, "{}", "L1", "A"); os.remove(one)
+worker = NormalizeWorker([SongJob(o1, "L1", "A"), SongJob(o2, "L2", "A")], backups, db_file); got = []
+worker.finished.connect(got.append); worker.run()
+check("un archivo que desapareció a medias no impide seguir con las demás", got[0].done == 1 and len(got[0].failed) == 1 and got[0].failed[0][0], got[0])
 
 print("[Por lotes]")
 db.save_identifications([(fid, Identification(DECISION_AUTO, "ok", 1.0, "T", "A")), (f3, Identification(DECISION_REVIEW, "duda", 0.5, "", "", candidates=("X - Y",)))])

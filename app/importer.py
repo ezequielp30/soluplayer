@@ -128,7 +128,7 @@ def _scan_file(path: str) -> tuple[ScannedTrack | None, ImportFailure | None]:
 
 # Carpetas que crea el propio programa: reimportar la música no debe volver a meter los originales
 # convertidos ni las copias reunidas como canciones nuevas (aparecerían como repetidas).
-SKIPPED_FOLDERS = {"_originales convertidos", "_repetidas para revisar"}
+SKIPPED_FOLDERS = {"_originales convertidos", "_repetidas para revisar", "respaldos_mp3", "pendientes_revision"}
 
 
 def in_skipped_folder(path: str) -> bool:

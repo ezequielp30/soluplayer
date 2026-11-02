@@ -2,7 +2,7 @@
 import os, sys
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.title_format import clean_song_title, file_stem, main_artist, strip_noise
+from app.title_format import clean_song_title, confirmed_title, file_stem, main_artist, strip_noise
 
 results = []
 def check(name, ok, detail=""):
@@ -63,14 +63,18 @@ table("formato TITULO - ARTISTA", file_stem, {
     ("Hay un Rey / Que Ruja el León", "Marcos"): "Hay un Rey Que Ruja el Leon - Marcos",
     ("Campfire Coritos", "Israel & New Breed"): "Campfire Coritos - Israel y New Breed",
     ("►► Cancion", "A"): "Cancion - A",
-    ("01 - Cancion", "A"): "Cancion - A",
-    ("001_Cancion", "A"): "Cancion - A",
     ("7 Dias", "A"): "7 Dias - A",
+    ("99 - Problems", "A"): "99 Problems - A",
     ("1999", "Prince"): "1999 - Prince",
     ("Sin Artista", ""): "Sin Artista",
 })
 check("si el título no deja nada, no inventa", file_stem("日本語", "A") == "" and file_stem("♪♪♪", "A") == "")
-samples = ["01 - ¡Señor!", "¿Qué?", "(En Vivo) Santo", "#1 Fan", "...Cancion", "_Cancion", "[Oficial] Cancion", "—Cancion"]
+table("un título ya decidido conserva sus números", confirmed_title, {
+    "99 - Problems": "99 - Problems", "1. Mai": "1. Mai", "07 Dias": "07 Dias", "Santo (feat. Otro)": "Santo",
+    "Santo ft. Otro": "Santo", "¿Quién?": "Quién?", "Santo (En Vivo)": "Santo (En Vivo)",
+})
+table("  la propuesta por el título sí quita la numeración", clean_song_title, {"01 - Cancion": "Cancion", "001_Cancion": "Cancion"})
+samples = ["¡Señor!", "¿Qué?", "(En Vivo) Santo", "#1 Fan", "...Cancion", "_Cancion", "[Oficial] Cancion", "—Cancion"]
 bad = [s for s in samples if not file_stem(s, "A")[:1].isalnum()]
 check("nunca empieza con un signo", not bad, bad)
 bad = [s for s in samples + ["Cañón: «Ñu»", "Olé & Más"] if not file_stem(s, "Peña").isascii()]

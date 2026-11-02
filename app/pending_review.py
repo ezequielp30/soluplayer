@@ -37,6 +37,8 @@ def move_to_pending(db: OrganizerDb, file_id: int, root: str, item: Identificati
         raise PendingError("El archivo ya no está en su sitio.")
     if db.open_pending(file_id) is not None:
         raise PendingError("La canción ya está en pendientes.")
+    if db.open_item(file_id) is not None:
+        raise PendingError("Quedó a medias de normalizar: retómala o restáurala en Historial.")
     target = pending_path_for(row.path, root)
     if len(target) > MAX_PATH:
         raise PendingError("La ruta quedaría demasiado larga para Windows: la canción se queda donde está.")

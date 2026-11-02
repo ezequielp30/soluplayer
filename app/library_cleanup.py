@@ -145,7 +145,7 @@ def relocate_folder(tracks: list[Track], old_folder: str, new_folder: str) -> li
 # Temporales que el programa crea junto a la música y renombra al terminar. Si quedan (corte de luz o
 # cierre forzado a mitad de una conversión, un ajuste de volumen o un movimiento a otro disco) son
 # siempre copias a medias: el archivo original sigue entero en su sitio, así que se pueden borrar.
-LEFTOVER_SUFFIXES = (".convirtiendo.tmp", ".ajuste-volumen.tmp", ".moviendo.tmp")
+LEFTOVER_SUFFIXES = (".convirtiendo.tmp", ".ajuste-volumen.tmp", ".moviendo.tmp", ".limpiando-titulo.mp3", ".restaurando.tmp")
 
 
 def remove_leftover_temps(tracks: list[Track]) -> list[str]:

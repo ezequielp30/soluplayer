@@ -164,6 +164,7 @@ def edit_safely(path: str, edit: Callable[[str], None], title: str | None) -> No
         now = os.stat(source)
         if (now.st_mtime_ns, now.st_size) != (before.st_mtime_ns, before.st_size):
             raise OSError("el archivo cambió mientras se grababa el título")
+        song_backup.flush_to_disk(temp)
         os.replace(temp, source)
     finally:
         if os.path.exists(temp):

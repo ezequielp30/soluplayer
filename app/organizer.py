@@ -11,7 +11,7 @@ from .acoustid_lookup import Match, Recording
 from .file_locator import _SKIPPED_FOLDERS as SYSTEM_FOLDERS
 from .importer import SKIPPED_FOLDERS as PROGRAM_FOLDERS
 from .online_lookup import _similar
-from .title_format import clean_song_title, main_artist
+from .title_format import clean_song_title, confirmed_title, main_artist
 
 PENDING_FOLDER = "PENDIENTES_REVISION"
 BACKUP_FOLDER = "RESPALDOS_MP3"
@@ -23,7 +23,7 @@ _GENERIC_NAME = re.compile(r"^(?:pista|track|audio|cancion|canción|song|unknown
 _VERSIONS = (
     ("Remix", re.compile(r"\bremix\b", re.I)),
     ("Cover", re.compile(r"\bcover\b", re.I)),
-    ("Instrumental", re.compile(r"\b(?:instrumental|karaoke|pista)\b", re.I)),
+    ("Instrumental", re.compile(r"\b(?:instrumental|karaoke)\b|[(\[-]\s*pista\b", re.I)),
     ("Acustico", re.compile(r"\bac[uú]stic[oa]?\b|\bacoustic\b", re.I)),
     ("En Vivo", re.compile(r"\ben vivo\b|[(\[-]\s*live\b", re.I)),
 )
@@ -98,8 +98,8 @@ def identify(matches: list[Match], duration_s: float, current_names: Iterable[st
     if names and not any(_agrees(chosen, n) for n in names) and best.score < confidence.strong_score:
         return review("El resultado contradice el nombre actual y la huella no es lo bastante exacta.")
     version = version_of(chosen)
-    title = clean_song_title(chosen.title)
-    if version and version.casefold() not in title.casefold():
+    title = confirmed_title(chosen.title)
+    if version and not any(pattern.search(title) for _name, pattern in _VERSIONS):  # solo si no lo dice ya el título
         title = f"{title} ({version})"
     return Identification(
         DECISION_AUTO, f"Huella {best.score:.0%}.", best.score, title, main_artist("", chosen.artists[0]), version,
@@ -118,7 +118,7 @@ def collect_mp3(
     while pending and not cancelled():
         folder = pending.pop()
         key = os.path.normcase(os.path.abspath(folder))
-        if key in seen:
+        if key in seen or os.path.basename(os.path.normpath(folder)).casefold() in _SKIPPED:
             continue
         seen.add(key)
         try:
@@ -136,7 +136,10 @@ def collect_mp3(
                 if entry.is_dir(follow_symlinks=False):
                     if not entry.is_junction() and entry.name.casefold() not in _SKIPPED:
                         below.append(entry.path)
-                elif entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() == ".mp3":
+                elif (
+                    entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() == ".mp3"
+                    and not entry.name.lower().endswith(".limpiando-titulo.mp3")  # temporal que dejó un corte
+                ):
                     info = entry.stat()
                     yield entry.path, info.st_size, info.st_mtime_ns
             except OSError as exc:

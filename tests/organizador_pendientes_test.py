@@ -72,18 +72,19 @@ try:
     pr.move_to_pending(db, gfid, root, DOUBT); check("ya no está", False)
 except pr.PendingError:
     check("ya no está: lo dice", db.open_pending(gfid) is None)
-deep_name = "x" * 200; longp, lfid = song("Larga.mp3")
-try:
-    pr.move_to_pending(db, lfid, os.path.join(root, deep_name) if False else root, DOUBT); db.remove_pending(db.open_pending(lfid).id); os.rename(pr.pending_path_for(longp, root), longp)
-    check("ruta normal se mueve", True)
-except pr.PendingError as exc:
-    check("ruta normal se mueve", False, exc)
+longp, lfid = song("Larga.mp3")
 real_max = pr.MAX_PATH; pr.MAX_PATH = 10
 try:
     pr.move_to_pending(db, lfid, root, DOUBT); check("ruta demasiado larga", False)
 except pr.PendingError:
     check("ruta demasiado larga: se queda donde está", os.path.isfile(longp))
 pr.MAX_PATH = real_max
+
+half, hfid = song("AMedias.mp3"); op = db.begin_operation(); db.add_item(op, hfid, half, "{}", "T", "A")
+try:
+    pr.move_to_pending(db, hfid, root, DOUBT); check("a medias de normalizar", False)
+except pr.PendingError as exc:
+    check("una a medias de normalizar no va a pendientes: perdería su salida", os.path.isfile(half) and "medias" in str(exc), exc)
 
 print("[Raíz correcta]")
 check("la carpeta elegida más específica", pr.root_of(os.path.join(root, "a", "b.mp3"), [root, os.path.join(root, "a")]) == os.path.join(root, "a"))

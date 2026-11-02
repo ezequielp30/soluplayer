@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
 from .. import acoustid_lookup, file_locator, fingerprint
 from ..file_operations import FileOperations
 from ..normalizer import SongJob
-from ..organizer import DECISION_AUTO, DECISION_DONE, DECISION_OFFLINE, DECISION_REVIEW, Confidence
+from ..organizer import DECISION_AUTO, DECISION_DONE, DECISION_OFFLINE, DECISION_REVIEW, PENDING_FOLDER, Confidence
 from ..organizer_db import STATUS_DAMAGED, OrganizerDb
 from ..organizer_job import (
     AnalyzeWorker,
@@ -47,7 +47,7 @@ from ..organizer_job import (
     ResolvePendingWorker,
 )
 from ..preferences import Preferences
-from ..utils import plural
+from ..utils import no_markup, plural
 from .acoustid_dialog import AcoustIdKeyDialog
 from .dialogs import ask, tool_intro
 from .worker_runner import StopQuestion, WorkerRunner
@@ -79,6 +79,16 @@ class ResultRow:
     reason: str
     damaged: bool
     checked: bool = False
+    edited: bool = False
+
+
+def _run(dialog: QDialog) -> int:
+    """Se libera al cerrarla. Si la destruye la recolección de basura mientras Windows entrega un mensaje a otra ventana,
+    el programa se cierra de golpe: pasó con la de Localizar archivo."""
+    try:
+        return dialog.exec()
+    finally:
+        dialog.deleteLater()
 
 
 class ResultsModel(QAbstractTableModel):
@@ -140,7 +150,7 @@ class ResultsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.CheckStateRole and column == COL_NOW and not row.damaged:
             return Qt.CheckState.Checked if row.checked else Qt.CheckState.Unchecked
         if role == Qt.ItemDataRole.ToolTipRole:
-            return row.reason if column == COL_REASON else row.path
+            return no_markup(row.reason if column == COL_REASON else row.path)
         if role not in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return None
         if column == COL_NOW:
@@ -162,9 +172,9 @@ class ResultsModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.CheckStateRole and index.column() == COL_NOW:
             row.checked = Qt.CheckState(value) == Qt.CheckState.Checked
         elif role == Qt.ItemDataRole.EditRole and index.column() == COL_TITLE:
-            row.title = str(value).strip()
+            row.title, row.edited = str(value).strip(), True
         elif role == Qt.ItemDataRole.EditRole and index.column() == COL_ARTIST:
-            row.artist = str(value).strip()
+            row.artist, row.edited = str(value).strip(), True
         else:
             return False
         self.dataChanged.emit(index, index)
@@ -214,7 +224,7 @@ class OrganizerSettingsDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
         key = QPushButton("Clave de AcoustID…")
-        key.clicked.connect(lambda: AcoustIdKeyDialog(self._prefs, self).exec())
+        key.clicked.connect(lambda: _run(AcoustIdKeyDialog(self._prefs, self)))
         layout.addWidget(key, 0, Qt.AlignmentFlag.AlignLeft)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
@@ -254,6 +264,8 @@ class OrganizerDialog(QDialog):
         self._db = OrganizerDb()
         self._started = 0.0
         self._send_doubts_after = False
+        self._history_rows: list = []
+        self._pending_rows: list = []
         self._counts = (0, 0)
         self._phase_text = ""
         self.setWindowTitle("Título y quién la canta")
@@ -330,8 +342,22 @@ class OrganizerDialog(QDialog):
         self.btn_analyze.setObjectName("PrimaryButton")
         self.btn_analyze.setToolTip("Calcula las huellas e identifica las canciones. No cambia ningún archivo.")
         self.btn_analyze.clicked.connect(self._analyze)
-        row.addWidget(self.btn_analyze)
+        self.btn_key = QPushButton()
+        self.btn_key.setToolTip("La clave gratuita con la que el programa consulta AcoustID")
+        self.btn_key.clicked.connect(self._edit_key)
+        actions = QVBoxLayout()
+        actions.addWidget(self.btn_analyze)
+        actions.addWidget(self.btn_key)
+        row.addLayout(actions)
+        self._show_key_state()
         return row
+
+    def _show_key_state(self) -> None:
+        self.btn_key.setText("Cambiar clave de AcoustID…" if self._prefs.acoustid_key else "Agregar clave de AcoustID…")
+
+    def _edit_key(self) -> None:
+        _run(AcoustIdKeyDialog(self._prefs, self))
+        self._show_key_state()
 
     def _build_results(self) -> QWidget:
         page = QWidget()
@@ -353,6 +379,10 @@ class OrganizerDialog(QDialog):
         self.btn_normalize_selected.clicked.connect(self._normalize_selected)
         self.btn_normalize_all = QPushButton("Normalizar todas las seguras")
         self.btn_normalize_all.clicked.connect(self._normalize_all)
+        self.btn_to_pending = QPushButton("Llevar dudosas a pendientes")
+        self.btn_to_pending.setToolTip("Van a PENDIENTES_REVISION sin cambiar sus nombres ni sus etiquetas")
+        self.btn_to_pending.clicked.connect(self._to_pending_clicked)
+        tools.addWidget(self.btn_to_pending)
         tools.addWidget(self.btn_normalize_selected)
         tools.addWidget(self.btn_normalize_all)
         layout.addLayout(tools)
@@ -414,6 +444,10 @@ class OrganizerDialog(QDialog):
         self.btn_restore_selected.clicked.connect(self._restore_selected)
         self.btn_restore_all = QPushButton("Restaurar todo")
         self.btn_restore_all.clicked.connect(self._restore_all)
+        self.btn_resume = QPushButton("Retomar las que quedaron a medias")
+        self.btn_resume.setToolTip("Un corte dejó canciones sin terminar: se terminan con sus datos, usando su misma copia")
+        self.btn_resume.clicked.connect(self._resume_unfinished)
+        tools.insertWidget(0, self.btn_resume)
         tools.addWidget(self.btn_restore_selected)
         tools.addWidget(self.btn_restore_all)
         layout.addLayout(tools)
@@ -426,11 +460,16 @@ class OrganizerDialog(QDialog):
 
     def _refresh(self) -> None:
         checked = {r.file_id for r in self.model.rows() if r.checked}
+        edited = {r.file_id: r for r in self.model.rows() if r.edited}
         rows = []
         for row in self._db.result_rows(self._root_list()):
             rows.append(ResultRow(row["id"], row["path"], row["title"] or "", row["artist"] or "", row["version"] or "", row["score"],
                                   row["decision"] or "", row["reason"] or row["problem"] or "", row["status"] == STATUS_DAMAGED,
                                   row["id"] in checked))
+        for row in rows:
+            own = edited.get(row.file_id)
+            if own is not None and row.decision != DECISION_DONE:
+                row.title, row.artist, row.edited = own.title, own.artist, True
         self.model.load(rows)
         self._pending_rows = self._db.pending_songs()
         self.pending_model.load([
@@ -438,10 +477,14 @@ class OrganizerDialog(QDialog):
         ])
         self._history_rows = list(reversed(self._db.restorable_items()))
         self.history_model.load([
-            (os.path.basename(i.old_path), os.path.basename(i.new_path) or "—", i.new_title, i.new_artist, i.state, i.backup_path) for i in self._history_rows
+            (os.path.basename(i.old_path), os.path.basename(self._current_name(i)), i.new_title, i.new_artist, i.state, i.backup_path) for i in self._history_rows
         ])
         self.tabs.setTabText(1, f"Pendientes ({len(self._pending_rows)})")
         self._update_buttons()
+
+    def _current_name(self, item) -> str:
+        row = self._db.file_by_id(item.file_id)
+        return row.path if row is not None else item.new_path or "—"
 
     def _update_buttons(self, *_args) -> None:
         if not hasattr(self, "runner"):
@@ -456,10 +499,14 @@ class OrganizerDialog(QDialog):
         self.btn_normalize_selected.setText(f"Normalizar selección ({checked})" if checked else "Normalizar selección")
         self.btn_normalize_all.setEnabled(safe > 0 and not busy)
         self.btn_normalize_all.setText(f"Normalizar las {safe} seguras" if safe else "Normalizar todas las seguras")
-        for button in (self.btn_analyze, self.btn_add_folder, self.btn_add_drive, self.btn_remove_root, self.btn_settings, self.btn_previous,
+        self.btn_to_pending.setEnabled(doubts > 0 and not busy)
+        self.btn_resume.setEnabled(bool(self._unfinished()) and not busy)
+        for button in (self.btn_analyze, self.btn_key, self.btn_add_folder, self.btn_add_drive, self.btn_remove_root, self.btn_settings, self.btn_previous,
                        self.btn_retry_selected, self.btn_retry_all, self.btn_fix, self.btn_resolve, self.btn_restore_selected, self.btn_restore_all,
                        self.btn_check, self.btn_uncheck, self.filter_combo):
             button.setEnabled(not busy)
+        if not busy:
+            self.btn_restore_all.setEnabled(bool(self._history_rows))
 
     def _show_progress(self) -> None:
         elapsed = int(time.monotonic() - self._started)
@@ -528,7 +575,7 @@ class OrganizerDialog(QDialog):
             QMessageBox.warning(self, "Analizar", "Falta el componente fpcalc: vuelve a instalar el programa.")
             return
         if not self._prefs.acoustid_key:
-            AcoustIdKeyDialog(self._prefs, self).exec()
+            self._edit_key()
         self._start(AnalyzeWorker(roots, None, fingerprint.compute), "Examinando las carpetas…", self._on_analyzed)
 
     def _on_analyzed(self, result) -> None:
@@ -554,7 +601,7 @@ class OrganizerDialog(QDialog):
         self._finish(text)
         if result.invalid_key:
             self._finish("AcoustID no aceptó la clave.")
-            AcoustIdKeyDialog(self._prefs, self).exec()
+            self._edit_key()
 
     # ------------------------------------------------------------------ normalizar
 
@@ -602,14 +649,26 @@ class OrganizerDialog(QDialog):
             text += f", {len(result.failed)} con problemas (ver Errores)"
         self._finish(text + ".")
         self._ops.changed()
-        if self._send_doubts_after and not result.cancelled:
-            self._send_doubts_after = False
+        send, self._send_doubts_after = self._send_doubts_after, False
+        general_error = any(not path for path, _reason in result.failed)  # no fue una canción: no seguir moviendo cosas
+        if send and not result.cancelled and not general_error:
+            self._send_to_pending()
+
+    def _to_pending_clicked(self) -> None:
+        count = sum(1 for r in self.model.rows() if r.decision == DECISION_REVIEW and not r.damaged)
+        if count and ask(
+            self, "Pendientes", f"¿Llevar {plural(count, 'canción dudosa', 'canciones dudosas')} a PENDIENTES_REVISION?",
+            [("Llevar", QMessageBox.ButtonRole.AcceptRole), ("Cancelar", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Question, "No cambian sus nombres ni sus etiquetas, siguen sonando desde allí y se pueden devolver.",
+        ) == 0:
             self._send_to_pending()
 
     def _send_to_pending(self) -> None:
         roots = self._root_list()
-        ids = [r.file_id for r in self.model.rows() if r.decision == DECISION_REVIEW and not r.damaged]
-        worker = MoveToPendingWorker(roots, ids)
+        rows = [r for r in self.model.rows() if r.decision == DECISION_REVIEW and not r.damaged]
+        if not self._ops.prepare_organizer([r.path for r in rows]):
+            return
+        worker = MoveToPendingWorker(roots, [r.file_id for r in rows])
         worker.moved.connect(self._on_moved)
         self._start(worker, "Llevando las dudosas a pendientes…", self._on_pending_done, modifies_files=True)
 
@@ -632,7 +691,7 @@ class OrganizerDialog(QDialog):
             QMessageBox.information(self, "Reintentar", "Selecciona alguna canción de la lista.")
             return
         if not self._prefs.acoustid_key:
-            AcoustIdKeyDialog(self._prefs, self).exec()
+            self._edit_key()
             if not self._prefs.acoustid_key:
                 return
         if self._db.prepare_retry(file_ids):
@@ -667,6 +726,14 @@ class OrganizerDialog(QDialog):
         self._ops.changed()
 
     # ------------------------------------------------------------------ restaurar
+
+    def _unfinished(self) -> list:
+        return self._db.unfinished_items()
+
+    def _resume_unfinished(self) -> None:
+        jobs = [SongJob(i.file_id, i.new_title, i.new_artist) for i in self._unfinished()]
+        if jobs:
+            self._normalize(jobs, send_doubts=False)
 
     def _restore_selected(self) -> None:
         rows = {index.row() for index in self.history.selectionModel().selectedRows()}
@@ -704,7 +771,8 @@ class OrganizerDialog(QDialog):
 
     def _open_settings(self) -> None:
         before = self._prefs.confidence
-        OrganizerSettingsDialog(self._prefs, self).exec()
+        _run(OrganizerSettingsDialog(self._prefs, self))
+        self._show_key_state()
         if self._prefs.confidence != before:
             self._db.forget_identifications()
             self.status.setText("Cambiaron los niveles: pulsa Analizar para decidir otra vez (no repite consultas).")
@@ -739,13 +807,21 @@ class _SimpleModel(QAbstractTableModel):
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
-            return self._rows[index.row()][index.column()]
+            return no_markup(self._rows[index.row()][index.column()])
         return None
+
+
+def _outside_pending(folder: str) -> str:
+    parts = folder.split(os.sep)
+    for index, part in enumerate(parts):
+        if part.casefold() == PENDING_FOLDER.casefold():
+            return os.sep.join(parts[:index]) or folder
+    return folder
 
 
 def default_roots(paths: list[str]) -> list[str]:
     """Las carpetas de la biblioteca, sin las que ya están dentro de otra."""
-    folders = sorted({os.path.dirname(p) for p in paths}, key=lambda folder: (len(folder), folder))
+    folders = sorted({_outside_pending(os.path.dirname(p)) for p in paths}, key=lambda folder: (len(folder), folder))
     roots: list[str] = []
     for folder in folders:
         if not any(folder == r or folder.startswith(r.rstrip("\\/") + os.sep) for r in roots):

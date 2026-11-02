@@ -1,6 +1,6 @@
 """Organizador, fase 6: la ventana de punta a punta dentro del programa, con AcoustID simulado. Analizar no cambia nada;
 normalizar, pendientes y restaurar mantienen la biblioteca y las playlists. Todo en carpetas temporales."""
-import hashlib, json, os, sys, tempfile, time
+import hashlib, json, os, sqlite3, sys, tempfile, time
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -73,6 +73,7 @@ class FakeKeyDialog:
     def __init__(self, prefs, parent=None): self.prefs = prefs; key_dialogs.append(self)
     def exec(self):
         if keys_to_enter: self.prefs.acoustid_key = keys_to_enter.pop(0)
+    def deleteLater(self): pass
 keys_to_enter = []
 od.AcoustIdKeyDialog = FakeKeyDialog
 win = mw.MainWindow(db); win.show(); spin(200); win._reload_library()
@@ -93,6 +94,7 @@ kept = os.path.join(music, "Clave.mp3"); open(kept, "wb").write(b"x"); key = pat
 check("la clave de una ruta no cambia aunque el archivo ya no exista", path_key(kept) == key, (key, path_key(kept)))
 
 print("[Abrir]")
+check("la carpeta de partida nunca es la de pendientes", od.default_roots([os.path.join("D:\\a", PENDING_FOLDER, "x.mp3")]) == ["D:\\a"])
 check("carpetas de partida: las de la biblioteca", od.default_roots([os.path.join("D:\\a", "1.mp3"), os.path.join("D:\\a", "b", "2.mp3"), os.path.join("D:\\c", "3.mp3")]) == ["D:\\a", "D:\\c"])
 d = open_dialog()
 check("sin analizar no hay nada que normalizar", not d.btn_normalize_selected.isEnabled() and not d.btn_normalize_all.isEnabled())
@@ -100,6 +102,11 @@ check("el menú abre el organizador", od.OrganizerDialog.__name__ == "OrganizerD
 
 print("[Sin clave]")
 check("  (sin clave)", not win.prefs.acoustid_key)
+check("hay un botón a la vista para agregar la clave", d.btn_key.isVisible() and d.btn_key.isEnabled() and d.btn_key.text().startswith("Agregar clave"), d.btn_key.text())
+keys_to_enter.append("clave-del-boton"); d.btn_key.click(); spin(20)
+check("  pide la clave y la guarda", win.prefs.acoustid_key == "clave-del-boton" and len(key_dialogs) == 1)
+check("  el botón pasa a decir que se puede cambiar", d.btn_key.text().startswith("Cambiar clave"), d.btn_key.text())
+win.prefs.acoustid_key = ""; d._show_key_state(); key_dialogs.clear()
 d.btn_analyze.click(); wait(d)
 check("pide la clave", len(key_dialogs) == 1)
 check("analiza igual, con propuestas por el título", row_of(d, "Rara.mp3").decision == "sin_huella" and row_of(d, "Rara.mp3").title, d.status.text())
@@ -132,6 +139,9 @@ index = next(i for i, r in enumerate(m.visible()) if os.path.basename(r.path) ==
 m.setData(m.index(index, od.COL_TITLE), " Escrita A Mano "); m.setData(m.index(index, od.COL_ARTIST), "Quien Sea"); m.setData(m.index(index, od.COL_NOW), Qt.CheckState.Checked.value, Qt.ItemDataRole.CheckStateRole)
 check("se puede corregir y marcar a mano", row_of(d, "Ninguna.mp3").title == "Escrita A Mano" and row_of(d, "Ninguna.mp3").checked and d.btn_normalize_selected.isEnabled())
 
+d._add_root(outside_folder); d.roots.clearSelection(); d.roots.item(d.roots.count() - 1).setSelected(True); d._remove_roots()
+check("lo editado a mano no se pierde al refrescar", row_of(d, "Ninguna.mp3").title == "Escrita A Mano" and row_of(d, "Ninguna.mp3").checked)
+
 print("[Normalizar selección]")
 shown.clear(); d.btn_normalize_selected.click(); wait(d)
 final = os.path.join(music, "Escrita A Mano - Quien Sea.mp3")
@@ -159,6 +169,19 @@ check("la pestaña Pendientes la muestra con su motivo", d.pending_model.rowCoun
 check("  y las posibles coincidencias", "Otra Cancion Distinta" in d.pending_model.data(d.pending_model.index(0, 3)))
 check("ya no sale en Resultados", not any(os.path.basename(r.path) == "Rara.mp3" for r in d.model.rows()))
 
+print("[Dudosas sin ninguna segura]")
+odb = organizer_db.OrganizerDb(); extra_folder = os.path.join(music, "SoloDudosa"); os.makedirs(extra_folder)
+lone = synth.mp3(os.path.join(extra_folder, "Sola.mp3"), 5, title="Sola", artist="x", seed=11); info = os.stat(lone)
+odb.register([(lone, info.st_size, info.st_mtime_ns)]); lone_id = odb.file(lone).id
+from app.organizer import Identification
+odb.save_identifications([(lone_id, Identification("revisar", "Duda de prueba", 0.5))]); odb.save_results([(lone_id, 5.0, "HSOLA")], []); odb.close(); d._refresh()
+check("sin seguras, el botón de normalizar todas no sirve", not d.btn_normalize_all.isEnabled())
+check("  pero se pueden llevar a pendientes igual", d.btn_to_pending.isEnabled())
+answers["¿Llevar"] = "Llevar"; d.btn_to_pending.click(); wait(d)
+check("  y van", os.path.isfile(os.path.join(music, PENDING_FOLDER, "SoloDudosa", "Sola.mp3")) and not os.path.exists(lone), d.status.text())
+odb = organizer_db.OrganizerDb(); fixed = odb.open_pending(lone_id); from app import pending_review as prv
+prv.return_to_origin(odb, fixed); os.remove(lone); os.rmdir(extra_folder); odb.conn.execute("DELETE FROM files WHERE id = ?", (lone_id,)); odb.conn.commit(); odb.close(); d._refresh()
+
 print("[Pendientes]")
 replies[fingerprint.compute(pending_path).value] = answer("Ahora Si", "Grupo Bueno")
 d.pending.selectRow(0); d.btn_retry_selected.click(); wait(d)
@@ -181,6 +204,17 @@ check("no quedan los nombres nuevos", not os.path.exists(final) and not os.path.
 tracks = {t.path: t for t in db.all_tracks()}
 check("la biblioteca vuelve a sus datos", safe in tracks and tracks[safe].album == "Disco" and tracks[safe].artist == "canal1" and tracks[safe].id == track_id, tracks.get(safe))
 check("las playlists siguen intactas", len(db.playlist_tracks(playlist.id)) == 2)
+
+print("[Lo corregido en la biblioteca]")
+one_more = synth.mp3(os.path.join(music, "Corregida.mp3"), 5, title="En el archivo", artist="canal", seed=21); db.add_tracks([scan_file(one_more)[0]]); tid = db.track_id_for_path(one_more)
+db.conn.execute("UPDATE tracks SET title = 'Corregida a mano', album = 'Mi Album' WHERE id = ?", (tid,)); db.conn.commit(); win._reload_library()
+odb = organizer_db.OrganizerDb(); info = os.stat(one_more); odb.register([(one_more, info.st_size, info.st_mtime_ns)]); fid = odb.file(one_more).id
+from app import normalizer as nz
+it = nz.normalize(odb, odb.begin_operation(), nz.SongJob(fid, "Normalizada", "Grupo"), os.path.join(work, "Respaldos")); win.ops.sync_organizer_item(odb, it)
+check("  normalizada: la biblioteca cambia", db.song_data(tid)["title"] == "Normalizada" and db.song_data(tid)["album"] != "Mi Album")
+rest = nz.restore(odb, odb.item(it.id)); win.ops.sync_organizer_restored(odb, rest); odb.close()
+check("  restaurada: vuelven el título y el álbum corregidos, que no estaban en el archivo", db.song_data(tid)["title"] == "Corregida a mano" and db.song_data(tid)["album"] == "Mi Album", db.song_data(tid))
+db.remove_tracks([tid]); os.remove(one_more)
 
 print("[Clave mala]")
 win.prefs.acoustid_key = "mala"; odb = organizer_db.OrganizerDb(); odb.forget_identifications(); odb.conn.execute("DELETE FROM api_cache"); odb.conn.commit(); odb.close()
@@ -217,6 +251,14 @@ d._started = time.monotonic() - 3725; d._counts = (31, 50); d._show_progress()
 check("porcentaje, hechas, restantes y tiempo", d.status.text().startswith("62 %") and "31 de 50" in d.status.text() and "faltan 19" in d.status.text() and "01:02:05" in d.status.text(), d.status.text())
 d.reject(); spin(50); check("se cierra", not d.isVisible())
 
+print("[Las ventanas se liberan]")
+from PySide6.QtCore import QCoreApplication, QEvent
+od.OrganizerSettingsDialog.exec = lambda self: 0
+short = open_dialog([]); short._open_settings(); check("  (se abrió la de ajustes)", len(short.findChildren(od.OrganizerSettingsDialog)) == 1)
+QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+check("al cerrarla se libera: no queda para el recolector de basura", not short.findChildren(od.OrganizerSettingsDialog))
+short.reject(); spin(50)
+
 print("[Corte de luz: la biblioteca se pone al día]")
 odb = organizer_db.OrganizerDb(); odb.conn.execute("UPDATE operation_items SET library_synced = 1"); odb.conn.commit()
 p2 = synth.mp3(os.path.join(music, "CorteVentana.mp3"), 5, title="Corte", artist="x", seed=9); db.add_tracks([scan_file(p2)[0]]); info = os.stat(p2)
@@ -225,6 +267,31 @@ new_p2 = os.path.join(music, "Corte - Grupo.mp3"); os.rename(p2, new_p2)
 it = odb.add_item(op, fid, p2, "{}", "Corte", "Grupo"); odb.mark_renaming(it.id, new_p2); odb.set_item_state(it.id, organizer_db.ITEM_DONE); odb.close()
 check("al abrir, la biblioteca alcanza al disco", win.ops.reconcile_organizer() >= 1 and db.track_id_for_path(new_p2) is not None and db.track_id_for_path(p2) is None)
 check("  una segunda vez no hace nada", win.ops.reconcile_organizer() == 0)
+odb = organizer_db.OrganizerDb(); p3 = synth.mp3(os.path.join(music, "CorteTrasRenombrar.mp3"), 5, title="C3", artist="x", seed=31); db.add_tracks([scan_file(p3)[0]]); info = os.stat(p3)
+odb.register([(p3, info.st_size, info.st_mtime_ns)]); fid = odb.file(p3).id; it = odb.add_item(odb.begin_operation(), fid, p3, "{}", "C3", "G"); new_p3 = os.path.join(music, "C3 - G.mp3")
+odb.mark_renaming(it.id, new_p3); os.rename(p3, new_p3); odb.close()
+win.ops.reconcile_organizer()
+check("corte justo tras renombrar: al abrir se termina y la biblioteca lo sigue", db.track_id_for_path(new_p3) is not None and db.track_id_for_path(p3) is None)
+odb = organizer_db.OrganizerDb(); oper = odb.begin_operation(); made = []
+for n in (1, 2):
+    pn = synth.mp3(os.path.join(music, f"Lote{n}.mp3"), 5, title=f"L{n}", artist="x", seed=50 + n); db.add_tracks([scan_file(pn)[0]]); info = os.stat(pn)
+    odb.register([(pn, info.st_size, info.st_mtime_ns)]); fid = odb.file(pn).id; it = odb.add_item(oper, fid, pn, "{}", f"L{n}", "G")
+    new_pn = os.path.join(music, f"L{n} - G.mp3"); os.rename(pn, new_pn); odb.mark_renaming(it.id, new_pn); odb.set_item_state(it.id, organizer_db.ITEM_DONE); made.append((pn, new_pn))
+odb.close()
+real_sync, calls_sync = win.ops.sync_organizer_item, []
+def failing_sync(db_, item):
+    calls_sync.append(item.id)
+    if len(calls_sync) == 1: raise sqlite3.IntegrityError("choca con otra fila")
+    real_sync(db_, item)
+win.ops.sync_organizer_item = failing_sync; win.ops.reconcile_organizer(); win.ops.sync_organizer_item = real_sync
+check("una que no se puede poner al día no deja sin hacerlo a las demás", len(calls_sync) == 2 and db.track_id_for_path(made[1][1]) is not None and db.track_id_for_path(made[0][1]) is None, calls_sync)
+check("  y la que falló se reintenta al abrir otra vez", win.ops.reconcile_organizer() >= 1 and db.track_id_for_path(made[0][1]) is not None)
+damaged_file = organizer_db.database_file(); saved_bytes = open(damaged_file, "rb").read() if os.path.exists(damaged_file) else b""
+real_db_class = organizer_db.OrganizerDb
+def broken(*a, **k): raise sqlite3.DatabaseError("file is not a database")
+organizer_db.OrganizerDb = broken
+check("una base dañada no impide abrir el programa", win.ops.reconcile_organizer() == 0)
+organizer_db.OrganizerDb = real_db_class
 
 win.close(); spin(100)
 print(f"\nRESULTADO: {sum(results)}/{len(results)} correctas")

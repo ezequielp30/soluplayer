@@ -30,6 +30,13 @@ print("[Recorrer carpetas]")
 paths = [e[0] for e in organizer.collect_mp3([music])]
 check("encuentra MP3 en subcarpetas, y solo MP3", sorted(paths) == sorted([top, low]), paths)
 check("omite pendientes, respaldos y carpetas del sistema", not any(os.path.basename(p) == "no.mp3" for p in paths))
+check("una raíz que es la carpeta de respaldos tampoco se examina", not list(organizer.collect_mp3([os.path.join(music, organizer.BACKUP_FOLDER)])))
+fake_mp3(os.path.join(music, "Cortada.limpiando-titulo.mp3"))
+check("un temporal que dejó un corte no es una canción", not any("limpiando" in p for p, _s, _m in organizer.collect_mp3([music])))
+os.remove(os.path.join(music, "Cortada.limpiando-titulo.mp3"))
+from app.importer import in_skipped_folder
+from app import file_locator
+check("el resto del programa tampoco toma los respaldos por canciones", in_skipped_folder(os.path.join(music, organizer.BACKUP_FOLDER, "x.mp3")) and organizer.BACKUP_FOLDER.casefold() in file_locator._SKIPPED_FOLDERS)
 check("raíces repetidas no duplican", len(list(organizer.collect_mp3([music, music]))) == 2)
 check("varias carpetas a la vez", len(list(organizer.collect_mp3([deep, os.path.join(music, "a")]))) == 1)
 problems = []

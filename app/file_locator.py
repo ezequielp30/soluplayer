@@ -29,7 +29,7 @@ DURATION_MARGIN_MS = 2000
 _DRIVE_REMOVABLE, _DRIVE_FIXED = 2, 3  # las unidades de red y los CD pueden tardar minutos en responder
 _SKIPPED_FOLDERS = frozenset({
     "$recycle.bin", "system volume information", "$winreagent", "windows", "program files", "program files (x86)",
-    "programdata", "appdata", "node_modules", "__pycache__", ".git", ".venv",
+    "programdata", "appdata", "node_modules", "__pycache__", ".git", ".venv", "respaldos_mp3",
 })
 
 

@@ -66,6 +66,13 @@ def _digest_range(path: str, start: int, end: int) -> str:
     return digest.hexdigest()
 
 
+def flush_to_disk(path: str) -> None:
+    """Fuerza el archivo al disco. Comparar una copia recién hecha lee la caché de Windows: sin esto, un corte de luz
+    podría dejar dañados a la vez la copia y lo que iba a reemplazar."""
+    with open(path, "r+b") as file:
+        os.fsync(file.fileno())
+
+
 def enough_space(folder: str, needed: int) -> bool:
     probe = folder
     while not os.path.isdir(probe):
@@ -88,6 +95,7 @@ def make_backup(source: str, target: str) -> str:
         shutil.copy2(source, temp)
         if file_digest(temp) != expected:
             raise BackupError(f"La copia de «{os.path.basename(source)}» no salió idéntica.")
+        flush_to_disk(temp)
         os.rename(temp, target)
         return expected
     except OSError as exc:

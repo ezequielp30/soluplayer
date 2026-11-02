@@ -71,6 +71,15 @@ for title, types, want in (("Santo (En Vivo)", (), "En Vivo"), ("Santo (Live)", 
     check(f"«{title}» {types} → «{want}»", version_of(rec(title, types=types)) == want, version_of(rec(title, types=types)))
 item = identify([match(1.0, rec("Santo", types=("Live",)))], 200, ["Santo"], conf)
 check("la versión queda en el título", item.title == "Santo (En Vivo)" and item.version == "En Vivo", item)
+for title in ("Santo (Live)", "Santo (Acústico)", "Santo (Acoustic)", "Santo (En Vivo)", "Santo - Remix"):
+    item = identify([match(1.0, rec(title))], 200, ["Santo"], conf)
+    check(f"«{title}» no se duplica", item.title == title, item.title)
+item = identify([match(1.0, rec("En La Pista"))], 200, ["En La Pista"], conf)
+check("«En La Pista» no se inventa que sea instrumental", item.title == "En La Pista" and item.version == "", item)
+item = identify([match(1.0, rec("99 - Problems"))], 200, ["99 Problems"], conf)
+check("un número que dice la base de datos no se recorta", item.title == "99 - Problems", item.title)
+item = identify([match(1.0, rec(artists=("Earth, Wind & Fire",)))], 200, ["Santo"], conf)
+check("un artista que la base da como uno se conserva, aunque lleve coma", item.artist == "Earth, Wind & Fire", item.artist)
 
 print("[Niveles configurables]")
 item = identify([match(0.8)], 200, ["Santo"], Confidence(auto_score=0.7))
