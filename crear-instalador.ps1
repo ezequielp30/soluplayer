@@ -33,6 +33,8 @@ Write-Host "Versión: $version"
 & $python tools\version_info.py
 if ($LASTEXITCODE -ne 0) { throw "No se pudo preparar version_info.txt." }
 
+& $python tools\obtener_fpcalc.py
+if ($LASTEXITCODE -ne 0) { throw "No se pudo obtener fpcalc." }
 & $python tools\make_icon.py
 # Extensiones para «Abrir con» (las mismas que acepta el programa)
 & $python -c @"

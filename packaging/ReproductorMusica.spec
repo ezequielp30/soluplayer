@@ -30,6 +30,8 @@ a = Analysis(
         (os.path.join(ROOT, "assets", "menus.original.ui"), "assets"),
         # Licencias de los componentes de terceros (obligatorio al distribuir el programa).
         (os.path.join(ROOT, "licencias"), "licencias"),
+        # Huella digital del audio (Chromaprint): lo descarga con su huella comprobada tools/obtener_fpcalc.py.
+        (os.path.join(ROOT, "build", "herramientas", "fpcalc.exe"), "fpcalc"),
     ],
     hiddenimports=["PySide6.QtSvg", "PySide6.QtNetwork"],
     excludes=EXCLUDES,

@@ -228,17 +228,19 @@ class OrganizerDb:
 
     def identification(self, file_id: int) -> Identification | None:
         row = self.conn.execute("SELECT * FROM identifications WHERE file_id = ?", (file_id,)).fetchone()
-        if row is None:
-            return None
+        return self._identification(row) if row else None
+
+    @staticmethod
+    def _identification(row: sqlite3.Row) -> Identification:
         return Identification(
             row["decision"], row["reason"], row["score"], row["title"], row["artist"], row["version"],
             row["recording_id"], tuple(json.loads(row["candidates"])),
         )
 
     def identifications(self, file_ids: list[int] | None = None) -> list[tuple[int, Identification]]:
-        rows = self.conn.execute("SELECT file_id FROM identifications ORDER BY file_id").fetchall()
         wanted = None if file_ids is None else set(file_ids)
-        return [(r["file_id"], self.identification(r["file_id"])) for r in rows if wanted is None or r["file_id"] in wanted]
+        rows = self.conn.execute("SELECT * FROM identifications ORDER BY file_id")
+        return [(r["file_id"], self._identification(r)) for r in rows if wanted is None or r["file_id"] in wanted]
 
     def file_by_id(self, file_id: int) -> FileRow | None:
         row = self.conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()

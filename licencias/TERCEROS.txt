@@ -21,6 +21,8 @@ Shiboken6 6.12.0      Enlace entre Python y Qt                    LGPL-3.0      
 FFmpeg 9.0.1          Decodificación de los formatos de audio     LGPL-2.1 o posterior  Incluido: codigo-fuente\ffmpeg-9.0.1.tar.xz
   (compilado por Qt)                                                                    (https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz)
 mutagen 1.48          Lectura y escritura de etiquetas de audio   GPL-2.0 o posterior   https://github.com/quodlibet/mutagen
+Chromaprint / fpcalc  Huella digital del audio (organizador)      LGPL-2.1 (ver         https://github.com/acoustid/chromaprint
+  1.6.2                                                           Chromaprint-LICENSE)
 LAME / lameenc 1.9    Codificación a MP3                          LGPL-3.0 o posterior  https://lame.sourceforge.io · https://github.com/chrisstaite/lameenc
 NumPy 2.5             Cálculo del ecualizador y del volumen       BSD-3-Clause y otras  https://github.com/numpy/numpy
 Python 3.12           Lenguaje del programa                       PSF License           https://www.python.org/downloads/source/

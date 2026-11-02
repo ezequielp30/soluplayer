@@ -2,6 +2,22 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.28.0 — 2026-11-02 (organizador de MP3)
+
+- ***Título y quién la canta* ahora reconoce las canciones por su sonido,** con huellas digitales (Chromaprint y AcoustID),
+  y las deja como «TITULO - ARTISTA.mp3». Examina varias carpetas o unidades completas, con sus subcarpetas.
+- **Analizar no cambia nada.** Las seguras se normalizan al pulsar un botón; también se puede elegir canción por canción y
+  corregir a mano. Lo dudoso nunca se inventa: va a *PENDIENTES_REVISION* sin cambios, con su motivo y sus posibles
+  coincidencias, para reintentarlo o corregirlo, y vuelve a su carpeta ya normalizado.
+- **Pide la clave de AcoustID,** con el enlace para registrarse gratis, y la comprueba antes de guardarla. Sin clave analiza
+  y propone por el título, pero ninguna canción se da por segura.
+- **Ninguna canción se pierde:** antes de tocarla se hace una copia completa comparada byte a byte, el audio se comprueba
+  idéntico y nunca se pisa otro archivo. Todo se restaura en la pestaña *Historial*; tras un corte de luz se retoma.
+- **Dentro del archivo quedan solo TITLE y ARTIST** (con tildes), más las marcas internas del programa. El nombre del
+  archivo va sin tildes ni puntuación. Se borran álbum, género, año, comentarios y carátula.
+- **Pensado para miles de canciones:** por lotes, con caché, sin trabar la ventana, y se puede detener y retomar.
+- La biblioteca sigue cada cambio y conserva playlists y orden. La herramienta anterior sigue disponible desde un botón.
+
 ## 1.27.1 — 2026-11-02 (corrección del aviso de versiones nuevas)
 
 - **Corregido un fallo de la 1.27.0:** la respuesta de GitHub se atendía fuera del hilo de la ventana, con riesgo de
