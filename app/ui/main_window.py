@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
         self._update_thread: QThread | None = None
         self._update_worker: updates.UpdateCheckWorker | None = None
         self._update_page = updates.RELEASES_PAGE
+        self._update_asked = False
         self._update_notice = QPushButton()
         self._update_notice.setObjectName("UpdateNotice")
         self._update_notice.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1128,7 +1129,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Carpeta no accesible", f"No se puede leer la carpeta:\n{folder}")
             return
         dialog = FolderImportDialog(folder, self)
-        if not dialog.exec():
+        if not self._run_dialog(dialog):
             return
         self.settings.setValue("import/last_dir", folder)
         self._start_import(folder=folder, recursive=dialog.recursive.isChecked())
@@ -1241,7 +1242,7 @@ class MainWindow(QMainWindow):
             # Solo se propone artista si la canción tampoco lo trae en sus etiquetas.
             rows.append((item.path, title, artist if not item.metadata.has_artist_tag else None))
         dialog = TitleReviewDialog(rows, self)
-        if not dialog.exec():
+        if not self._run_dialog(dialog):
             return  # se conservan los nombres de archivo como título
         for index, (title, artist) in dialog.results().items():
             meta = untitled[index].metadata
@@ -1875,7 +1876,7 @@ class MainWindow(QMainWindow):
         dialog = PlaylistNameDialog(
             "Nueva playlist", "Nombre de la playlist:", "", self.db.create_playlist, self
         )
-        if not dialog.exec() or dialog.result_value is None:
+        if not self._run_dialog(dialog) or dialog.result_value is None:
             return None
         playlist = dialog.result_value
         self._playlists_changed()
@@ -1893,7 +1894,7 @@ class MainWindow(QMainWindow):
             lambda name: self.db.rename_playlist(playlist_id, name),
             self,
         )
-        if dialog.exec():
+        if self._run_dialog(dialog):
             self._playlists_changed()
             if self.sidebar.current_view() == ("playlist", playlist_id):
                 self.content.set_title(dialog.result_value)
@@ -2167,13 +2168,17 @@ class MainWindow(QMainWindow):
         raw = self.db.with_raw_text([track])[0]
         search = LocateDialog(raw, self.db.all_tracks(), self)
         search.exec()
-        if not search.found:
-            return None if search.stopped else self._ask_for_file(track)
-        if len(search.found) == 1:
-            return search.found[0]
+        found, stopped = search.found, search.stopped
+        # Se libera ya: si la destruye la recolección de basura de Python mientras Windows le entrega un mensaje
+        # a otra ventana, el programa se cierra de golpe.
+        search.deleteLater()
+        if not found:
+            return None if stopped else self._ask_for_file(track)
+        if len(found) == 1:
+            return found[0]
         chosen, ok = QInputDialog.getItem(
-            self, "Localizar archivo", f"Hay {len(search.found)} archivos que pueden ser «{track.title}». ¿Cuál es?",
-            search.found, 0, False,
+            self, "Localizar archivo", f"Hay {len(found)} archivos que pueden ser «{track.title}». ¿Cuál es?",
+            found, 0, False,
         )
         return chosen if ok else None
 
@@ -2516,10 +2521,13 @@ class MainWindow(QMainWindow):
         self._update_worker = updates.UpdateCheckWorker()
         self._update_worker.moveToThread(self._update_thread)
         self._update_thread.started.connect(self._update_worker.run)
-        self._update_worker.finished.connect(lambda release, problem: self._on_update_checked(release, problem, asked))
+        self._update_asked = asked
+        # Un método de esta ventana, no una lambda: la lambda correría en el hilo del trabajador.
+        self._update_worker.finished.connect(self._on_update_checked)
         self._update_thread.start()
 
-    def _on_update_checked(self, release: updates.Release | None, problem: str, asked: bool) -> None:
+    def _on_update_checked(self, release: updates.Release | None, problem: str) -> None:
+        asked = self._update_asked
         self._stop_update_thread()
         if release is not None:
             self.settings.setValue("updates/last_check", time.time())

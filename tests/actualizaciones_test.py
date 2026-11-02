@@ -65,6 +65,13 @@ updates.fetch_latest = fake_fetch
 opened = []
 mw.QDesktopServices.openUrl = staticmethod(lambda url: opened.append(url.toString()))
 win = mw.MainWindow(Database(database_path())); win.show(); spin(150)
+from PySide6.QtCore import QThread
+# Se espía lo que llama la respuesta, no la respuesta: un método sustituido cambia cómo lo conecta PySide.
+main_thread, threads, real_stop = QThread.currentThread(), [], mw.MainWindow._stop_update_thread
+def spy_stop(self):
+    threads.append(QThread.currentThread() == main_thread)
+    return real_stop(self)
+mw.MainWindow._stop_update_thread = spy_stop
 idle = lambda: win._update_thread is None
 check("el programa no pregunta solo por crear la ventana", not calls)
 win.check_updates_on_start(); spin(5000, idle)
@@ -112,6 +119,8 @@ check("apagada: no pregunta ni avisa", len(calls) == count and not win._update_n
 win._act_check_updates(); spin(5000, idle)
 check("  buscar a mano sigue funcionando", len(calls) == count + 1)
 win.prefs.check_updates = True
+
+check("la respuesta siempre se atiende en el hilo de la ventana", threads and all(threads), threads)
 
 print("[Cerrar a mitad de la consulta]")
 win.settings.remove("updates/last_check")

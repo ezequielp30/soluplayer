@@ -146,6 +146,11 @@ for path, action in all_actions:
         win._update_playlist_actions()
     before = state(); seen.clear(); opened_urls.clear(); errs_before = len(errors)
     action.trigger(); spin(700)
+    if label == "Buscar actualizaciones…":  # la respuesta llega desde otro hilo
+        for _ in range(100):
+            if win._update_thread is None and seen:
+                break
+            spin(50)
     if label == "Ecualizador…":
         after = state(); win._eq_dialog.close(); spin(100)
     else:

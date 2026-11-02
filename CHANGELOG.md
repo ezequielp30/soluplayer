@@ -2,6 +2,13 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.27.1 — 2026-11-02 (corrección del aviso de versiones nuevas)
+
+- **Corregido un fallo de la 1.27.0:** la respuesta de GitHub se atendía fuera del hilo de la ventana, con riesgo de
+  que el programa se cerrara al buscar actualizaciones, también en la consulta automática al abrir.
+- **Corregido un cierre inesperado al usar *Localizar archivo* varias veces (desde la 1.25.0):** la ventana de búsqueda
+  anterior no se liberaba y se destruía en un mal momento.
+
 ## 1.27.0 — 2026-11-01 (aviso de versiones nuevas)
 
 - **El programa avisa cuando hay una versión nueva:** aparece «Versión X disponible» en la barra inferior, y al pulsarlo

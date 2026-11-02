@@ -98,6 +98,12 @@ shutil.move(many, near); far = os.path.join(work, "OtroDisco", "Doble - Lilly Go
 win._locate_track(track(many_id)); spin(100)
 check("se elige de una lista", pick and len(pick[-1]) == 2 and path_of(many_id) == pick[-1][-1], pick[-1:])
 
+print("[La ventana de búsqueda se libera]")
+from PySide6.QtCore import QCoreApplication, QEvent
+QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)  # lo que hace el programa al volver a su bucle
+check("no queda para la recolección de basura, que cerraba el programa", not win.findChildren(locate_dialog.LocateDialog),
+      len(win.findChildren(locate_dialog.LocateDialog)))
+
 print("[Más cerca primero]")
 close, close_id = add("Cerca - Lilly Goodman.mp3"); data = open(close, "rb").read(); os.remove(close)
 near = os.path.join(music, "Cerca (copia) - Lilly Goodman.mp3"); open(near, "wb").write(data)
