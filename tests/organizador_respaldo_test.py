@@ -192,11 +192,13 @@ try:
 except NormalizeError as exc:
     check("si ya no está, lo dice", "ya no está" in str(exc), exc)
 foreign, ffid = song("ajena.mp3"); kept = sha(foreign)
-for title, artist in (("夜に駆ける", "A"), ("Santo", "米津玄師")):
+for title, artist in (("夜に駆ける", "A"), ("Santo", "米津玄師"), ("夜に駆ける (En Vivo)", "A"), ("Love 爱", "A"), ("Santo", "米津玄師 Band"), ("Гимн 2", "A")):
     try:
         run(ffid, title, artist); check(f"otro alfabeto «{title}» «{artist}»", False)
     except NormalizeError as exc:
         check(f"otro alfabeto «{title}» «{artist}»: lo explica y no toca nada", "latinas" in str(exc) and sha(foreign) == kept and db.open_item(ffid) is None, exc)
+latin, lfid2 = song("latina.mp3"); done = run(lfid2, "Canción Ñandú Björk", "Łukasz Ñáñez")
+check("las letras latinas con tilde sí se normalizan", done.state == ITEM_DONE and os.path.basename(done.new_path) == "Cancion Nandu Bjork - Lukasz Nanez.mp3", done.new_path)
 empty, efid = song("sinnada.mp3")
 for title, artist in (("", "A"), ("Santo", ""), ("♪♪♪", "A")):
     try:

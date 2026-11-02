@@ -23,7 +23,7 @@ from .organizer import BACKUP_FOLDER, DECISION_AUTO, DECISION_DONE, Identificati
 from .organizer_db import ITEM_BACKED_UP, ITEM_DONE, ITEM_PLANNED, ITEM_RENAMING, ITEM_RESTORED, ITEM_TAGGED, OperationItem, OrganizerDb
 from .review_folder import safe_name
 from .song_format import _target_path
-from .title_format import confirmed_title, file_stem, has_file_name
+from .title_format import confirmed_title, file_stem, has_file_name, has_foreign_letters
 from .title_tags import _WRITE_ERRORS, CannotTag, edit_safely
 from .utils import long_path
 
@@ -122,8 +122,8 @@ def normalize(db: OrganizerDb, operation_id: int, job: SongJob, backup_folder: s
     title, artist = confirmed_title(job.title), job.artist.strip()
     if not title or not artist:
         raise NormalizeError("Falta el título o el artista.")
-    if not has_file_name(title, artist):
-        raise NormalizeError("El título o el artista no usa letras latinas: escríbelos como quieras que se llame el archivo.")
+    if not has_file_name(title, artist) or has_foreign_letters(f"{title} {artist}"):  # el nombre perdería esas letras
+        raise NormalizeError("El título o el artista no usa solo letras latinas: escríbelos como quieras que se llame el archivo.")
     item = db.open_item(job.file_id)
     if item is not None and (item.new_title, item.new_artist) != (title, artist):
         if item.state not in (ITEM_PLANNED, ITEM_BACKED_UP):

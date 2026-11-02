@@ -268,6 +268,14 @@ check("en un registro con la canción repetida, solo cambia su último cambio vi
 os.remove(repeated.path)
 db.remove_tracks([tid]); os.remove(change.new_path)
 
+print("[Título mezclado marcado a mano]")
+mixed = synth.mp3(os.path.join(music, "Mezclada.mp3"), 5, title="x", artist="y", seed=71); mixed_hash = sha(mixed)
+odb = organizer_db.OrganizerDb(); info = os.stat(mixed); odb.register([(mixed, info.st_size, info.st_mtime_ns)]); mid = odb.file(mixed).id
+odb.save_results([(mid, 5.0, "HMEZCLA")], []); odb.save_identifications([(mid, Identification("revisar", "Duda", 0.5, "夜に駆ける (En Vivo)", "A"))]); odb.close(); d._refresh()
+m_row = row_of(d, "Mezclada.mp3"); m_row.checked = True; d._update_buttons(); d.errors.clear(); answers["¿Normalizar"] = "Normalizar"; d.btn_normalize_selected.click(); wait(d)
+check("no se normaliza, y lo explica en Errores", sha(mixed) == mixed_hash and "latinas" in d.errors.toPlainText() and not os.path.exists(os.path.join(music, "En Vivo - A.mp3")), d.errors.toPlainText()[:120])
+odb = organizer_db.OrganizerDb(); odb.conn.execute("DELETE FROM files WHERE id = ?", (mid,)); odb.conn.commit(); odb.close(); os.remove(mixed); d._refresh()
+
 print("[Clave mala]")
 win.prefs.acoustid_key = "mala"; odb = organizer_db.OrganizerDb(); odb.forget_identifications(); odb.conn.execute("DELETE FROM api_cache"); odb.conn.commit(); odb.close()
 def reject(*a): raise acoustid_lookup.InvalidKey
