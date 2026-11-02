@@ -31,10 +31,18 @@ _TAIL_JUNK = re.compile(
     re.I,
 )
 _LEAD_JUNK = re.compile(r"^(?:v[ií]deo\s*\d*[.:)\s-]*(?=\S)|(?:v[ií]deo\s+)?oficial\s+|[A-Z]{1,5}\s?\d{2,}\s+)", re.I)
-# La numeración del disco o de la lista de reproducción: «3-4 de 19 », «12/19 », «06. », «7 - », «4ª ».
+# La numeración del disco o de la lista de reproducción: «3-4 de 19 », «12/19 », «06. », «7 - », «4ª », «001_», «01-», «2.».
 # No «3 Días», «7 de Mayo», «1º de Mayo» ni «24/7 Adoración» (el total no puede ser menor que el número).
 _COUNT = re.compile(r"^\d{1,3}\s*(?:[-–—]\s*(\d{1,3})\s*)?(?:de|of|/)\s*(\d{1,3})(?=[\s.:)-]|$)[\s.:)–—-]*", re.I)
-_NUMBER = re.compile(r"^(?:\d{1,2}\s*[.)–—-]\s+|\d{1,2}[ªº]\s+(?!del?\b))", re.I)
+_NUMBER = re.compile(
+    r"^(?:\d{1,2}\s*[.)–—-]\s+|\d{1,2}[ªº]\s+(?!del?\b)|\d{1,3}\s*_\s*|0\d{1,2}\s*[.)–—-]\s*(?=\S)|0\d\s+|\d{1,2}\.(?=[^\W\d]))", re.I
+)
+_CREDIT_WORD = r"(?:feat\.?|ft\.?|featuring)(?=\s)"
+_CREDIT_IN_BRACKETS = re.compile(rf"\s*[(\[]\s*{_CREDIT_WORD}[^)\]]*[)\]]", re.I)
+_CREDIT_TO_END = re.compile(rf"\s+{_CREDIT_WORD}.*$", re.I)
+_ARTIST_VERSION = re.compile(r"\s*[(\[]\s*(?:en vivo|live|ac[uú]stic[oa]?|oficial|official)\s*[)\]]\s*$", re.I)
+_YOUTUBE_TOPIC = re.compile(r"\s+-\s+topic$", re.I)
+_NAME_LETTERS = str.maketrans({"ß": "ss", "Æ": "AE", "æ": "ae", "Ø": "O", "ø": "o", "Đ": "D", "đ": "d", "Ł": "L", "ł": "l"})
 _HASHTAG = re.compile(r"(?<!\S)#\w+")
 _GENERIC_SONG = re.compile(r"^(?:pista|track|tema)\s*\d*$", re.I)
 _FILE_COPY = re.compile(r"\s*\(\d+\)$")  # «Canción - Cantante (2).mp3»
@@ -111,6 +119,40 @@ def _strip_segment(segment: str) -> str:
         previous = segment
         segment = _tidy(_TAIL_JUNK.sub("", _strip_end_symbols(segment)))
     return _tidy(segment.replace("@", ""))
+
+
+def clean_song_title(title: str) -> str:
+    """El título sin numeración de pista, sin lo que agrega YouTube y sin colaboradores. Conserva tildes y versión."""
+    text = _CREDIT_TO_END.sub("", _CREDIT_IN_BRACKETS.sub("", strip_noise(title)))
+    return _tidy(text)
+
+
+def main_artist(artist: str, confirmed: str = "") -> str:
+    """Un solo artista. `confirmed` es el primero que da una base de datos: manda sobre el texto. Sin ella se corta en
+    «ft.», «feat.» y comas, pero no en «&» ni en «y»: «Ana y Ricky» o «Israel & New Breed» pueden ser un solo nombre."""
+    if confirmed.strip():
+        return confirmed.strip()
+    name = _YOUTUBE_TOPIC.sub("", _display_artist(artist))
+    name = _CREDIT_TO_END.sub("", _CREDIT_IN_BRACKETS.sub("", f" {name}")).split(",")[0]
+    return _tidy(_ARTIST_VERSION.sub("", name)).rstrip(".")
+
+
+def _plain_name_part(text: str) -> str:
+    """Solo letras sin tildes (Ñ → N), números y espacios: «¿Qué? (En Vivo)» → «Que En Vivo». Vacío si no queda nada."""
+    letters = unicodedata.normalize("NFKD", text.translate(_NAME_LETTERS).replace("&", " y "))
+    plain = "".join(c for c in letters if not unicodedata.combining(c)).encode("ascii", "ignore").decode()
+    return " ".join(re.sub(r"[^A-Za-z0-9 ]+", " ", plain.replace("'", "")).split())
+
+
+def file_stem(title: str, artist: str) -> str:
+    """«TITULO - ARTISTA», sin extensión, para el nombre del archivo. Solo el nombre pierde tildes y puntuación: las
+    etiquetas las conservan. Empieza con letra salvo que el número sea parte del título («7 Dias», «1999»). Vacío si
+    el título no deja nada escribible (otro alfabeto): el nombre no se toca y la canción queda por revisar."""
+    song = _plain_name_part(clean_song_title(title))
+    singer = _plain_name_part(artist)
+    if not song:
+        return ""
+    return f"{song} - {singer}" if singer else song
 
 
 def _segments(text: str) -> list[str]:
