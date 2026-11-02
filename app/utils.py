@@ -79,7 +79,11 @@ def _long_path(path: str) -> str:
 
     buffer = ctypes.create_unicode_buffer(32768)
     length = ctypes.windll.kernel32.GetLongPathNameW(path, buffer, len(buffer))
-    return buffer.value if 0 < length < len(buffer) else path
+    if 0 < length < len(buffer):
+        return buffer.value
+    # Ya no existe (se movió o se renombró): su carpeta sí, y la ruta tiene que seguir dando la misma clave.
+    folder, name = os.path.split(path)
+    return os.path.join(_long_path(folder), name) if folder and folder != path else path
 
 
 def no_markup(text: str) -> str:

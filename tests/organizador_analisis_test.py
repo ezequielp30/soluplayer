@@ -142,6 +142,11 @@ if fingerprint.available():
         fingerprint.compute(trash); check("un archivo dañado se detecta", False)
     except fingerprint.DamagedFile as exc:
         check("un archivo dañado se detecta", True, exc)
+    tiny = synth.mp3(os.path.join(work, "real", "Corta.mp3"), 1, title="Corta", artist="A")
+    try:
+        fingerprint.compute(tiny); check("una canción muy corta", False)
+    except fingerprint.DamagedFile as exc:
+        check("una canción muy corta se explica como tal, no como dañada", "poco" in str(exc), exc)
     accented = synth.mp3(os.path.join(work, "real", "¿Canción Ñandú, 7 Días?".replace("?", "") + ".mp3"), 3, title="A", artist="B")
     check("nombres con tildes y signos", fingerprint.compute(accented).duration_s > 0)
 else:

@@ -18,12 +18,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from . import backup, converter, file_history, file_manager, journal, library_cleanup, mp3gain, review_folder, song_format, title_tags
+from . import backup, converter, file_history, file_manager, journal, library_cleanup, mp3gain, organizer_db, pending_review, review_folder, song_format, title_tags
+from .importer import scan_file
+from .metadata import UNKNOWN_ALBUM, UNKNOWN_GENRE
+from .organizer_db import PENDING_RETURNED
 from .database import Database
 from .duplicates import DuplicateGroup
 from .file_ops import move_to_trash
 from .models import Track
-from .utils import long_path, path_key, plural
+from .utils import clean_title, long_path, path_key, plural
 
 log = logging.getLogger(__name__)
 
@@ -685,6 +688,67 @@ class FileOperations:
         if problems:
             message += f"\n\nNo se pudieron deshacer {len(problems)}:\n" + "\n".join(f"• {p}" for p in problems[:20])
         return UndoOutcome(restored, problems, message)
+
+    # ------------------------------------------------------------------ organizador de MP3
+
+    def prepare_organizer(self, paths: list[str]) -> bool:
+        """Respaldo de la biblioteca y soltar las canciones que van a cambiar."""
+        ids = {i for i in (self.db.track_id_for_path(p) for p in paths) if i is not None}
+        return self._prepare("antes-de-organizar", ids)
+
+    def sync_organizer_item(self, organizer_db, item) -> None:
+        """La biblioteca se entera de una canción normalizada. Si no está en la biblioteca, no se agrega."""
+        track_id = self.db.track_id_for_path(item.old_path)
+        if track_id is not None:
+            self.db.set_song_data(track_id, item.new_path, item.new_title, item.new_artist, UNKNOWN_ALBUM, UNKNOWN_GENRE, None)
+        organizer_db.mark_library_synced(item.id)
+
+    def sync_organizer_pending(self, organizer_db, pending) -> None:
+        """Una canción fue a pendientes o volvió: sigue en la biblioteca, en su lugar nuevo."""
+        source, target = pending.original_path, pending.pending_path
+        if pending.state == PENDING_RETURNED:
+            source, target = target, source
+        track_id = self.db.track_id_for_path(source)
+        if track_id is not None:
+            self.db.update_track_paths([(track_id, target)])
+        organizer_db.mark_pending_synced(pending.id)
+
+    def sync_organizer_restored(self, organizer_db, item) -> None:
+        """Vuelve a sus datos de antes, los que tiene ahora el archivo. Conserva playlists y orden."""
+        track_id = self.db.track_id_for_path(item.new_path) if item.new_path else None
+        if track_id is None:
+            track_id = self.db.track_id_for_path(item.old_path)
+        if track_id is not None:
+            scanned, _failure = scan_file(item.old_path)
+            if scanned is not None:
+                meta = scanned.metadata
+                self.db.restore_song(track_id, item.old_path, clean_title(meta.title), meta.artist, meta.album, meta.genre, scanned.cover_hash, scanned.cover_bytes)
+        organizer_db.mark_library_synced(item.id)
+
+    def reconcile_organizer(self) -> int:
+        """Al abrir: lo que un corte de luz dejó a mitad en el organizador queda según lo que hay en el disco, y la
+        biblioteca se pone al día. Una canción a medias de normalizar se retoma al normalizarla otra vez."""
+        if not organizer_db.database_file().exists():
+            return 0
+        db = organizer_db.OrganizerDb()
+        try:
+            fixed = pending_review.reconcile(db)
+            for pending in db.unsynced_pending():
+                self.sync_organizer_pending(db, pending)
+                fixed += 1
+            for item in db.unsynced_items():
+                if item.state == organizer_db.ITEM_DONE:
+                    self.sync_organizer_item(db, item)
+                else:
+                    self.sync_organizer_restored(db, item)
+                fixed += 1
+        except sqlite3.Error as exc:
+            log.error("No se pudo poner al día el organizador: %s", exc)
+        finally:
+            db.close()
+        if fixed:
+            self._on_changed()
+        return fixed
 
     def reconcile_interrupted_format(self) -> int:
         """Al abrir: «Título y quién la canta» cortado a mitad. Las canciones ya renombradas pasan a apuntar a su

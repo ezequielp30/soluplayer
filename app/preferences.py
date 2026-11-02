@@ -40,6 +40,7 @@ class Preferences:
         self._s.setValue(self.ASK_TITLES, bool(value))
 
     ACOUSTID_KEY = "preferences/acoustid_key"
+    BACKUP_FOLDER = "preferences/organizer_backup_folder"
     AUTO_SCORE = "preferences/organizer_auto_score"
     STRONG_SCORE = "preferences/organizer_strong_score"
     MAX_DURATION_DIFF = "preferences/organizer_max_duration_diff"
@@ -51,6 +52,14 @@ class Preferences:
     @acoustid_key.setter
     def acoustid_key(self, value: str) -> None:
         self._s.setValue(self.ACOUSTID_KEY, value.strip())
+
+    @property
+    def organizer_backup_folder(self) -> str:
+        return str(self._s.value(self.BACKUP_FOLDER, "")).strip()
+
+    @organizer_backup_folder.setter
+    def organizer_backup_folder(self, value: str) -> None:
+        self._s.setValue(self.BACKUP_FOLDER, value.strip())
 
     @property
     def confidence(self):

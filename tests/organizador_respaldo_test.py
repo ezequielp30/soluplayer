@@ -85,6 +85,7 @@ try:
 except song_backup.BackupError:
     check("copia que no sale idéntica: se rechaza y no queda a medias", not os.path.exists(other) and not os.path.exists(other + ".copiando.tmp"))
 song_backup.file_digest = real_digest
+check("un nombre ocupado busca otro: no choca con un respaldo anterior", normalizer._free_name(os.path.dirname(backup), "copia.mp3").endswith("copia (2).mp3"))
 check("mira si hay espacio", song_backup.enough_space(work, 1) and not song_backup.enough_space(work, 10**16))
 
 print("[Normalizar]")
@@ -100,6 +101,8 @@ after = MP3(target).info
 check("duración, calidad y frecuencia iguales", (after.length, after.bitrate, after.sample_rate, after.channels) == (length_before.length, length_before.bitrate, length_before.sample_rate, length_before.channels))
 check("conserva la fecha del archivo", int(os.path.getmtime(target)) == 1500000000)
 check("el respaldo es el original exacto", open(item.backup_path, "rb").read() == original and song_backup.file_digest(item.backup_path) == item.backup_sha)
+saved = db.identification(fid)
+check("una vez normalizada tiene su propio estado: no cuenta como segura ni como dudosa", saved.decision == "normalizada" and saved.title == "Santo", saved)
 check("registra metadatos, ubicación y cambios", item.old_path == path and "De YouTube" in item.old_tags and "Disco" in item.old_tags and item.new_title == "Santo" and item.new_artist == "New Wine", item.old_tags[:120])
 check("los metadatos anotados se pueden leer", isinstance(json.loads(item.old_tags), dict))
 check("la huella sigue valiendo tras el cambio", db.file(target).id == fid and db.file_by_id(fid).path == target)
@@ -235,9 +238,13 @@ check("vuelve byte a byte, con su nombre", open(path, "rb").read() == original a
 check("  con su fecha", int(os.path.getmtime(path)) == 1500000000)
 check("  el respaldo se conserva", os.path.isfile(item.backup_path) and sha(item.backup_path) == item.backup_sha)
 check("  y el análisis apunta a su lugar", db.file_by_id(fid).path == path)
+check("  se olvida lo decidido: se puede decidir otra vez", db.identification(fid) is None)
 check("restaurar dos veces no rompe nada", normalizer.restore(db, restored).state == ITEM_RESTORED and open(path, "rb").read() == original)
 item = run(fid, "Restaurada", "A")
 check("se puede normalizar otra vez", item.state == ITEM_DONE and os.path.isfile(item.new_path))
+os.remove(item.new_path); restored = normalizer.restore(db, item)
+check("si la versión normalizada ya no está, restaura y no borra lo restaurado", restored.state == ITEM_RESTORED and open(path, "rb").read() == original)
+item = run(fid, "Restaurada", "A")
 os.remove(item.backup_path)
 try:
     normalizer.restore(db, item); check("sin respaldo", False)

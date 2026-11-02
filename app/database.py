@@ -437,6 +437,11 @@ class Database:
                 (path, path_key(path), title, artist, album, genre, cover_hash, track_id),
             )
 
+    def restore_song(self, track_id: int, path: str, title: str, artist: str, album: str, genre: str, cover_hash: str | None, cover: bytes | None) -> None:
+        """La canción volvió a como estaba: sus datos, leídos del archivo restaurado. Conserva id, playlists y orden."""
+        self._store_cover(cover_hash, cover)
+        self.set_song_data(track_id, path, title, artist, album, genre, cover_hash)
+
     def remove_tracks(self, track_ids: Iterable[int]) -> int:
         """Quita canciones de la biblioteca (y de sus playlists). No toca los archivos."""
         with self.conn:

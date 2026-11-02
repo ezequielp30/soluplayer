@@ -77,6 +77,7 @@ from .equalizer_dialog import EqualizerDialog
 from .convert_dialog import ConvertDialog
 from .history_dialog import HistoryDialog
 from .song_format_dialog import SongFormatDialog
+from .organizer_dialog import OrganizerDialog, default_roots
 from .locate_dialog import LocateDialog
 from .loudness_dialog import FILTER_DONE, FILTER_NEED, LoudnessDialog
 from .online_dialog import OnlineLookupDialog
@@ -1414,6 +1415,14 @@ class MainWindow(QMainWindow):
             ))
 
     def _open_song_format(self) -> None:
+        if self._busy_importing():
+            return
+        roots = default_roots([t.path for t in self.library])
+        self._run_dialog(OrganizerDialog(self.ops, self.prefs, roots, self, self._open_previous_song_format))
+        self._on_files_changed()
+
+    def _open_previous_song_format(self) -> None:
+        """La vista sin huella digital de versiones anteriores, a la que se llega desde el organizador."""
         scope = self._choose_scope("Título y quién la canta")
         if scope is not None:
             tracks, folder = scope
@@ -1697,6 +1706,7 @@ class MainWindow(QMainWindow):
         «Mover a otra carpeta» cortado a mitad: las canciones ya movidas pasan a su lugar nuevo."""
         self.ops.reconcile_interrupted_moves()
         self.ops.reconcile_interrupted_format()
+        self.ops.reconcile_organizer()
         reconnected = self.ops.reconnect_renamed(self.library)
         self.check_interrupted_review()
         for path in library_cleanup.remove_leftover_temps(self.library):

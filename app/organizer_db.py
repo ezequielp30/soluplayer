@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .config import data_dir
-from .organizer import Identification
+from .organizer import DECISION_DONE, DECISION_OFFLINE, Identification
 from .utils import path_key
 
 SCHEMA_VERSION = 4
@@ -210,8 +211,8 @@ class OrganizerDb:
     def pending_identification(self) -> list[FileRow]:
         rows = self.conn.execute(
             "SELECT f.* FROM files f LEFT JOIN identifications i ON i.file_id = f.id "
-            "WHERE f.status = ? AND i.file_id IS NULL ORDER BY f.id",
-            (STATUS_ANALYZED,),
+            "WHERE f.status = ? AND (i.file_id IS NULL OR i.decision = ?) ORDER BY f.id",
+            (STATUS_ANALYZED, DECISION_OFFLINE),
         )
         return [self._row(r) for r in rows]
 
@@ -413,10 +414,32 @@ class OrganizerDb:
             row["new_artist"], row["backup_path"], row["backup_sha"], row["state"], row["error"], bool(row["library_synced"]),
         )
 
+    def forget_identification(self, file_id: int) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM identifications WHERE file_id = ?", (file_id,))
+
     def forget_identifications(self) -> None:
         """Para decidir otra vez (cambiaron los niveles de confianza). Las respuestas de la caché se conservan."""
         with self.conn:
-            self.conn.execute("DELETE FROM identifications")
+            self.conn.execute("DELETE FROM identifications WHERE decision != ?", (DECISION_DONE,))
+
+    def result_rows(self, roots: list[str]) -> list[sqlite3.Row]:
+        """Lo analizado dentro de estas carpetas, sin lo que está esperando en pendientes."""
+        prefixes = tuple(path_key(r).rstrip("\\/") + os.sep for r in roots)
+        rows = self.conn.execute(
+            "SELECT f.id, f.path, f.path_key, f.status, f.problem, i.decision, i.reason, i.score, i.title, i.artist, i.version "
+            "FROM files f LEFT JOIN identifications i ON i.file_id = f.id "
+            "WHERE NOT EXISTS (SELECT 1 FROM pending p WHERE p.file_id = f.id AND p.state != ?) ORDER BY f.path",
+            (PENDING_RETURNED,),
+        )
+        return [r for r in rows if r["path_key"].startswith(prefixes)] if prefixes else []
+
+    def restorable_items(self) -> list[OperationItem]:
+        """Las cambiadas que se pueden devolver: tienen copia y no se restauraron ya."""
+        rows = self.conn.execute(
+            "SELECT * FROM operation_items WHERE state = ? AND backup_path != '' ORDER BY id", (ITEM_DONE,)
+        )
+        return [self._item(r) for r in rows]
 
     def counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self.conn.execute("SELECT status, COUNT(*) AS n FROM files GROUP BY status")}

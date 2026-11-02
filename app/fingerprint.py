@@ -50,6 +50,8 @@ def compute(path: str) -> Fingerprint:
         raise ToolMissing("No se pudo ejecutar fpcalc: vuelve a instalar el programa.") from exc
     except OSError as exc:
         raise DamagedFile(f"No se pudo leer el archivo ({exc.strerror or exc}).") from exc
+    if b"Empty fingerprint" in done.stderr:
+        raise DamagedFile("Dura muy poco (menos de 3 segundos) para reconocerla por su sonido.")
     if done.returncode != 0:
         raise DamagedFile("No se pudo leer el audio: el archivo parece dañado.")
     try:

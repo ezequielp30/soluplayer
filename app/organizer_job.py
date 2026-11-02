@@ -14,6 +14,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from . import acoustid_lookup, fingerprint, normalizer, organizer, pending_review
 from .metadata import MetadataError, read_metadata
 from .organizer_db import FileRow, OrganizerDb, cache_key
+from .title_format import clean_song_title, known_singers, main_artist, propose
 from .utils import path_key
 
 log = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ class IdentifyResult:
     total: int = 0
     automatic: int = 0
     review: int = 0
+    offline: int = 0
     from_cache: int = 0
     cancelled: bool = False
     invalid_key: bool = False
@@ -160,6 +162,9 @@ class IdentifyWorker(QObject):
     def _identify(self, db: OrganizerDb, result: IdentifyResult) -> None:
         pending = db.pending_identification()
         result.total = len(pending)
+        if not self._key:
+            self._propose_offline(db, pending, result)
+            return
         batch: list[tuple[int, organizer.Identification]] = []
         try:
             for index, row in enumerate(pending):
@@ -170,6 +175,7 @@ class IdentifyWorker(QObject):
                     continue
                 item = self._identify_one(db, row, *saved, result)
                 batch.append((row.id, item))
+                db.update_pending_review(row.id, item.reason, item.candidates)
                 if item.decision == organizer.DECISION_AUTO:
                     result.automatic += 1
                 else:
@@ -184,6 +190,30 @@ class IdentifyWorker(QObject):
             result.problem = str(exc)
         finally:
             db.save_identifications(batch)
+
+    def _propose_offline(self, db: OrganizerDb, pending: list[FileRow], result: IdentifyResult) -> None:
+        """Sin clave: una propuesta por el título, para revisarla a mano. Nunca se procesa sola."""
+        read = []
+        for index, row in enumerate(pending):
+            if self._cancelled:
+                break
+            try:
+                meta = read_metadata(row.path)
+            except (MetadataError, OSError):
+                continue
+            read.append((row, meta.title, meta.artist))
+            if index % 50 == 0:
+                self.progress.emit(index, len(pending) * 2, os.path.basename(row.path))
+        singers = known_singers((title, artist) for _, title, artist in read)
+        batch = []
+        for row, title, artist in read:
+            proposal = propose(title, artist, singers, row.path)
+            batch.append((row.id, organizer.Identification(
+                organizer.DECISION_OFFLINE, "Sin huella: propuesta por el título actual.", 0.0,
+                clean_song_title(proposal.song), main_artist(proposal.singer),
+            )))
+        db.save_identifications(batch)
+        result.offline = len(batch)
 
     def _identify_one(self, db: OrganizerDb, row: FileRow, duration: float, value: str, result: IdentifyResult) -> organizer.Identification:
         request_key = cache_key(duration, value)

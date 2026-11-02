@@ -19,7 +19,7 @@ import mutagen
 from mutagen.id3 import ID3, TIT2, TPE1, ID3NoHeaderError
 
 from . import converter, song_backup
-from .organizer import BACKUP_FOLDER, DECISION_AUTO
+from .organizer import BACKUP_FOLDER, DECISION_AUTO, DECISION_DONE, Identification
 from .organizer_db import ITEM_BACKED_UP, ITEM_DONE, ITEM_PLANNED, ITEM_RENAMING, ITEM_RESTORED, ITEM_TAGGED, OperationItem, OrganizerDb
 from .review_folder import safe_name
 from .song_format import _target_path
@@ -146,7 +146,8 @@ def _advance(db: OrganizerDb, item: OperationItem, backup_folder: str | None) ->
 
 def _back_up(db: OrganizerDb, item: OperationItem, backup_folder: str | None) -> OperationItem:
     name = safe_name(os.path.basename(item.old_path), 150)
-    target = os.path.join(backup_root(item.old_path, backup_folder), datetime.now().strftime("%Y-%m"), f"{item.id:07d} - {name}")
+    folder = os.path.join(backup_root(item.old_path, backup_folder), datetime.now().strftime("%Y-%m"))
+    target = _free_name(folder, f"{item.id:07d} - {name}")
     if not song_backup.enough_space(os.path.dirname(target), os.path.getsize(long_path(item.old_path))):
         db.fail_item(item.id, "No hay espacio para el respaldo: no se modificó la canción.")
         raise NormalizeError("No hay espacio para el respaldo: no se modificó la canción.")
@@ -171,6 +172,15 @@ def _has_new_tags(item: OperationItem) -> bool:
         return str(tags.get("TIT2")) == item.new_title and str(tags.get("TPE1")) == item.new_artist
     except (OSError, mutagen.MutagenError):
         return False
+
+
+def _free_name(folder: str, name: str) -> str:
+    """Un nombre libre: un respaldo anterior nunca se pisa, aunque la numeración se repita (si se borró la base)."""
+    stem, ext = os.path.splitext(name)
+    candidate, n = os.path.join(folder, name), 2
+    while os.path.exists(candidate):
+        candidate, n = os.path.join(folder, f"{stem} ({n}){ext}"), n + 1
+    return candidate
 
 
 def _write_tags(db: OrganizerDb, item: OperationItem) -> OperationItem:
@@ -198,6 +208,8 @@ def _finish_rename(db: OrganizerDb, item: OperationItem) -> OperationItem:
             raise NormalizeError(f"No se pudo cambiar el nombre: {exc.strerror or exc}") from exc
     info = os.stat(new)
     db.move_file(item.file_id, item.new_path, info.st_size, info.st_mtime_ns)
+    # Ya no es dudosa: la persona la corrigió o se identificó. No debe ir a pendientes.
+    db.save_identifications([(item.file_id, Identification(DECISION_DONE, "Ya está normalizada.", 0.0, item.new_title, item.new_artist))])
     return db.set_item_state(item.id, ITEM_DONE)
 
 
@@ -209,20 +221,23 @@ def restore(db: OrganizerDb, item: OperationItem) -> OperationItem:
     if not song_backup.is_intact(item.backup_path, item.backup_sha):
         raise NormalizeError("El respaldo no está o no está intacto: no se tocó nada.")
     old = long_path(item.old_path)
-    current = long_path(item.new_path) if item.new_path and os.path.exists(long_path(item.new_path)) else old
-    same_file = os.path.exists(current) and os.path.normcase(current) == os.path.normcase(old)
-    if os.path.exists(old) and not same_file and not _is_same_song(old, item.backup_path):
+    # La versión normalizada, si sigue ahí y con otro nombre: la que hay que quitar una vez restaurada la original.
+    renamed = long_path(item.new_path) if item.new_path else ""
+    if not renamed or os.path.normcase(renamed) == os.path.normcase(old) or not os.path.exists(renamed):
+        renamed = ""
+    if os.path.exists(old) and not _is_same_song(old, item.backup_path):
         raise NormalizeError(f"Ya hay otro archivo en «{os.path.basename(item.old_path)}»: no se pisó.")
-    if os.path.exists(current) and not same_file and not _is_same_song(current, item.backup_path):
-        raise NormalizeError(f"«{os.path.basename(current)}» ya no es esta canción: no se tocó.")
+    if renamed and not _is_same_song(renamed, item.backup_path):
+        raise NormalizeError(f"«{os.path.basename(renamed)}» ya no es esta canción: no se tocó.")
     temp = f"{old}.restaurando.tmp"
     try:
+        os.makedirs(os.path.dirname(old), exist_ok=True)
         digest = song_backup.make_backup(item.backup_path, temp)
         if digest != item.backup_sha:
             raise NormalizeError("La copia restaurada no salió idéntica: no se tocó nada.")
         os.replace(temp, old)
-        if os.path.exists(current) and not same_file:
-            os.remove(current)
+        if renamed:
+            os.remove(renamed)
     except (OSError, song_backup.BackupError) as exc:
         raise NormalizeError(f"No se pudo restaurar: {getattr(exc, 'strerror', None) or exc}") from exc
     finally:
@@ -233,6 +248,7 @@ def restore(db: OrganizerDb, item: OperationItem) -> OperationItem:
                 pass
     info = os.stat(old)
     db.move_file(item.file_id, item.old_path, info.st_size, info.st_mtime_ns)
+    db.forget_identification(item.file_id)  # al analizar se decide otra vez, sin repetir la consulta
     return db.set_item_state(item.id, ITEM_RESTORED)
 
 

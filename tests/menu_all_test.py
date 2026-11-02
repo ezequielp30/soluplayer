@@ -126,7 +126,7 @@ def expectation(label, before, after, dialogs, urls):
         "Buscar canciones repetidas…": DuplicatesDialog.__name__ in names,
         "Analizar y ajustar volumen…": LoudnessDialog.__name__ in names,
         "Convertir a MP3…": ConvertDialog.__name__ in names,
-        "Título y quién la canta…": "SongFormatDialog" in names,
+        "Título y quién la canta…": "OrganizerDialog" in names,
         "Historial de cambios en archivos…": HistoryDialog.__name__ in names,
         "Abrir registro de errores": bool(urls) or "registro" in texts.lower(),
         "Buscar actualizaciones…": "última versión" in texts,

@@ -17,7 +17,7 @@ PENDING_FOLDER = "PENDIENTES_REVISION"
 BACKUP_FOLDER = "RESPALDOS_MP3"
 _SKIPPED = frozenset(SYSTEM_FOLDERS) | frozenset(PROGRAM_FOLDERS) | {PENDING_FOLDER.casefold(), BACKUP_FOLDER.casefold()}
 
-DECISION_AUTO, DECISION_REVIEW = "automatica", "revisar"
+DECISION_AUTO, DECISION_REVIEW, DECISION_OFFLINE, DECISION_DONE = "automatica", "revisar", "sin_huella", "normalizada"
 _SAME_NAME = 0.72  # parecido a partir del cual dos títulos o dos artistas se toman por el mismo
 _GENERIC_NAME = re.compile(r"^(?:pista|track|audio|cancion|canción|song|unknown|desconocid[oa]|sin t[ií]tulo|grabaci[oó]n)?[\s_-]*\d*$", re.I)
 _VERSIONS = (
