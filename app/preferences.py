@@ -39,6 +39,37 @@ class Preferences:
     def ask_titles_on_import(self, value: bool) -> None:
         self._s.setValue(self.ASK_TITLES, bool(value))
 
+    ACOUSTID_KEY = "preferences/acoustid_key"
+    AUTO_SCORE = "preferences/organizer_auto_score"
+    STRONG_SCORE = "preferences/organizer_strong_score"
+    MAX_DURATION_DIFF = "preferences/organizer_max_duration_diff"
+
+    @property
+    def acoustid_key(self) -> str:
+        return str(self._s.value(self.ACOUSTID_KEY, "")).strip()
+
+    @acoustid_key.setter
+    def acoustid_key(self, value: str) -> None:
+        self._s.setValue(self.ACOUSTID_KEY, value.strip())
+
+    @property
+    def confidence(self):
+        """Niveles de confianza del organizador. Si un valor está dañado vuelve al de fábrica."""
+        from .organizer import Confidence
+
+        factory = Confidence()
+        return Confidence(
+            _number(self._s.value(self.AUTO_SCORE), factory.auto_score, 0.5, 1.0),
+            _number(self._s.value(self.STRONG_SCORE), factory.strong_score, 0.5, 1.0),
+            _number(self._s.value(self.MAX_DURATION_DIFF), factory.max_duration_diff_s, 0.0, 60.0),
+        )
+
+    @confidence.setter
+    def confidence(self, value) -> None:
+        self._s.setValue(self.AUTO_SCORE, value.auto_score)
+        self._s.setValue(self.STRONG_SCORE, value.strong_score)
+        self._s.setValue(self.MAX_DURATION_DIFF, value.max_duration_diff_s)
+
     CHECK_UPDATES = "preferences/check_updates"
 
     @property

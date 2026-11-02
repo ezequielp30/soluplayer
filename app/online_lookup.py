@@ -30,7 +30,7 @@ from .utils import no_markup, normalize_text
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = f"ReproductorMusica/{__version__} (aplicacion de escritorio)"
+USER_AGENT = f"ReproductorMusica/{__version__} ( https://github.com/ezequielp30/soluplayer )"  # MusicBrainz pide un contacto
 TIMEOUT_S = 12
 
 

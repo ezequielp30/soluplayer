@@ -3,6 +3,7 @@ restaurar un respaldo de la biblioteca no borra lo analizado. Cada hilo abre su 
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -10,11 +11,27 @@ from pathlib import Path
 from typing import Iterable
 
 from .config import data_dir
+from .organizer import Identification
 from .utils import path_key
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STATUS_NEW, STATUS_ANALYZED, STATUS_DAMAGED = "nuevo", "analizado", "danado"
 
+_IDENTIFICATIONS = (
+    """CREATE TABLE IF NOT EXISTS identifications (
+        file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+        decision TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        score REAL NOT NULL,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        version TEXT NOT NULL,
+        recording_id TEXT NOT NULL,
+        candidates TEXT NOT NULL,
+        identified_at REAL NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_identifications_decision ON identifications(decision)",
+)
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS files (
         id INTEGER PRIMARY KEY,
@@ -61,7 +78,7 @@ class OrganizerDb:
         self.conn.execute("PRAGMA journal_mode = WAL")
         if self.conn.execute("PRAGMA user_version").fetchone()[0] < SCHEMA_VERSION:
             with self.conn:
-                for statement in _SCHEMA:
+                for statement in (*_SCHEMA, *_IDENTIFICATIONS):  # todas con IF NOT EXISTS
                     self.conn.execute(statement)
                 self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
@@ -82,6 +99,7 @@ class OrganizerDb:
                     )
                 elif (row["size"], row["mtime_ns"]) != (size, mtime_ns):
                     self.conn.execute("DELETE FROM fingerprints WHERE file_id = ?", (row["id"],))
+                    self.conn.execute("DELETE FROM identifications WHERE file_id = ?", (row["id"],))
                     self.conn.execute(
                         "UPDATE files SET path = ?, size = ?, mtime_ns = ?, status = ?, problem = NULL WHERE id = ?",
                         (path, size, mtime_ns, STATUS_NEW, row["id"]),
@@ -107,6 +125,38 @@ class OrganizerDb:
     def fingerprint(self, file_id: int) -> tuple[float, str] | None:
         row = self.conn.execute("SELECT duration_s, fingerprint FROM fingerprints WHERE file_id = ?", (file_id,)).fetchone()
         return (row["duration_s"], row["fingerprint"]) if row else None
+
+    def pending_identification(self) -> list[FileRow]:
+        rows = self.conn.execute(
+            "SELECT f.* FROM files f LEFT JOIN identifications i ON i.file_id = f.id "
+            "WHERE f.status = ? AND i.file_id IS NULL ORDER BY f.id",
+            (STATUS_ANALYZED,),
+        )
+        return [self._row(r) for r in rows]
+
+    def save_identifications(self, rows: Iterable[tuple[int, Identification]]) -> None:
+        with self.conn:
+            for file_id, item in rows:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO identifications (file_id, decision, reason, score, title, artist, version, "
+                    "recording_id, candidates, identified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (file_id, item.decision, item.reason, item.score, item.title, item.artist, item.version,
+                     item.recording_id, json.dumps(item.candidates, ensure_ascii=False), time.time()),
+                )
+
+    def identification(self, file_id: int) -> Identification | None:
+        row = self.conn.execute("SELECT * FROM identifications WHERE file_id = ?", (file_id,)).fetchone()
+        if row is None:
+            return None
+        return Identification(
+            row["decision"], row["reason"], row["score"], row["title"], row["artist"], row["version"],
+            row["recording_id"], tuple(json.loads(row["candidates"])),
+        )
+
+    def forget_identifications(self) -> None:
+        """Para decidir otra vez (cambiaron los niveles de confianza). Las respuestas de la caché se conservan."""
+        with self.conn:
+            self.conn.execute("DELETE FROM identifications")
 
     def counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self.conn.execute("SELECT status, COUNT(*) AS n FROM files GROUP BY status")}
