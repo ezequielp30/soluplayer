@@ -39,6 +39,17 @@ class Preferences:
     def ask_titles_on_import(self, value: bool) -> None:
         self._s.setValue(self.ASK_TITLES, bool(value))
 
+    CHECK_UPDATES = "preferences/check_updates"
+
+    @property
+    def check_updates(self) -> bool:
+        """Al abrir, preguntar a GitHub (como mucho una vez al día) si hay una versión nueva."""
+        return self._s.value(self.CHECK_UPDATES, True, type=bool)
+
+    @check_updates.setter
+    def check_updates(self, value: bool) -> None:
+        self._s.setValue(self.CHECK_UPDATES, bool(value))
+
     ONLINE_SOURCES = "preferences/online_sources"
     ONLINE_COVERS = "preferences/online_covers"
 

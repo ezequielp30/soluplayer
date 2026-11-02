@@ -21,6 +21,8 @@ from .ui.main_window import MainWindow
 
 log = logging.getLogger(__name__)
 
+UPDATE_CHECK_DELAY_MS = 10000  # que primero abra la ventana y empiece la música
+
 
 def _install_spanish(app: QApplication) -> None:
     """Textos propios de Qt en español (menú del clic derecho en los campos de texto: «Copiar», «Pegar»,
@@ -190,6 +192,7 @@ def run() -> int:
     window.show()
     QTimer.singleShot(0, window.startup_checks)
     QTimer.singleShot(1500, window.sync_volume_annotations)
+    QTimer.singleShot(UPDATE_CHECK_DELAY_MS, window.check_updates_on_start)
     if paths:
         server.enqueue(paths)  # se juntan con los de otras copias abiertas a la vez
     server.set_handler(window.open_files)

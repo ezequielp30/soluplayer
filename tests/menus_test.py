@@ -44,7 +44,7 @@ BEFORE = [
  ("&Herramientas", [("Buscar datos en &internet…", "Ctrl+Shift+I", True), ("Buscar canciones &repetidas…", "Ctrl+Shift+D", True),
    ("Analizar y ajustar &volumen…", "Ctrl+Shift+V", True), ("Convertir a &MP3…", "Ctrl+Shift+M", True), ("&Título y quién la canta…", "", True), "—",
    ("&Historial de cambios en archivos…", "Ctrl+Shift+H", True)]),
- ("A&yuda", [("Abrir registro de errores", "", True), "—", ("Acerca de…", "", True)]),
+ ("A&yuda", [("Abrir registro de errores", "", True), "—", ("Buscar actualizaciones…", "", True), ("Acerca de…", "", True)]),
 ]
 
 print("[1. Ventana principal con los menús del archivo]")
@@ -59,7 +59,7 @@ win.act_shuffle.setChecked(True); spin(50)
 check("  activa el orden aleatorio del reproductor", win.player.shuffle if hasattr(win.player, "shuffle") else True)
 win.act_shuffle.setChecked(False)
 names = {a.objectName() for a in win.findChildren(mw.QAction) if a.objectName().startswith("act_")}
-check("las 31 opciones tienen su nombre de objeto", len(names) == 31, len(names))
+check("las 32 opciones tienen su nombre de objeto", len(names) == 32, len(names))
 win.close()
 
 print("[2. Cambios hechos en el editor]")

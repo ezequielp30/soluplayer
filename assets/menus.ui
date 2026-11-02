@@ -92,6 +92,7 @@
     </property>
     <addaction name="act_error_log"/>
     <addaction name="separator"/>
+    <addaction name="act_check_updates"/>
     <addaction name="act_about"/>
    </widget>
    <addaction name="menu_archivo"/>
@@ -317,6 +318,11 @@
   <action name="act_error_log">
    <property name="text">
     <string>Abrir registro de errores</string>
+   </property>
+  </action>
+  <action name="act_check_updates">
+   <property name="text">
+    <string>Buscar actualizaciones…</string>
    </property>
   </action>
   <action name="act_about">

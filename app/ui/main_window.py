@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPushButton,
     QProgressDialog,
     QSplitter,
     QVBoxLayout,
@@ -33,7 +34,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..config import APP_NAME, AUDIO_FILE_FILTER, AUTHOR_NAME, CONTACT_EMAIL, DISCLAIMER, ORG_NAME
 from ..database import Database, DuplicatePathError, available_paths
-from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, song_format, title_tags, win_audio
+from .. import backup, error_log, file_manager, library_cleanup, media_keys, playlist_files, review_folder, song_format, title_tags, updates, win_audio
 from ..config import data_dir, playlists_backup_dir, resource_path
 from ..artwork import cover_hash
 from ..equalizer import EqSettings
@@ -86,6 +87,7 @@ from .sidebar import Sidebar
 log = logging.getLogger(__name__)
 
 FILE_TITLES_DELAY_MS = 5000  # que primero abra la ventana y empiece la música
+UPDATE_CHECK_EVERY_S = 24 * 3600
 
 _VIEW_TITLES = {
     "recent": "Recientes",
@@ -156,6 +158,16 @@ class MainWindow(QMainWindow):
         self._tags_waiting: list[tuple[int, str]] = []
         self._tags_full_scan = False
         self._closing = False
+        self._update_thread: QThread | None = None
+        self._update_worker: updates.UpdateCheckWorker | None = None
+        self._update_page = updates.RELEASES_PAGE
+        self._update_notice = QPushButton()
+        self._update_notice.setObjectName("UpdateNotice")
+        self._update_notice.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_notice.setToolTip("Abre la página de descarga")
+        self._update_notice.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_page)))
+        self._update_notice.hide()
+        self.statusBar().addPermanentWidget(self._update_notice)
         self._import_worker: ImportWorker | None = None
         self._after_import = None  # qué hacer al terminar una importación pedida por una herramienta
         self._quiet_import = False  # importación para una herramienta: sin el resumen final si todo salió bien
@@ -248,6 +260,7 @@ class MainWindow(QMainWindow):
             "act_song_format": self._open_song_format,
             "act_history": self._open_history,
             "act_error_log": self._open_error_log,
+            "act_check_updates": self._act_check_updates,
             "act_about": self._about,
         }
         spec, self._menu_warning = menu_loader.load()
@@ -555,6 +568,7 @@ class MainWindow(QMainWindow):
                 # del programa se espera a los hilos pendientes (application.run).
                 worker_runner.keep_alive(self._import_thread)
         self._closing = True
+        self._forget_update_check()
         if self._tags_worker is not None:
             # Termina el archivo que está grabando y sale; lo que falte se hace al volver a abrir.
             try:
@@ -2478,6 +2492,85 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Registro de errores", "Todavía no hay nada registrado.")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    # ================================================================== versiones nuevas
+
+    def check_updates_on_start(self) -> None:
+        """Avisa de lo que ya se sabe y, como mucho una vez al día, pregunta a GitHub. Nunca interrumpe."""
+        if self._closing or not self.prefs.check_updates:
+            return
+        self._show_update_notice(str(self.settings.value("updates/latest", "")), str(self.settings.value("updates/page", updates.RELEASES_PAGE)))
+        last = self.settings.value("updates/last_check", 0.0, type=float)
+        if not 0 <= time.time() - last < UPDATE_CHECK_EVERY_S:
+            self._start_update_check(asked=False)
+
+    def _act_check_updates(self) -> None:
+        if self._update_thread is None:
+            self.statusBar().showMessage("Buscando actualizaciones…", 5000)
+            self._start_update_check(asked=True)
+
+    def _start_update_check(self, asked: bool) -> None:
+        if self._update_thread is not None:
+            return
+        self._update_thread = QThread(self)
+        self._update_worker = updates.UpdateCheckWorker()
+        self._update_worker.moveToThread(self._update_thread)
+        self._update_thread.started.connect(self._update_worker.run)
+        self._update_worker.finished.connect(lambda release, problem: self._on_update_checked(release, problem, asked))
+        self._update_thread.start()
+
+    def _on_update_checked(self, release: updates.Release | None, problem: str, asked: bool) -> None:
+        self._stop_update_thread()
+        if release is not None:
+            self.settings.setValue("updates/last_check", time.time())
+            self.settings.setValue("updates/latest", release.version)
+            self.settings.setValue("updates/page", release.url)
+            self._show_update_notice(release.version, release.url)
+        if not asked:
+            return
+        if release is None:
+            QMessageBox.warning(self, "Buscar actualizaciones", problem)
+        elif not updates.is_newer(release.version):
+            ask(self, "Buscar actualizaciones", f"Tienes la última versión ({__version__}).",
+                [("Aceptar", QMessageBox.ButtonRole.AcceptRole)], QMessageBox.Icon.Information)
+        elif ask(
+            self, "Buscar actualizaciones", f"Hay una versión nueva: {release.version}. Tienes la {__version__}.",
+            [("Ir a la descarga", QMessageBox.ButtonRole.AcceptRole), ("Ahora no", QMessageBox.ButtonRole.RejectRole)],
+            QMessageBox.Icon.Information, "Tu biblioteca y tus playlists se conservan al instalarla.",
+        ) == 0:
+            QDesktopServices.openUrl(QUrl(release.url))
+
+    def _show_update_notice(self, version: str, page: str) -> None:
+        if updates.is_newer(version):
+            self._update_page = page if page.startswith(updates.RELEASES_PAGE) else updates.RELEASES_PAGE
+            self._update_notice.setText(f"Versión {version} disponible")
+            self._update_notice.show()
+        else:
+            self._update_notice.hide()
+
+    def _stop_update_thread(self) -> None:
+        if self._update_thread is not None:
+            self._update_thread.quit()
+            if self._update_thread.wait(30000):
+                self._update_thread.deleteLater()
+            else:
+                worker_runner.keep_alive(self._update_thread)
+        if self._update_worker is not None:
+            self._update_worker.deleteLater()
+        self._update_thread = self._update_worker = None
+
+    def _forget_update_check(self) -> None:
+        """Al cerrar: la consulta termina sola y su respuesta ya no le importa a nadie."""
+        if self._update_thread is None:
+            return
+        try:
+            self._update_worker.finished.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+        self._update_worker.finished.connect(self._update_thread.quit)
+        self._update_thread.setParent(None)
+        worker_runner.keep_alive(self._update_thread)
+        self._update_thread = self._update_worker = None
 
     # ================================================================== otros
 

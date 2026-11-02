@@ -289,6 +289,8 @@ QPushButton#PrimaryButton:focus {{ border: 2px solid {p.accent_soft}; }}
 QPushButton#DangerButton {{ color: {p.danger}; border: 1px solid {p.danger}; }}
 QPushButton#DangerButton:disabled {{ color: {p.faint}; border: 1px solid {p.border}; }}
 #DialogNote {{ color: {p.muted}; }}
+QPushButton#UpdateNotice {{ background: transparent; border: none; padding: 0 8px; color: {p.accent_text}; font-weight: 600; }}
+QPushButton#UpdateNotice:hover {{ background: {p.hover}; }}
 QToolButton#InfoButton {{
     border: 1px solid {p.border};
     border-radius: 9px;

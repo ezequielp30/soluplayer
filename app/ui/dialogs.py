@@ -487,6 +487,11 @@ class PreferencesDialog(QDialog):
         self.online_covers.setChecked(prefs.online_covers)
         online.addSpacing(6)
         online.addWidget(self.online_covers)
+        self.check_updates = QCheckBox("Avisar cuando haya una versión nueva")
+        self.check_updates.setChecked(prefs.check_updates)
+        self.check_updates.setToolTip("Una vez al día, al abrir, consulta GitHub. Nunca descarga ni instala nada por su cuenta.")
+        online.addSpacing(6)
+        online.addWidget(self.check_updates)
         online.addStretch(1)
 
         # Biblioteca y programa
@@ -561,6 +566,7 @@ class PreferencesDialog(QDialog):
         self._prefs.theme = self.theme_picker.selected()
         self._prefs.online_sources = chosen
         self._prefs.online_covers = self.online_covers.isChecked()
+        self._prefs.check_updates = self.check_updates.isChecked()
         self._prefs.song_columns = [k for k, box in self.column_boxes.items() if box.isChecked()]
         self._prefs.gapless = self.gapless.isChecked()
         self._prefs.skip_silence = self.skip_silence.isChecked()

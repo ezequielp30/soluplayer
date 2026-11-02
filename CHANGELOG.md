@@ -2,6 +2,13 @@
 
 Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
 
+## 1.27.0 — 2026-11-01 (aviso de versiones nuevas)
+
+- **El programa avisa cuando hay una versión nueva:** aparece «Versión X disponible» en la barra inferior, y al pulsarlo
+  se abre la página de descarga. Nunca descarga ni instala nada por su cuenta.
+- **También a mano:** *Ayuda → Buscar actualizaciones…*.
+- Consulta GitHub como mucho una vez al día, al abrir. Se puede desactivar en *Preferencias → Internet*.
+
 ## 1.26.0 — 2026-11-01 (temas modernos)
 
 - **Temas nuevos:** *Ónix*, *Medianoche*, *Esmeralda*, *Rubí*, *Ámbar* y *Alto contraste* (oscuros); *Nieve*, *Perla*,

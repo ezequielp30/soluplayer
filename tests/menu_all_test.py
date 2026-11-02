@@ -85,7 +85,9 @@ def walk(menu, path):
         else:
             yield path + [a.text().replace("&", "")], a
 all_actions = [(p, a) for top in win.menuBar().actions() for p, a in walk(top.menu(), [top.text().replace("&", "")])]
-check("el menú tiene todas las opciones (31)", len(all_actions) == 31, len(all_actions))
+check("el menú tiene todas las opciones (32)", len(all_actions) == 32, len(all_actions))
+from app import __version__, updates
+updates.fetch_latest = lambda: updates.Release(__version__, updates.RELEASES_PAGE)  # la prueba no consulta GitHub
 
 def state():
     p = win.player
@@ -127,6 +129,7 @@ def expectation(label, before, after, dialogs, urls):
         "Título y quién la canta…": "SongFormatDialog" in names,
         "Historial de cambios en archivos…": HistoryDialog.__name__ in names,
         "Abrir registro de errores": bool(urls) or "registro" in texts.lower(),
+        "Buscar actualizaciones…": "última versión" in texts,
         "Acerca de…": "Reproductor" in texts and "Ezequiel Perez" in texts and "ezequielp30@gmail.com" in texts
                       and "propia responsabilidad" in texts,
     }
