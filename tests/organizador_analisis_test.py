@@ -81,8 +81,10 @@ def some_broken(path):
 result = run([music], some_broken)
 row = db.file(broken)
 check("se marca y no detiene lo demás", result.damaged == 1 and row.status == STATUS_DAMAGED and row.problem == "parece dañado", result)
+calls.clear(); run([music], some_broken)
+check("  sigue dañada si sigue sin poder leerse, y no se repite lo demás", db.file(broken).status == STATUS_DAMAGED and not calls, calls)
 calls.clear(); run([music], good)
-check("  no se reintenta si no cambió", broken not in calls and db.file(broken).status == STATUS_DAMAGED, calls)
+check("  un fallo pasajero se arregla al analizar otra vez, sin que cambie el archivo", broken in calls and db.file(broken).status == STATUS_ANALYZED and db.file(broken).problem is None, calls)
 fake_mp3(broken, b"reparado"); run([music], good)
 check("  si cambia, se vuelve a mirar", db.file(broken).status == STATUS_ANALYZED)
 

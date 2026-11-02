@@ -161,6 +161,16 @@ def file_stem(title: str, artist: str) -> str:
     return f"{song} - {singer}" if singer else song
 
 
+def has_file_name(title: str, artist: str) -> bool:
+    """¿Título y artista dejan algo escribible? El nombre del archivo lleva los dos."""
+    return bool(_plain_name_part(title)) and bool(_plain_name_part(artist))
+
+
+def has_foreign_letters(text: str) -> bool:
+    """¿Lleva letras que el nombre del archivo perdería? «夜に駆ける (En Vivo)» se quedaría solo en «En Vivo»."""
+    return any(c.isalpha() and not c.isascii() for c in unicodedata.normalize("NFKD", text.translate(_NAME_LETTERS)))
+
+
 def _segments(text: str) -> list[str]:
     parts: list[str] = []
     for raw in _SEPARATOR.split(_protect(text)):

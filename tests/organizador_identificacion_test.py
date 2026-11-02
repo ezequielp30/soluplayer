@@ -81,6 +81,21 @@ check("un número que dice la base de datos no se recorta", item.title == "99 - 
 item = identify([match(1.0, rec(artists=("Earth, Wind & Fire",)))], 200, ["Santo"], conf)
 check("un artista que la base da como uno se conserva, aunque lleve coma", item.artist == "Earth, Wind & Fire", item.artist)
 
+item = identify([match(1.0, rec(artists=("米津玄師",)))], 200, ["Santo"], conf)
+check("artista en otro alfabeto: queda para revisar, con sus datos y su motivo", item.decision == DECISION_REVIEW and item.artist == "米津玄師" and "latinas" in item.reason, item)
+item = identify([match(1.0, rec("夜に駆ける"))], 200, ["x y z"], conf)
+check("título en otro alfabeto: igual", item.decision == DECISION_REVIEW and item.title == "夜に駆ける", item)
+item = identify([match(1.0, rec("夜に駆ける", types=("Live",)))], 200, ["x y z"], conf)
+check("  aunque la versión deje algo escribible: no se llamaría solo «En Vivo»", item.decision == DECISION_REVIEW and "latinas" in item.reason and item.title == "夜に駆ける (En Vivo)", item)
+for title, artists in (("Гимн (Remix)", ("A",)), ("夜に駆ける 2", ("A",)), ("Love 爱", ("A",)), ("Santo", ("米津玄師 Band",))):
+    item = identify([match(1.0, rec(title, artists=artists))], 200, ["x y z"], conf)
+    check(f"  mezclado «{title}» «{artists[0]}»: no pierde letras en el nombre sin que nadie lo decida", item.decision == DECISION_REVIEW and "latinas" in item.reason, item)
+item = identify([match(1.0, rec("♪♪♪"))], 200, ["x y z"], conf)
+check("  un título sin nada escribible tampoco es automático", item.decision == DECISION_REVIEW and "latinas" in item.reason, item)
+for title, artists in (("¿Qué Será? Ñandú", ("Björk",)), ("Øresund", ("Mötley Crüe",)), ("7 Días (En Vivo)", ("Ana & Łukasz",))):
+    item = identify([match(1.0, rec(title, artists=artists))], 200, ["x y z"], conf)
+    check(f"  latinas con tildes «{title}» «{artists[0]}»: sigue automática", item.decision == DECISION_AUTO, item)
+
 print("[Niveles configurables]")
 item = identify([match(0.8)], 200, ["Santo"], Confidence(auto_score=0.7))
 check("cambia el mínimo de la huella", item.decision == DECISION_AUTO, item)

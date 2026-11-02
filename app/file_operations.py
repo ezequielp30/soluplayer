@@ -153,6 +153,7 @@ class FileOperations:
         self._release = release_files
         self._forget = forget_tracks
         self._on_changed = on_changed
+        self._organizer_paths: dict[int, str] = {}  # canción -> ruta, hasta avisar al Historial anterior
         self._confirm_without_backup = confirm_without_backup
 
     # ------------------------------------------------------------------ comunes
@@ -166,7 +167,19 @@ class FileOperations:
         return True
 
     def changed(self) -> None:
+        self._follow_organizer_renames()
         self._on_changed()
+
+    def _follow_organizer_renames(self) -> None:
+        """El Historial de la herramienta anterior tiene que encontrar los archivos que el organizador movió."""
+        if not self._organizer_paths:
+            return
+        try:
+            song_format.follow_renames(self._organizer_paths)
+        except OSError as exc:  # el registro no es la canción: la biblioteca se actualiza igual, y se reintenta la próxima vez
+            log.error("No se pudo actualizar el Historial de «Título y quién la canta»: %s", exc)
+            return
+        self._organizer_paths = {}
 
     def prepare_files(self, reason: str, track_ids: set[int]) -> bool:
         """Antes de que una herramienta cambie archivos: respaldo y soltar las canciones."""
@@ -704,6 +717,7 @@ class FileOperations:
             # Lo corregido a mano o con «Datos en internet» no está en el archivo: restaurar se lo devuelve.
             organizer_db.save_library_data(item.id, json.dumps(self.db.song_data(track_id), ensure_ascii=False))
             self.db.set_song_data(track_id, item.new_path, item.new_title, item.new_artist, UNKNOWN_ALBUM, UNKNOWN_GENRE, None)
+            self._organizer_paths[track_id] = item.new_path
         organizer_db.mark_library_synced(item.id)
 
     def sync_organizer_pending(self, organizer_db, pending) -> None:
@@ -714,6 +728,7 @@ class FileOperations:
         track_id = self.db.track_id_for_path(source)
         if track_id is not None:
             self.db.update_track_paths([(track_id, target)])
+            self._organizer_paths[track_id] = target
         organizer_db.mark_pending_synced(pending.id)
 
     def sync_organizer_restored(self, organizer_db, item) -> None:
@@ -731,6 +746,7 @@ class FileOperations:
                 self.db.restore_song(track_id, item.old_path, clean_title(meta.title), meta.artist, meta.album, meta.genre, scanned.cover_hash, scanned.cover_bytes)
             else:  # no se pudo leer ahora: al menos que apunte a su archivo
                 self.db.update_track_paths([(track_id, item.old_path)])
+            self._organizer_paths[track_id] = item.old_path
         organizer_db.mark_library_synced(item.id)
 
     def reconcile_organizer(self) -> int:
@@ -764,7 +780,7 @@ class FileOperations:
         finally:
             db.close()
         if fixed:
-            self._on_changed()
+            self.changed()
         return fixed
 
     def reconcile_interrupted_format(self) -> int:

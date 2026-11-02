@@ -193,7 +193,9 @@ class OrganizerDb:
                     self.conn.execute("UPDATE files SET path = ? WHERE id = ?", (path, row["id"]))
 
     def pending_analysis(self) -> list[FileRow]:
-        return [self._row(r) for r in self.conn.execute("SELECT * FROM files WHERE status = ? ORDER BY id", (STATUS_NEW,))]
+        """Lo nuevo y lo que se marcó dañado: un fallo puede ser pasajero, y al analizar otra vez se comprueba."""
+        rows = self.conn.execute("SELECT * FROM files WHERE status IN (?, ?) ORDER BY id", (STATUS_NEW, STATUS_DAMAGED))
+        return [self._row(r) for r in rows]
 
     def save_results(self, fingerprints: Iterable[tuple[int, float, str]], damaged: Iterable[tuple[int, str]]) -> None:
         """Guarda un lote de una vez: un corte de luz pierde como mucho el lote en curso."""
@@ -290,9 +292,13 @@ class OrganizerDb:
         rows = self.conn.execute("SELECT * FROM pending WHERE state IN (?, ?) ORDER BY id", (PENDING_MOVING, PENDING_RETURNING))
         return [self._pending(r) for r in rows]
 
-    def set_pending_state(self, pending_id: int, state: str) -> PendingSong:
+    def set_pending_state(self, pending_id: int, state: str, moved: bool = True) -> PendingSong:
+        """`moved` False: el archivo sigue donde estaba, así que la biblioteca no tiene de qué enterarse."""
         with self.conn:
-            self.conn.execute("UPDATE pending SET state = ?, library_synced = 0 WHERE id = ?", (state, pending_id))
+            if moved:
+                self.conn.execute("UPDATE pending SET state = ?, library_synced = 0 WHERE id = ?", (state, pending_id))
+            else:
+                self.conn.execute("UPDATE pending SET state = ? WHERE id = ?", (state, pending_id))
         return self.pending_song(pending_id)
 
     def remove_pending(self, pending_id: int) -> None:

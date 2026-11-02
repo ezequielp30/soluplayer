@@ -216,6 +216,58 @@ rest = nz.restore(odb, odb.item(it.id)); win.ops.sync_organizer_restored(odb, re
 check("  restaurada: vuelven el título y el álbum corregidos, que no estaban en el archivo", db.song_data(tid)["title"] == "Corregida a mano" and db.song_data(tid)["album"] == "Mi Album", db.song_data(tid))
 db.remove_tracks([tid]); os.remove(one_more)
 
+print("[Historial de la herramienta anterior]")
+from app import song_format
+older = synth.mp3(os.path.join(music, "Anterior.mp3"), 5, title="Anterior", artist="canal", seed=61); db.add_tracks([scan_file(older)[0]]); tid = db.track_id_for_path(older)
+track_now = db.with_raw_text([t for t in db.all_tracks() if t.id == tid])[0]
+session = song_format.new_session(); change = song_format.plan(track_now, "Anterior", "Grupo", False); song_format.apply(session, change)
+change.done = True; song_format.set_in_library(db, change); session.status = "completada"; session.save()
+odb = organizer_db.OrganizerDb(); info = os.stat(change.new_path); odb.register([(change.new_path, info.st_size, info.st_mtime_ns)]); fid = odb.file(change.new_path).id
+it = nz.normalize(odb, odb.begin_operation(), nz.SongJob(fid, "Organizada", "Grupo"), os.path.join(work, "Respaldos")); win.ops.sync_organizer_item(odb, it); win.ops.changed()
+reread = next(s for s in song_format.list_sessions() if s.id == session.id)
+check("sigue al archivo que el organizador renombró", reread.changes[-1].new_path == it.new_path, reread.changes[-1].new_path)
+saves = []; real_save = song_format.FormatSession.save; song_format.FormatSession.save = lambda self: (saves.append(self.id), real_save(self))[1]
+song_format.follow_renames({tid: it.new_path, 999999: "x"}); song_format.FormatSession.save = real_save
+reread = next(s for s in song_format.list_sessions() if s.id == session.id)
+check("  cada registro se guarda una sola vez, y no inventa canciones", saves.count(session.id) == 1 and all(c.new_path != "x" for c in reread.changes) and len(reread.changes) == 1, saves)
+rest = nz.restore(odb, odb.item(it.id)); win.ops.sync_organizer_restored(odb, rest); odb.close(); win.ops.changed()
+reread = next(s for s in song_format.list_sessions() if s.id == session.id)
+check("  y al restaurar también", reread.changes[-1].new_path == change.new_path, reread.changes[-1].new_path)
+from dataclasses import replace
+from app import pending_review as pr
+from app.organizer import DECISION_REVIEW, Identification
+def followed():
+    return next(s for s in song_format.list_sessions() if s.id == session.id).changes[-1].new_path
+dudosa = Identification(DECISION_REVIEW, "Dudosa.")
+odb = organizer_db.OrganizerDb()
+pend = pr.move_to_pending(odb, fid, music, dudosa); win.ops.sync_organizer_pending(odb, pend); win.ops.changed()
+check("  y al llevarla a pendientes", followed() == pend.pending_path, followed())
+back = pr.return_to_origin(odb, pend); win.ops.sync_organizer_pending(odb, back); win.ops.changed()
+check("  y al devolverla", followed() == change.new_path, followed())
+pend = pr.move_to_pending(odb, fid, music, dudosa); odb.close()
+check("  y al poner al día tras un corte", win.ops.reconcile_organizer() >= 1 and followed() == pend.pending_path, followed())
+odb = organizer_db.OrganizerDb(); back = pr.return_to_origin(odb, odb.open_pending(fid)); win.ops.sync_organizer_pending(odb, back); win.ops.changed()
+pend = pr.move_to_pending(odb, fid, music, dudosa)
+notified, real_notify, real_write = [], win.ops._on_changed, song_format.journal.write_atomic
+def refuse(path, data): raise PermissionError(13, "En uso")
+win.ops._on_changed = lambda: notified.append(1); song_format.journal.write_atomic = refuse
+try:
+    win.ops.sync_organizer_pending(odb, pend); win.ops.changed()
+finally:
+    song_format.journal.write_atomic = real_write
+check("si el registro no se puede guardar, la biblioteca se actualiza igual", notified == [1] and followed() == change.new_path, notified)
+win.ops.changed(); win.ops._on_changed = real_notify
+check("  y el registro se pone al día la próxima vez", notified == [1, 1] and followed() == pend.pending_path, followed())
+back = pr.return_to_origin(odb, pend); win.ops.sync_organizer_pending(odb, back); win.ops.changed(); odb.close()
+check("  (de vuelta en su carpeta)", followed() == change.new_path and os.path.isfile(change.new_path))
+repeated = song_format.new_session(); repeated.status = "completada"
+repeated.changes = [replace(change, track_id=424242, new_path="primero"), replace(change, track_id=424242, new_path="deshecho", undone=True), replace(change, track_id=424243, new_path="otra")]; repeated.save()
+song_format.follow_rename(424242, "nuevo")
+reread = next(s for s in song_format.list_sessions() if s.id == repeated.id)
+check("en un registro con la canción repetida, solo cambia su último cambio vigente", [c.new_path for c in reread.changes] == ["nuevo", "deshecho", "otra"], [c.new_path for c in reread.changes])
+os.remove(repeated.path)
+db.remove_tracks([tid]); os.remove(change.new_path)
+
 print("[Clave mala]")
 win.prefs.acoustid_key = "mala"; odb = organizer_db.OrganizerDb(); odb.forget_identifications(); odb.conn.execute("DELETE FROM api_cache"); odb.conn.commit(); odb.close()
 def reject(*a): raise acoustid_lookup.InvalidKey

@@ -65,12 +65,12 @@ def return_to_origin(db: OrganizerDb, pending: PendingSong) -> PendingSong:
         raise PendingError("La canción ya no está en pendientes.")
     if os.path.exists(origin):
         raise PendingError(f"Ya hay otro archivo en «{pending.original_path}»: la canción sigue en pendientes.")
-    pending = db.set_pending_state(pending.id, PENDING_RETURNING)
+    pending = db.set_pending_state(pending.id, PENDING_RETURNING, moved=False)
     try:
         os.makedirs(os.path.dirname(origin), exist_ok=True)
         os.rename(current, origin)
     except OSError as exc:
-        db.set_pending_state(pending.id, PENDING_WAITING)
+        db.set_pending_state(pending.id, PENDING_WAITING, moved=False)
         raise PendingError(f"No se pudo devolver: {exc.strerror or exc}") from exc
     _point_file_at(db, pending.file_id, pending.original_path)
     _remove_empty_folders(os.path.dirname(pending.pending_path))
@@ -110,7 +110,7 @@ def reconcile(db: OrganizerDb) -> int:
             _point_file_at(db, pending.file_id, pending.original_path)
             _remove_empty_folders(os.path.dirname(pending.pending_path))
             db.set_pending_state(pending.id, PENDING_RETURNED)
-        else:
-            db.set_pending_state(pending.id, PENDING_WAITING)
+        else:  # no llegó a volver: sigue donde la biblioteca ya sabe
+            db.set_pending_state(pending.id, PENDING_WAITING, moved=False)
         fixed += 1
     return fixed

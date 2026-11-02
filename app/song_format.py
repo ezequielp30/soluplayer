@@ -309,10 +309,17 @@ def undo(session: FormatSession, db) -> tuple[int, list[str]]:
 
 def follow_rename(track_id: int, new_path: str) -> None:
     """El archivo se renombró por fuera después de aplicar: deshacer tiene que buscarlo con su nombre nuevo."""
+    follow_renames({track_id: new_path})
+
+
+def follow_renames(paths: dict[int, str]) -> None:
+    """Varios de una vez: cada registro se lee y se guarda una sola vez, aunque sean miles de canciones."""
     for session in list_sessions():
-        changes = [c for c in session.changes if c.track_id == track_id and c.done and not c.undone]
-        if changes:
-            changes[-1].new_path = new_path
+        latest = {c.track_id: c for c in session.changes if c.done and not c.undone}
+        touched = [latest[t] for t in paths if t in latest]
+        if touched:
+            for change in touched:
+                change.new_path = paths[change.track_id]
             session.save()
 
 

@@ -191,6 +191,12 @@ try:
     run(gfid, "Borrada", "A"); check("archivo que ya no está", False)
 except NormalizeError as exc:
     check("si ya no está, lo dice", "ya no está" in str(exc), exc)
+foreign, ffid = song("ajena.mp3"); kept = sha(foreign)
+for title, artist in (("夜に駆ける", "A"), ("Santo", "米津玄師")):
+    try:
+        run(ffid, title, artist); check(f"otro alfabeto «{title}» «{artist}»", False)
+    except NormalizeError as exc:
+        check(f"otro alfabeto «{title}» «{artist}»: lo explica y no toca nada", "latinas" in str(exc) and sha(foreign) == kept and db.open_item(ffid) is None, exc)
 empty, efid = song("sinnada.mp3")
 for title, artist in (("", "A"), ("Santo", ""), ("♪♪♪", "A")):
     try:

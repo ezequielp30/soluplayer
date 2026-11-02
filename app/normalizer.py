@@ -23,7 +23,7 @@ from .organizer import BACKUP_FOLDER, DECISION_AUTO, DECISION_DONE, Identificati
 from .organizer_db import ITEM_BACKED_UP, ITEM_DONE, ITEM_PLANNED, ITEM_RENAMING, ITEM_RESTORED, ITEM_TAGGED, OperationItem, OrganizerDb
 from .review_folder import safe_name
 from .song_format import _target_path
-from .title_format import confirmed_title, file_stem
+from .title_format import confirmed_title, file_stem, has_file_name
 from .title_tags import _WRITE_ERRORS, CannotTag, edit_safely
 from .utils import long_path
 
@@ -120,8 +120,10 @@ def normalize(db: OrganizerDb, operation_id: int, job: SongJob, backup_folder: s
         raise NormalizeError("La canción ya no está en el análisis.")
     # El título y el artista ya vienen decididos: de la base de datos o de la persona. Aquí no se vuelven a recortar.
     title, artist = confirmed_title(job.title), job.artist.strip()
-    if not title or not artist or not _plain_enough(title, artist):
+    if not title or not artist:
         raise NormalizeError("Falta el título o el artista.")
+    if not has_file_name(title, artist):
+        raise NormalizeError("El título o el artista no usa letras latinas: escríbelos como quieras que se llame el archivo.")
     item = db.open_item(job.file_id)
     if item is not None and (item.new_title, item.new_artist) != (title, artist):
         if item.state not in (ITEM_PLANNED, ITEM_BACKED_UP):
@@ -138,12 +140,6 @@ def normalize(db: OrganizerDb, operation_id: int, job: SongJob, backup_folder: s
         _target_for(row.path, title, artist)
         item = db.add_item(operation_id, job.file_id, row.path, tags_snapshot(row.path), title, artist)
     return _advance(db, item, backup_folder)
-
-
-def _plain_enough(title: str, artist: str) -> bool:
-    """El nombre del archivo lleva título y artista: si uno no deja nada escribible (otro alfabeto), no hay formato."""
-    stem = file_stem(title, artist)
-    return bool(stem) and " - " in stem
 
 
 def _advance(db: OrganizerDb, item: OperationItem, backup_folder: str | None) -> OperationItem:

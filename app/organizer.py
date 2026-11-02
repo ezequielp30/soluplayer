@@ -11,7 +11,7 @@ from .acoustid_lookup import Match, Recording
 from .file_locator import _SKIPPED_FOLDERS as SYSTEM_FOLDERS
 from .importer import SKIPPED_FOLDERS as PROGRAM_FOLDERS
 from .online_lookup import _similar
-from .title_format import clean_song_title, confirmed_title, main_artist
+from .title_format import clean_song_title, confirmed_title, has_file_name, has_foreign_letters, main_artist
 
 PENDING_FOLDER = "PENDIENTES_REVISION"
 BACKUP_FOLDER = "RESPALDOS_MP3"
@@ -101,10 +101,13 @@ def identify(matches: list[Match], duration_s: float, current_names: Iterable[st
     title = confirmed_title(chosen.title)
     if version and not any(pattern.search(title) for _name, pattern in _VERSIONS):  # solo si no lo dice ya el título
         title = f"{title} ({version})"
-    return Identification(
-        DECISION_AUTO, f"Huella {best.score:.0%}.", best.score, title, main_artist("", chosen.artists[0]), version,
-        chosen.recording_id, candidates,
-    )
+    artist = main_artist("", chosen.artists[0])
+    if not has_file_name(title, artist) or has_foreign_letters(f"{title} {artist}"):
+        return Identification(
+            DECISION_REVIEW, "Su título o su artista no usa solo letras latinas: escríbelos como quieras que se llame el archivo.",
+            best.score, title, artist, version, chosen.recording_id, candidates,
+        )
+    return Identification(DECISION_AUTO, f"Huella {best.score:.0%}.", best.score, title, artist, version, chosen.recording_id, candidates)
 
 
 def collect_mp3(

@@ -104,6 +104,14 @@ except pr.PendingError:
 os.remove(other); os.rmdir(os.path.join(root, "a"))
 p1b = pr.return_to_origin(db, db.open_pending(f1))
 check("su carpeta original se había borrado: la vuelve a crear", os.path.isfile(first) and p1b.state == PENDING_RETURNED)
+db.mark_pending_synced(db.open_pending(f2).id); keep_sync = db.open_pending(f2)
+real_rename = os.rename; os.rename = lambda a, b: (_ for _ in ()).throw(PermissionError(13, "En uso"))
+try:
+    pr.return_to_origin(db, keep_sync); check("no se pudo devolver", False)
+except pr.PendingError:
+    os.rename = real_rename
+    check("si no se pudo devolver, la biblioteca no tiene de qué enterarse", f2 not in {p.file_id for p in db.unsynced_pending()} and db.open_pending(f2).state == PENDING_WAITING)
+os.rename = real_rename
 lost = db.open_pending(f2); os.remove(lost.pending_path)
 try:
     pr.return_to_origin(db, lost); check("ya no está en pendientes", False)
@@ -117,8 +125,8 @@ row = db.add_pending(c1id, c1, pr.pending_path_for(c1, root), "{}", "r", "[]")
 check("  (a medias, sin llegar a moverse)", row.state == PENDING_MOVING)
 c2, c2id = song("Corte2.mp3"); target2 = pr.pending_path_for(c2, root)
 row2 = db.add_pending(c2id, c2, target2, "{}", "r", "[]"); os.makedirs(os.path.dirname(target2), exist_ok=True); os.rename(c2, target2)
-c3, c3id = song("Corte3.mp3"); row3 = pr.move_to_pending(db, c3id, root, DOUBT); db.set_pending_state(row3.id, PENDING_RETURNING); os.rename(row3.pending_path, c3)
-c4, c4id = song("Corte4.mp3"); row4 = pr.move_to_pending(db, c4id, root, DOUBT); db.set_pending_state(row4.id, PENDING_RETURNING)
+c3, c3id = song("Corte3.mp3"); row3 = pr.move_to_pending(db, c3id, root, DOUBT); db.mark_pending_synced(row3.id); db.set_pending_state(row3.id, PENDING_RETURNING, moved=False); os.rename(row3.pending_path, c3)
+c4, c4id = song("Corte4.mp3"); row4 = pr.move_to_pending(db, c4id, root, DOUBT); db.mark_pending_synced(row4.id); db.set_pending_state(row4.id, PENDING_RETURNING, moved=False)
 check("resuelve cada caso", pr.reconcile(db) == 4)
 check("no llegó a moverse: sigue en su sitio, sin anotar", db.open_pending(c1id) is None and os.path.isfile(c1))
 check("ya se había movido: queda pendiente", db.open_pending(c2id).state == PENDING_WAITING and db.file_by_id(c2id).path == target2)
@@ -126,6 +134,8 @@ check("ya había vuelto: queda devuelta", db.open_pending(c3id) is None and db.f
 check("no llegó a volver: sigue pendiente", db.open_pending(c4id).state == PENDING_WAITING)
 check("no queda nada a medias", not db.unfinished_pending() and pr.reconcile(db) == 0)
 check("la biblioteca se puede poner al día tras el corte", c2id in {p.file_id for p in db.unsynced_pending()})
+check("  la que ya había vuelto, también", c3id in {p.file_id for p in db.unsynced_pending()})
+check("  la que no llegó a volver, no: su archivo no se movió", c4id not in {p.file_id for p in db.unsynced_pending()})
 db.mark_pending_synced(db.open_pending(c2id).id); check("  y se anota", c2id not in {p.file_id for p in db.unsynced_pending()})
 
 print("[Reintentar]")
