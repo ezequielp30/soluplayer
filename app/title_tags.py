@@ -24,7 +24,7 @@ from mutagen.id3 import ID3, TIT2
 from mutagen.mp4 import MP4Tags
 from PySide6.QtCore import QObject, Signal, Slot
 
-from . import journal
+from . import journal, song_backup
 from .config import UNTAGGED_EXTENSIONS
 from .metadata import MetadataError, read_metadata
 from .utils import clean_title, long_path
@@ -177,6 +177,8 @@ def _verify(source: str, temp: str, title: str | None) -> None:
     original, edited = mutagen.File(source), mutagen.File(temp)
     if edited is None or abs(edited.info.length - original.info.length) > _LENGTH_MARGIN:
         raise ValueError("la copia con el título nuevo no coincide con el original")
+    if source.lower().endswith(".mp3") and song_backup.audio_digest(source) != song_backup.audio_digest(temp):
+        raise ValueError("el audio de la copia no quedó idéntico al original")
     if title is not None and read_metadata(temp).title != title:
         raise ValueError("la copia no quedó con el título nuevo")
 

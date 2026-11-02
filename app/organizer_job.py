@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -12,9 +11,9 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from . import acoustid_lookup, fingerprint, organizer
+from . import acoustid_lookup, fingerprint, normalizer, organizer, pending_review
 from .metadata import MetadataError, read_metadata
-from .organizer_db import FileRow, OrganizerDb
+from .organizer_db import FileRow, OrganizerDb, cache_key
 from .utils import path_key
 
 log = logging.getLogger(__name__)
@@ -187,7 +186,7 @@ class IdentifyWorker(QObject):
             db.save_identifications(batch)
 
     def _identify_one(self, db: OrganizerDb, row: FileRow, duration: float, value: str, result: IdentifyResult) -> organizer.Identification:
-        request_key = f"{int(round(duration))}:{hashlib.sha1(value.encode()).hexdigest()}"
+        request_key = cache_key(duration, value)
         raw = db.cached("acoustid", request_key, CACHE_MAX_AGE_S)
         if raw is None:
             raw = self._lookup(self._key, duration, value)
@@ -208,3 +207,227 @@ def _current_names(path: str) -> list[str]:
     except (MetadataError, OSError):
         pass
     return names
+
+
+@dataclass
+class NormalizeResult:
+    done: int = 0
+    skipped: int = 0
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (ruta, motivo)
+    cancelled: bool = False
+    operation_id: int = 0
+
+
+class NormalizeWorker(QObject):
+    """Normaliza canción por canción. Detenerlo termina la que está en curso y sale: ninguna queda a medias. Una que
+    falla se anota y no detiene a las demás. La biblioteca la actualiza el hilo principal con `applied`."""
+
+    progress = Signal(int, int, str)
+    applied = Signal(object)  # OperationItem
+    finished = Signal(object)  # NormalizeResult
+
+    def __init__(self, jobs: list, backup_folder: str | None = None, db_path=None) -> None:
+        super().__init__()
+        self._jobs = jobs
+        self._backup_folder = backup_folder
+        self._db_path = db_path
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @Slot()
+    def run(self) -> None:
+        result = NormalizeResult()
+        try:
+            db = OrganizerDb(self._db_path)
+            try:
+                result.operation_id = db.begin_operation()
+                self._normalize(db, result)
+                db.finish_operation(result.operation_id)
+            finally:
+                db.close()
+        except Exception as exc:  # nunca dejar el hilo colgado: «terminado» se avisa siempre
+            log.exception("Error inesperado al normalizar")
+            result.failed.append(("", str(exc)))
+        result.cancelled = self._cancelled
+        self.finished.emit(result)
+
+    def _normalize(self, db: OrganizerDb, result: NormalizeResult) -> None:
+        total = len(self._jobs)
+        for index, job in enumerate(self._jobs):
+            if self._cancelled:
+                return
+            row = db.file_by_id(job.file_id)
+            path = row.path if row else ""
+            self.progress.emit(index, total, os.path.basename(path))
+            try:
+                item = normalizer.normalize(db, result.operation_id, job, self._backup_folder)
+            except normalizer.NormalizeError as exc:
+                log.warning("No se normalizó %s: %s", path, exc)
+                result.failed.append((path, str(exc)))
+                continue
+            if item is None:
+                result.skipped += 1
+            else:
+                result.done += 1
+                self.applied.emit(item)
+        self.progress.emit(total, total, "")
+
+
+class RestoreWorker(QObject):
+    """Devuelve las canciones a como estaban. La biblioteca la actualiza el hilo principal con `restored`."""
+
+    progress = Signal(int, int, str)
+    restored = Signal(object)  # OperationItem
+    finished = Signal(list)  # (ruta, motivo) de las que no se pudieron restaurar
+
+    def __init__(self, items: list, db_path=None) -> None:
+        super().__init__()
+        self._items = items
+        self._db_path = db_path
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @Slot()
+    def run(self) -> None:
+        problems: list[tuple[str, str]] = []
+        try:
+            db = OrganizerDb(self._db_path)
+            try:
+                for index, item in enumerate(self._items):
+                    if self._cancelled:
+                        break
+                    self.progress.emit(index, len(self._items), os.path.basename(item.old_path))
+                    try:
+                        self.restored.emit(normalizer.restore(db, item))
+                    except normalizer.NormalizeError as exc:
+                        problems.append((item.old_path, str(exc)))
+            finally:
+                db.close()
+        except Exception as exc:  # nunca dejar el hilo colgado
+            log.exception("Error inesperado al restaurar")
+            problems.append(("", str(exc)))
+        self.finished.emit(problems)
+
+
+@dataclass
+class PendingResult:
+    moved: int = 0
+    returned: int = 0
+    normalized: int = 0
+    failed: list[tuple[str, str]] = field(default_factory=list)  # (ruta, motivo)
+    cancelled: bool = False
+
+
+class MoveToPendingWorker(QObject):
+    """Lleva a PENDIENTES_REVISION las que quedaron para revisar, sin cambiar sus nombres ni sus etiquetas. Las
+    dañadas no se mueven: no se trata de identificarlas. La biblioteca la actualiza el hilo principal con `moved`."""
+
+    progress = Signal(int, int, str)
+    moved = Signal(object)  # PendingSong
+    finished = Signal(object)  # PendingResult
+
+    def __init__(self, roots: list[str], file_ids: list[int] | None = None, db_path=None) -> None:
+        super().__init__()
+        self._roots = roots
+        self._file_ids = file_ids
+        self._db_path = db_path
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @Slot()
+    def run(self) -> None:
+        result = PendingResult()
+        try:
+            db = OrganizerDb(self._db_path)
+            try:
+                self._move(db, result)
+            finally:
+                db.close()
+        except Exception as exc:  # nunca dejar el hilo colgado
+            log.exception("Error inesperado al mover a pendientes")
+            result.failed.append(("", str(exc)))
+        result.cancelled = self._cancelled
+        self.finished.emit(result)
+
+    def _move(self, db: OrganizerDb, result: PendingResult) -> None:
+        rows = [(f, i) for f, i in db.identifications(self._file_ids) if i.decision == organizer.DECISION_REVIEW and db.open_pending(f) is None]
+        for index, (file_id, item) in enumerate(rows):
+            if self._cancelled:
+                return
+            row = db.file_by_id(file_id)
+            self.progress.emit(index, len(rows), os.path.basename(row.path))
+            try:
+                self.moved.emit(pending_review.move_to_pending(db, file_id, pending_review.root_of(row.path, self._roots), item))
+                result.moved += 1
+            except pending_review.PendingError as exc:
+                result.failed.append((row.path, str(exc)))
+        self.progress.emit(len(rows), len(rows), "")
+
+
+class ResolvePendingWorker(QObject):
+    """Las pendientes ya identificadas: las devuelve a su ubicación original y las normaliza allí. Con `jobs`, también
+    las que la persona corrigió a mano. Si no se puede normalizar, queda en su lugar como estaba, y se avisa."""
+
+    progress = Signal(int, int, str)
+    returned = Signal(object)  # PendingSong
+    applied = Signal(object)  # OperationItem
+    finished = Signal(object)  # PendingResult
+
+    def __init__(self, jobs: list | None = None, backup_folder: str | None = None, db_path=None) -> None:
+        super().__init__()
+        self._jobs = jobs
+        self._backup_folder = backup_folder
+        self._db_path = db_path
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @Slot()
+    def run(self) -> None:
+        result = PendingResult()
+        try:
+            db = OrganizerDb(self._db_path)
+            try:
+                self._resolve(db, result)
+            finally:
+                db.close()
+        except Exception as exc:  # nunca dejar el hilo colgado
+            log.exception("Error inesperado al devolver pendientes")
+            result.failed.append(("", str(exc)))
+        result.cancelled = self._cancelled
+        self.finished.emit(result)
+
+    def _resolve(self, db: OrganizerDb, result: PendingResult) -> None:
+        waiting = {p.file_id: p for p in db.pending_songs()}
+        jobs = self._jobs if self._jobs is not None else normalizer.jobs_from_identifications(db)
+        jobs = [j for j in jobs if j.file_id in waiting]
+        operation = db.begin_operation() if jobs else 0
+        for index, job in enumerate(jobs):
+            if self._cancelled:
+                break
+            pending = waiting[job.file_id]
+            self.progress.emit(index, len(jobs), os.path.basename(pending.pending_path))
+            try:
+                self.returned.emit(pending_review.return_to_origin(db, pending))
+                result.returned += 1
+            except pending_review.PendingError as exc:
+                result.failed.append((pending.pending_path, str(exc)))
+                continue
+            try:
+                item = normalizer.normalize(db, operation, job, self._backup_folder)
+            except normalizer.NormalizeError as exc:
+                result.failed.append((pending.original_path, str(exc)))
+                continue
+            if item is not None:
+                result.normalized += 1
+                self.applied.emit(item)
+        if operation:
+            db.finish_operation(operation)
+        self.progress.emit(len(jobs), len(jobs), "")
