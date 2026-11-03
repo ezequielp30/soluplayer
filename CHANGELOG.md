@@ -17,6 +17,10 @@ Formato: versión — fecha. Las versiones siguen `MAYOR.MENOR.CORRECCIÓN`.
   archivo va sin tildes ni puntuación. Se borran álbum, género, año, comentarios y carátula.
 - **Pensado para miles de canciones:** por lotes, con caché, sin trabar la ventana, y se puede detener y retomar.
 - La biblioteca sigue cada cambio y conserva playlists y orden. La herramienta anterior sigue disponible desde un botón.
+- **Los títulos o artistas que no usen solo letras latinas no se normalizan,** porque el nombre del archivo los perdería:
+  hay que escribirlos con letras latinas.
+- **Corregido en todas las herramientas:** las etiquetas editadas se fuerzan al disco y se compara el audio byte a byte
+  antes de reemplazar un MP3; varias ventanas se liberan al cerrarlas, para evitar el cierre de *Localizar archivo*.
 
 ## 1.27.1 — 2026-11-02 (corrección del aviso de versiones nuevas)
 

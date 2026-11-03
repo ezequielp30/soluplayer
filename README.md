@@ -14,8 +14,9 @@ La biblioteca y las playlists se guardan en **SQLite** y se conservan al cerrar 
 > renombra, modifica ni elimina** tus archivos. Solo lo hace cuando tú lo pides y lo confirmas: *Reunir
 > repetidas* (mueve, se puede deshacer), *Ajustar volumen* (modifica MP3 sin pérdida, se puede revertir),
 > *Convertir a MP3* (guarda los originales aparte, se puede deshacer), *Renombrar / Mover / Nueva carpeta*
-> (gestión de archivos) y *Enviar a la Papelera* (se recupera desde la Papelera). Nunca se borra nada de
-> forma definitiva. El ecualizador cambia el sonido al reproducir, no los archivos.
+> (gestión de archivos), *Título y quién la canta* (cambia nombre y etiquetas, con copia completa antes y
+> restauración) y *Enviar a la Papelera* (se recupera desde la Papelera). Nunca se borra nada de forma
+> definitiva. El ecualizador cambia el sonido al reproducir, no los archivos.
 
 ## Requisitos
 
@@ -97,6 +98,14 @@ soluplayer/
     ├── duplicates.py        Detección de canciones repetidas
     ├── duplicates_job.py    Búsqueda de repetidas en segundo plano
     ├── review_folder.py     Reunir repetidas en una carpeta de revisión y devolverlas
+    ├── organizer.py         Organizador de MP3: qué examinar y cómo decidir
+    ├── organizer_db.py      Base del organizador (organizador.db), aparte de la biblioteca
+    ├── organizer_job.py     Trabajos del organizador en segundo plano
+    ├── fingerprint.py       Huella digital con fpcalc (Chromaprint)
+    ├── acoustid_lookup.py   Consultas a AcoustID
+    ├── normalizer.py        Respaldo, etiquetas, nombre y restauración
+    ├── song_backup.py       Copia verificada y huella del audio
+    ├── pending_review.py    Carpeta PENDIENTES_REVISION
     ├── loudness.py          Medición EBU R128 (LUFS, pico real) y decisión de ajuste
     ├── loudness_job.py      Medir y ajustar el volumen en segundo plano
     ├── mp3gain.py           Ajuste de volumen sin pérdida dentro del MP3, con anotación para deshacer
@@ -192,6 +201,28 @@ Para archivos sueltos usa **Archivo → Importar archivos…** (`Ctrl+O`); puede
 
 WMA, M4A y los demás formatos no se pueden subir sin recomprimir (con pérdida). Se indican en la lista,
 pero no se modifican.
+
+### Organizar los MP3: título y quién la canta
+
+**Herramientas → Título y quién la canta…** reconoce cada canción por su sonido y la deja como
+`TITULO - ARTISTA.mp3`, con solo el título y el artista dentro del archivo.
+
+1. Elige carpetas o unidades completas, con sus subcarpetas.
+2. Pulsa **Agregar clave de AcoustID…**. Es gratuita para uso no comercial: se pide en
+   [acoustid.org/new-application](https://acoustid.org/new-application). Debe ser la clave de una aplicación, no la de
+   la cuenta. Sin clave, el programa propone a partir del título actual, pero ninguna canción se da por segura.
+3. Pulsa **Analizar**: no cambia ningún archivo. A AcoustID se envían la huella y la duración, nunca el audio.
+4. Revisa la tabla y pulsa **Normalizar**, por selección o todas las seguras.
+
+- **Dudosas:** van a `PENDIENTES_REVISION` sin cambios, con su motivo y sus posibles coincidencias. Desde la pestaña
+  *Pendientes* se reintentan o se corrigen a mano, y vuelven a su carpeta ya normalizadas.
+- **Protección:** antes de tocar una canción se hace una copia completa en `RESPALDOS_MP3`, comparada byte a byte y
+  escrita en el disco. El audio se comprueba idéntico y nunca se pisa otro archivo. Tras un corte de luz se retoma.
+- **Se borran** álbum, género, año, comentarios y carátula del archivo.
+- **Restaurar:** la pestaña *Historial* devuelve cada canción tal como estaba, con su nombre y los datos que tenía en la
+  biblioteca. Los respaldos se conservan: bórralos a mano cuando ya no los necesites.
+- **Otros alfabetos:** un título o artista que no use solo letras latinas no se normaliza, porque el nombre del archivo
+  las perdería. Hay que escribirlo con letras latinas.
 
 ### Convertir a MP3
 
